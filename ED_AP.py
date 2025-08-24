@@ -941,25 +941,38 @@ class EDAutopilot:
             return False
 
     def get_destination_offset(self, scr_reg):
-        """ Determine how far off we are from the target being in the middle of the screen
+        """ TODO - Rename to get_target_offset
+	Determine how far off we are from the target being in the middle of the screen
         (in this case the specified region). """
         dst_image, (minVal, maxVal, minLoc, maxLoc), match = scr_reg.match_template_in_region('target', 'target')
 
         pt = maxLoc
 
+        destination_left = scr_reg.reg['target']['rect'][0]
+        destination_top = scr_reg.reg['target']['rect'][1]
         destination_width = scr_reg.reg['target']['width']
         destination_height = scr_reg.reg['target']['height']
 
         width = scr_reg.templates.template['target']['width']
         height = scr_reg.templates.template['target']['height']
 
-        # need some fug numbers since our template is not symetric to determine center
-        final_x = ((pt[0]+((1/2)*width))-((1/2)*destination_width))-7
-        final_y = (((1/2)*destination_height)-(pt[1]+((1/2)*height)))+22
+        target_x_max = self.scr.screen_width - width
+        target_y_max = self.scr.screen_height - height
 
-        #  print("get dest, final:" + str(final_x)+ " "+str(final_y))
-        #  print(destination_width, destination_height, width, height)
-        #  print(maxLoc)
+        # X as percent (-1.0 to 1.0, 0.0 in the center)
+        #print(f"pt[0]: {pt[0]}")
+        #print(f"destination_left: {destination_left}")
+        final_x_pct = 2.0*(((pt[0]+destination_left)/(target_x_max))-0.5)
+        final_x_pct = 100 * max(min(final_x_pct, 1.0), -1.0)
+        final_x_pct = final_x_pct * self.scr.screen_width/self.scr.screen_height  # Scale for aspect ratio so the % is the same x and y.
+
+        # Y as percent (-1.0 to 1.0, 0.0 in the center)
+        #print(f"pt[1]: {pt[1]}")
+        #print(f"destination_top: {destination_top}")
+        final_y_pct = -2.0*(((pt[1]+destination_top)/(target_y_max))-0.5)
+        final_y_pct = 100 * max(min(final_y_pct, 1.0), -1.0)
+
+        final_r_pct = math.sqrt((final_x_pct ** 2) + (final_y_pct ** 2))
 
         if self.cv_view:
             dst_image_d = cv2.cvtColor(dst_image, cv2.COLOR_GRAY2RGB)
@@ -969,10 +982,11 @@ class EDAutopilot:
 
                 img = cv2.resize(dst_image_d, dim, interpolation=cv2.INTER_AREA)
                 img = cv2.rectangle(img, (0, 0), (1000, 25), (0, 0, 0), -1)
-                cv2.putText(img, f'{maxVal:5.4f} > {scr_reg.target_thresh:5.2f}', (1, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+                cv2.putText(img, f'{maxVal:5.4f} > {scr_reg.target_thresh:5.2f}', (1, 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+                cv2.putText(img, f'x: {final_x_pct:5.2f} y: {final_y_pct:5.2f} r: {final_r_pct:5.2f}',
+                            (1, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
                 cv2.imshow('target', img)
-                #cv2.imshow('tt', scr_reg.templates.template['target']['image'])
-                cv2.moveWindow('target', self.cv_view_x, self.cv_view_y+425)
+                #cv2.moveWindow('target', self.cv_view_x, self.cv_view_y+425)
             except Exception as e:
                 print("exception in getdest: "+str(e))
             cv2.waitKey(30)
@@ -982,7 +996,7 @@ class EDAutopilot:
         if maxVal < scr_reg.target_thresh:
             result = None
         else:
-            result = {'x': final_x, 'y': final_y}
+            result = {'x': round(final_x_pct, 2), 'y': round(final_y_pct, 2), 'r': round(final_r_pct, 2)}
 
         return result
 
@@ -1280,11 +1294,13 @@ class EDAutopilot:
             sleep(-1.0 * self.sunpitchuptime)
             self.keys.send('PitchDownButton', state=0)
 
-    def nav_align(self, scr_reg):
+    def nav_align(self, scr_reg) -> bool:
         """ Use the compass to find the nav point position.  Will then perform rotation and pitching
-        to put the nav point in the middle of the compass, i.e. target right in front of us """
+        to put the nav point in the middle of the compass, i.e. target right in front of us.
+        @return: True if aligned, else False.
+        """
 
-        close = 10  # in degrees
+        close = 7.5  # in degrees
         if not (self.jn.ship_state()['status'] == 'in_supercruise' or self.jn.ship_state()['status'] == 'in_space'):
             logger.error('align=err1, nav_align not in super or space')
             raise Exception('nav_align not in super or space')
@@ -1295,10 +1311,12 @@ class EDAutopilot:
         # the vehicle should be positioned with the sun below us via the sun_avoid() routine after a jump
         for ii in range(self.config['NavAlignTries']):
             off = self.get_nav_offset(scr_reg)
+            logger.debug(f"Compass position: yaw: {str(off['yaw'])} pit: {str(off['pit'])}")
 
             # Check if we are close enough already
             if abs(off['yaw']) < close and abs(off['pit']) < close:
-                break
+                self.ap_ckb('log', 'Compass Align complete')
+                return True
 
             # Roll if the nav point is not directly behind us.
             if ((-180 + close) < off['yaw'] < (180 - close) and
@@ -1350,11 +1368,18 @@ class EDAutopilot:
                     break
 
             sleep(.1)
-            logger.debug("final x:"+str(off['x'])+" y:"+str(off['y']))
+            logger.debug(f"Compass position: yaw: {str(off['yaw'])} pit: {str(off['pit'])}")
+
+        # Not aligned
+        self.ap_ckb('log+vce', 'Compass Align failed - exhausted all retries')
+        return False
 
     def fsd_target_align(self, scr_reg):
-        """ Coarse align to the target to support FSD jumping """
+        """
+        This function is deprecated. Using target align for both FSD jump align and SC align.
 
+        Coarse align to the target to support FSD jumping.
+        """
         self.vce.say("Target Align")
 
         logger.debug('align= fine align')
@@ -1431,11 +1456,23 @@ class EDAutopilot:
         self.nav_align(scr_reg)
         self.keys.send('SetSpeed100')
 
-        self.fsd_target_align(scr_reg)
+        #self.fsd_target_align(scr_reg)
+        for i in range(5):
+            align_res = self.sc_target_align(scr_reg)
+            if align_res == ScTargetAlignReturn.Lost:
+                self.nav_align(scr_reg)  # Compass Align
+
+            elif align_res == ScTargetAlignReturn.Found:
+                return
+
+            elif align_res == ScTargetAlignReturn.Disengage:
+                break
+
+        logger.error('mnvr_to_target failed 5 times')
+        raise Exception('mnvr_to_target failed 5 times')
 
     def sc_target_align(self, scr_reg) -> ScTargetAlignReturn:
-        """ Stays tight on the target, monitors for disengage and obscured.
-        If target could not be found, return false.
+        """ Align to the target, monitoring for disengage and obscured.
         @param scr_reg: The screen region class.
         @return: A string detailing the reason for the method return. Current return options:
             'lost': Lost target
@@ -1443,16 +1480,24 @@ class EDAutopilot:
             'disengage': Disengage text found
         """
 
-        close = 6
-        off = None
+        close = 6.0  # 6%. Anything outside of this range will cause alignment.
+        inner_lim = 2.5  # Stop alignment when in this range to avoid endless tweaking.
+        y_off = 1.0  # To keep the target above the center line.
 
-        hold_pitch = 0.100
-        hold_yaw = 0.100
+        new = None  # Initialize to avoid unbound variable
+        off = None  # Initialize to avoid unbound variable
+
+        self.ap_ckb('log+vce', 'Target Align')
+
         for i in range(5):
             new = self.get_destination_offset(scr_reg)
             if new:
                 off = new
+                logger.debug(f"sc_target_align x: {str(off['x'])} y:{str(off['y'])}")
+                # Apply offset to keep target above center
+                off['y'] = off['y'] - y_off
                 break
+
             if self.is_destination_occluded(scr_reg):
                 self.occluded_reposition(scr_reg)
                 self.ap_ckb('log+vce', 'Target Align')
@@ -1461,25 +1506,21 @@ class EDAutopilot:
         # Could not be found, return
         if off is None:
             logger.debug("sc_target_align not finding target")
-            self.ap_ckb('log', 'Target not found, terminating SC Assist')
+            self.ap_ckb('log', 'Target Align failed - target not found')
             return ScTargetAlignReturn.Lost
 
-        #logger.debug("sc_target_align x: "+str(off['x'])+" y:"+str(off['y']))
+        while ((abs(off['x']) > close) or
+               (abs(off['y']) > close)):
 
-        while (abs(off['x']) > close) or \
-                (abs(off['y']) > close):
+            close = inner_lim  # 2.0% Alignment will continue until within this range.
 
-            if abs(off['x']) > 25:
-                hold_yaw = 0.2
-            else:
-                hold_yaw = 0.09
+            pitch_factor = 0.5
+            hold_pitch = abs(off['y']) * pitch_factor / self.pitchrate
+            #hold_pitch = max(hold_pitch, 0.05)
 
-            if abs(off['y']) > 25:
-                hold_pitch = 0.15
-            else:
-                hold_pitch = 0.075
-
-            #logger.debug("  sc_target_align x: "+str(off['x'])+" y:"+str(off['y']))
+            yaw_factor = 0.5
+            hold_yaw = abs(off['x']) * yaw_factor / self.yawrate
+            #hold_yaw = max(hold_yaw, 0.05)
 
             if off['x'] > close:
                 self.keys.send('YawRightButton', hold=hold_yaw)
@@ -1508,11 +1549,15 @@ class EDAutopilot:
             new = self.get_destination_offset(scr_reg)
             if new:
                 off = new
+                logger.debug(f"sc_target_align 2 x: {str(off['x'])} y:{str(off['y'])}")
+
+                # Apply offset to keep target above center
+                off['y'] = off['y'] - y_off
 
             # Check if target is outside the target region (behind us) and break loop
             if new is None:
                 logger.debug("sc_target_align lost target")
-                self.ap_ckb('log', 'Target lost, attempting re-alignment.')
+                self.ap_ckb('log', 'Target Align failed - lost target.')
                 return ScTargetAlignReturn.Lost
 
         # TODO - find a better way to clear these
@@ -1524,6 +1569,7 @@ class EDAutopilot:
             self.overlay.overlay_remove_floating_text('sc_disengage_active')
             self.overlay.overlay_paint()
 
+        self.ap_ckb('log', 'Target Align complete.')
         return ScTargetAlignReturn.Found
 
     def occluded_reposition(self, scr_reg):
