@@ -804,6 +804,8 @@ class EDAutopilot:
         pt = maxLoc
 
         # get wid/hgt of templates
+        c_left = scr_reg.reg['compass']['rect'][0]
+        c_top = scr_reg.reg['compass']['rect'][1]
         c_wid = scr_reg.templates.template['compass']['width']
         c_hgt = scr_reg.templates.template['compass']['height']
         wid = scr_reg.templates.template['navpoint']['width']
@@ -879,6 +881,15 @@ class EDAutopilot:
         result = {'x': round(final_x_pct, 2), 'y': round(final_y_pct, 2), 'z': round(final_z_pct, 2),
                   'roll': round(final_roll_deg, 2), 'pit': round(final_pit_deg, 2), 'yaw': round(final_yaw_deg, 2)}
 
+        # Draw box around region
+        if self.debug_overlay:
+            border = 10  # border to prevent the box from interfering with future matches
+            left = c_left + maxLoc[0]
+            top = c_top + maxLoc[1]
+            self.overlay.overlay_rect('compass', (left - border, top - border), (left + c_wid + border, top + c_hgt + border), (0, 255, 0), 2)
+            self.overlay.overlay_floating_text('compass', f'Match: {maxVal:5.4f}', left - border, top - border - 25, (0, 255, 0))
+            self.overlay.overlay_paint()
+
         if self.cv_view:
             #icompass_image_d = cv2.cvtColor(compass_image_gray, cv2.COLOR_GRAY2RGB)
             icompass_image_d = icompass_image
@@ -942,7 +953,7 @@ class EDAutopilot:
 
     def get_destination_offset(self, scr_reg):
         """ TODO - Rename to get_target_offset
-	Determine how far off we are from the target being in the middle of the screen
+        Determine how far off we are from the target being in the middle of the screen
         (in this case the specified region). """
         dst_image, (minVal, maxVal, minLoc, maxLoc), match = scr_reg.match_template_in_region('target', 'target')
 
@@ -973,6 +984,15 @@ class EDAutopilot:
         final_y_pct = 100 * max(min(final_y_pct, 1.0), -1.0)
 
         final_r_pct = math.sqrt((final_x_pct ** 2) + (final_y_pct ** 2))
+
+        # Draw box around region
+        if self.debug_overlay:
+            border = 10  # border to prevent the box from interfering with future matches
+            left = destination_left + maxLoc[0]
+            top = destination_top + maxLoc[1]
+            self.overlay.overlay_rect('target', (left - border, top - border), (left + width + border, top + height + border), (0, 255, 0), 2)
+            self.overlay.overlay_floating_text('target', f'Match: {maxVal:5.4f}', left - border, top - border - 25, (0, 255, 0))
+            self.overlay.overlay_paint()
 
         if self.cv_view:
             dst_image_d = cv2.cvtColor(dst_image, cv2.COLOR_GRAY2RGB)
@@ -1714,7 +1734,6 @@ class EDAutopilot:
 
         # a set of convience routes to pitch, rotate by specified degress
 
-    #
     def rotateLeft(self, deg):
         htime = deg/self.rollrate
         self.keys.send('RollLeftButton', hold=htime)
@@ -2428,6 +2447,10 @@ class EDAutopilot:
     #
     def engine_loop(self):
         while not self.terminate:
+            # TODO - Remove these show compass/target all the time
+            self.get_nav_offset(self.scrReg)
+            self.get_destination_offset(self.scrReg)
+
             self._sc_sco_active_loop_enable = True
 
             if self._sc_sco_active_loop_enable:
