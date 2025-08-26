@@ -1532,13 +1532,13 @@ class EDAutopilot:
         new = None  # Initialize to avoid unbound variable
         off = None  # Initialize to avoid unbound variable
 
-        self.ap_ckb('log+vce', 'Target Align')
+        # self.ap_ckb('log+vce', 'Target Align')
 
         for i in range(5):
             new = self.get_destination_offset(scr_reg)
             if new:
                 off = new
-                logger.debug(f"sc_target_align x: {str(off['x'])} y:{str(off['y'])}")
+                #logger.debug(f"sc_target_align x: {str(off['x'])} y:{str(off['y'])}")
                 # Apply offset to keep target above center
                 off['y'] = off['y'] - y_off
                 break
@@ -1614,7 +1614,7 @@ class EDAutopilot:
             self.overlay.overlay_remove_floating_text('sc_disengage_active')
             self.overlay.overlay_paint()
 
-        self.ap_ckb('log', 'Target Align complete.')
+        #self.ap_ckb('log', 'Target Align complete.')
         return ScTargetAlignReturn.Found
 
     def occluded_reposition(self, scr_reg):
