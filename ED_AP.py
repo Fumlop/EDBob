@@ -472,14 +472,15 @@ class EDAutopilot:
             # right tic
             cv2.line(img, (int(pt2[0]), int(pt1[1]+half_hgt)), (int(pt2[0]+tic_len), int(pt1[1]+half_hgt)), color, thick)
 
-    def calibrate_region(self, range_low, range_high, range_step, threshold: float, reg_name: str, templ_name: str):
+    def calibrate_region(self, range_low, range_high, range_step, threshold: float, reg_name: str, templ_name: str, no_overlay: bool = False):
         """ Find the best scale value in the given range of scales with the passed in threshold
         @param reg_name:
-        @param range_low:
-        @param range_high:
-        @param range_step:
+        @param range_low: Lowest scaling value (0-100%)
+        @param range_high: Highest scaling value (0-100%)
+        @param range_step: Scaling value step increment (0-100%) for each loop
         @param threshold: The minimum threshold to match (0.0 - 1.0)
         @param templ_name: The region name i.i 'compass' or 'target'
+        @param no_overlay: Do not show overlay.
         @return:
         """
         scale = 0
@@ -495,23 +496,24 @@ class EDAutopilot:
             # do image matching on the compass and the target
             image, (minVal, maxVal, minLoc, maxLoc), match = self.scrReg.match_template_in_region_x3(reg_name, templ_name)
 
-            border = 10  # border to prevent the box from interfering with future matches
-            reg_pos = self.scrReg.reg[reg_name]['rect']
-            width = self.scrReg.templates.template[templ_name]['width'] + border + border
-            height = self.scrReg.templates.template[templ_name]['height'] + border + border
-            left = reg_pos[0] + maxLoc[0] - border
-            top = reg_pos[1] + maxLoc[1] - border
+            if not no_overlay:
+                border = 10  # border to prevent the box from interfering with future matches
+                reg_pos = self.scrReg.reg[reg_name]['rect']
+                width = self.scrReg.templates.template[templ_name]['width'] + border + border
+                height = self.scrReg.templates.template[templ_name]['height'] + border + border
+                left = reg_pos[0] + maxLoc[0] - border
+                top = reg_pos[1] + maxLoc[1] - border
 
-            if maxVal > threshold and maxVal > max_pick:
-                # Draw box around region
-                self.overlay.overlay_rect(20, (left, top), (left + width, top + height), (0, 255, 0), 2)
-                self.overlay.overlay_floating_text(20, f'Match: {maxVal:5.4f}', left, top - 25, (0, 255, 0))
-            else:
-                # Draw box around region
-                self.overlay.overlay_rect(21, (left, top), (left + width, top + height), (255, 0, 0), 2)
-                self.overlay.overlay_floating_text(21, f'Match: {maxVal:5.4f}', left, top - 25, (255, 0, 0))
+                if maxVal > threshold and maxVal > max_pick:
+                    # Draw box around region
+                    self.overlay.overlay_rect(20, (left, top), (left + width, top + height), (0, 255, 0), 2)
+                    self.overlay.overlay_floating_text(20, f'Match: {maxVal:5.4f}', left, top - 25, (0, 255, 0))
+                else:
+                    # Draw box around region
+                    self.overlay.overlay_rect(21, (left, top), (left + width, top + height), (255, 0, 0), 2)
+                    self.overlay.overlay_floating_text(21, f'Match: {maxVal:5.4f}', left, top - 25, (255, 0, 0))
 
-            self.overlay.overlay_paint()
+                self.overlay.overlay_paint()
 
             # Check the match percentage
             if maxVal > threshold:
@@ -527,11 +529,12 @@ class EDAutopilot:
         sleep(2)
 
         # Clean up screen
-        self.overlay.overlay_remove_rect(20)
-        self.overlay.overlay_remove_floating_text(20)
-        self.overlay.overlay_remove_rect(21)
-        self.overlay.overlay_remove_floating_text(21)
-        self.overlay.overlay_paint()
+        if not no_overlay:
+            self.overlay.overlay_remove_rect(20)
+            self.overlay.overlay_remove_floating_text(20)
+            self.overlay.overlay_remove_rect(21)
+            self.overlay.overlay_remove_floating_text(21)
+            self.overlay.overlay_paint()
 
         return scale, max_pick
 
@@ -550,8 +553,8 @@ class EDAutopilot:
         # Draw the target and compass regions on the screen
         key = 'target'
         targ_region = self.scrReg.reg[key]
-        self.overlay.overlay_rect1(key, targ_region['rect'], (0, 0, 255), 2)
-        self.overlay.overlay_floating_text(key, key, targ_region['rect'][0], targ_region['rect'][1], (0, 0, 255))
+        self.overlay.overlay_rect1('calib_target', targ_region['rect'], (0, 0, 255), 2)
+        self.overlay.overlay_floating_text('calib_target', key, targ_region['rect'][0], targ_region['rect'][1], (0, 0, 255))
         self.overlay.overlay_paint()
 
         # Calibrate system target
@@ -578,8 +581,8 @@ class EDAutopilot:
         # Draw the target and compass regions on the screen
         key = 'compass'
         targ_region = self.scrReg.reg[key]
-        self.overlay.overlay_rect1(key, targ_region['rect'], (0, 0, 255), 2)
-        self.overlay.overlay_floating_text(key, key, targ_region['rect'][0], targ_region['rect'][1], (0, 0, 255))
+        self.overlay.overlay_rect1('calib_compass', targ_region['rect'], (0, 0, 255), 2)
+        self.overlay.overlay_floating_text('calib_compass', key, targ_region['rect'][0], targ_region['rect'][1], (0, 0, 255))
         self.overlay.overlay_paint()
 
         # Calibrate compass
@@ -593,9 +596,9 @@ class EDAutopilot:
 
     def calibrate_target_worker(self):
         """ Calibrate target """
-        range_low = 30
-        range_high = 200
-        range_step = 1
+        range_low = 50  # Minimum scale (30%)
+        range_high = 200  # Maximum scale (200%)
+        range_step = 1  # Scale increment to step (1%)
         scale_max = 0
         max_val = 0
 
@@ -608,9 +611,16 @@ class EDAutopilot:
             if scale != 0:
                 scale_max = scale
                 max_val = max_pick
-                range_low = scale - 5
-                range_high = scale + 5
-                range_step = 0.1
+                range_low = scale - 5  # Current scale - 5%
+                range_high = scale + 5  # Current scale + 5%
+                range_step = 0.1  # Scale increment to step (0.1%)
+                if i == 1:
+                    self.ap_ckb('log',
+                                f'Target Cal: Best rough match: {max_val * 100:5.2f}% at scale: {float(scale_max / 100):5.4f}')
+                else:
+                    self.ap_ckb('log',
+                                f'Target Cal: Best fine match: {max_val * 100:5.2f}% at scale: {float(scale_max / 100):5.4f}')
+
             else:
                 break  # no match found with threshold
 
@@ -630,36 +640,102 @@ class EDAutopilot:
         # reload the templates with the new (or previous value)
         self.templ.reload_templates(self.scr.scaleX, self.scr.scaleY, self.compass_scale)
 
+    def quick_calibrate_target(self):
+        """ Quick Calibrate Target based on current scaling, without overlay. """
+        self.ap_ckb('log+vce', 'Performing quick target calibration.')
+
+        cur_scale = self.scr.scaleX * 100
+        range_low = cur_scale - 5  # Current scale - 5%
+        range_high = cur_scale + 5  # Current scale + 5%
+        range_step = 0.25  # Scale increment to step (0.25%)
+
+        # loop through the test.
+        threshold = 0.5  # Minimum match is constant. Result will always be the highest match.
+        scale_max, max_val = self.calibrate_region(range_low, range_high, range_step, threshold, 'target','target', True)
+        # if we found a scaling factor that meets our criteria, then save it to the resolution.json file
+        if max_val != 0:
+            self.scr.scaleX = float(scale_max / 100)
+            self.scr.scaleY = self.scr.scaleX
+            self.ap_ckb('log', f'Target Cal: Best match: {max_val * 100:5.2f}% at scale: {self.scr.scaleX:5.4f}')
+            self.config['TargetScale'] = round(self.scr.scaleX, 4)
+            # self.scr.scales['Calibrated'] = [self.scr.scaleX, self.scr.scaleY]
+            self.scr.write_config(
+                data=None)  # None means the writer will use its own scales variable which we modified
+        else:
+            self.ap_ckb('log',
+                        f'Target Cal: Insufficient matching to meet reliability, max % match: {max_val * 100:5.2f}%')
+
+        # reload the templates with the new (or previous value)
+        self.templ.reload_templates(self.scr.scaleX, self.scr.scaleY, self.compass_scale)
+
     def calibrate_compass_worker(self):
         """ Calibrate Compass """
-        range_low = 30
-        range_high = 200
-        range_step = 1
+        range_low = 50  # Minimum scale (30%)
+        range_high = 200  # Maximum scale (200%)
+        range_step = 1  # Scale increment to step (1%)
         scale_max = 0
         max_val = 0
+        start = self.compass_scale * 100
+        range_low = start - 5
+        range_high = start + 5
+        range_step = 0.25
 
         # loop through the test twice. Once over the wide scaling range at 1% increments and once over a
         # small scaling range at 0.1% increments.
         # Find out which scale factor meets the highest threshold value.
-        for i in range(2):
+        for i in range(1):
             threshold = 0.5  # Minimum match is constant. Result will always be the highest match.
             scale, max_pick = self.calibrate_region(range_low, range_high, range_step, threshold, 'compass','compass')
             if scale != 0:
                 scale_max = scale
                 max_val = max_pick
-                range_low = scale - 5
-                range_high = scale + 5
-                range_step = 0.1
+                range_low = scale - 5  # Current scale - 5%
+                range_high = scale + 5  # Current scale + 5%
+                range_step = 0.1  # Scale increment to step (0.1%)
+                if i == 1:
+                    self.ap_ckb('log',
+                                f'Target Cal: Best rough match: {max_val * 100:5.2f}% at scale: {float(scale_max / 100):5.4f}')
+                else:
+                    self.ap_ckb('log',
+                                f'Target Cal: Best fine match: {max_val * 100:5.2f}% at scale: {float(scale_max / 100):5.4f}')
+
             else:
                 break  # no match found with threshold
 
         # if we found a scaling factor that meets our criteria, then save it to the resolution.json file
         if max_val != 0:
-            c_scaleX = float(scale_max / 100)
+            c_scale_x = float(scale_max / 100)
             self.ap_ckb('log',
-                        f'Compass Cal: Max best match: {max_val * 100:5.2f}% with scale: {c_scaleX:5.4f}')
+                        f'Compass Cal: Max best match: {max_val * 100:5.2f}% with scale: {c_scale_x:5.4f}')
             # Keep new value
-            self.compass_scale = c_scaleX
+            self.compass_scale = c_scale_x
+
+        else:
+            self.ap_ckb('log',
+                        f'Compass Cal: Insufficient matching to meet reliability, max % match: {max_val * 100:5.2f}%')
+
+        # reload the templates with the new (or previous value)
+        self.templ.reload_templates(self.scr.scaleX, self.scr.scaleY, self.compass_scale)
+
+    def quick_calibrate_compass(self):
+        """ Quick Calibrate Compass based on current scaling, without overlay. """
+        self.ap_ckb('log+vce', 'Performing quick compass calibration.')
+
+        cur_scale = self.compass_scale * 100
+        range_low = cur_scale - 5  # Current scale - 5%
+        range_high = cur_scale + 5  # Current scale + 5%
+        range_step = 0.25  # Scale increment to step (0.25%)
+
+        # loop through the test.
+        threshold = 0.5  # Minimum match is constant. Result will always be the highest match.
+        scale_max, max_val = self.calibrate_region(range_low, range_high, range_step, threshold, 'compass','compass', True)
+        # if we found a scaling factor that meets our criteria, then save it to the resolution.json file
+        if max_val != 0:
+            c_scale_x = float(scale_max / 100)
+            self.ap_ckb('log',
+                        f'Compass Cal: Max best match: {max_val * 100:5.2f}% with scale: {c_scale_x:5.4f}')
+            # Keep new value
+            self.compass_scale = c_scale_x
 
         else:
             self.ap_ckb('log',
@@ -796,10 +872,21 @@ class EDAutopilot:
             -180deg (6 o'clock anticlockwise) to
              0deg (12 o'clock) to
              180deg (6 o'clock clockwise)
-         """
+        """
+        full_compass_image = None
+        maxLoc = 0
+        maxVal = 0
+        for i in range(2):
+            full_compass_image, (minVal, maxVal, minLoc, maxLoc), match = (
+                scr_reg.match_template_in_region_x3('compass', 'compass'))
 
-        icompass_image, (minVal, maxVal, minLoc, maxLoc), match = (
-            scr_reg.match_template_in_region_x3('compass', 'compass'))
+            # need > x in the match to say we do have a destination
+            if maxVal < (scr_reg.compass_match_thresh / 2):
+                # If we are so far below threshold, then compass must not be up
+                return None
+            elif maxVal < scr_reg.compass_match_thresh:
+                # We are below match, but only just, recalibrate
+                self.quick_calibrate_compass()
 
         pt = maxLoc
 
@@ -813,7 +900,7 @@ class EDAutopilot:
 
         # cut out the compass from the region
         pad = 5
-        compass_image = icompass_image[abs(pt[1]-pad): pt[1]+c_hgt+pad, abs(pt[0]-pad): pt[0]+c_wid+pad].copy()
+        compass_image = full_compass_image[abs(pt[1]-pad): pt[1]+c_hgt+pad, abs(pt[0]-pad): pt[0]+c_wid+pad].copy()
         #compass_image_gray = cv2.cvtColor(compass_image, cv2.COLOR_BGR2GRAY)
         compass_image_gray =  self.scrReg.equalize(compass_image)
 
@@ -892,7 +979,7 @@ class EDAutopilot:
 
         if self.cv_view:
             #icompass_image_d = cv2.cvtColor(compass_image_gray, cv2.COLOR_GRAY2RGB)
-            icompass_image_d = icompass_image
+            icompass_image_d = full_compass_image
             self.draw_match_rect(icompass_image_d, pt, (pt[0]+c_wid, pt[1]+c_hgt), (0, 0, 255), 2)
             #cv2.rectangle(icompass_image_display, pt, (pt[0]+c_wid, pt[1]+c_hgt), (0, 0, 255), 2)
             #self.draw_match_rect(compass_image, n_pt, (n_pt[0] + wid, n_pt[1] + hgt), (255,255,255), 2)
@@ -955,7 +1042,19 @@ class EDAutopilot:
         """ TODO - Rename to get_target_offset
         Determine how far off we are from the target being in the middle of the screen
         (in this case the specified region). """
-        dst_image, (minVal, maxVal, minLoc, maxLoc), match = scr_reg.match_template_in_region('target', 'target')
+        dst_image = None
+        maxLoc = 0
+        maxVal = 0
+        for i in range(2):
+            dst_image, (minVal, maxVal, minLoc, maxLoc), match = scr_reg.match_template_in_region('target', 'target')
+
+            # need > x in the match to say we do have a destination
+            if maxVal < (scr_reg.target_thresh / 2):
+                # If we are so far below threshold, then target must not be up
+                return None
+            elif maxVal < scr_reg.target_thresh:
+                # We are below match, but only just, recalibrate
+                self.quick_calibrate_target()
 
         pt = maxLoc
 
@@ -971,16 +1070,13 @@ class EDAutopilot:
         target_y_max = self.scr.screen_height - height
 
         # X as percent (-1.0 to 1.0, 0.0 in the center)
-        #print(f"pt[0]: {pt[0]}")
-        #print(f"destination_left: {destination_left}")
-        final_x_pct = 2.0*(((pt[0]+destination_left)/(target_x_max))-0.5)
+        final_x_pct = 2.0*(((pt[0]+destination_left) / target_x_max) - 0.5)
         final_x_pct = 100 * max(min(final_x_pct, 1.0), -1.0)
-        final_x_pct = final_x_pct * self.scr.screen_width/self.scr.screen_height  # Scale for aspect ratio so the % is the same x and y.
+        # Scale for aspect ratio so the % is the same x and y.
+        final_x_pct = final_x_pct * self.scr.screen_width/self.scr.screen_height
 
         # Y as percent (-1.0 to 1.0, 0.0 in the center)
-        #print(f"pt[1]: {pt[1]}")
-        #print(f"destination_top: {destination_top}")
-        final_y_pct = -2.0*(((pt[1]+destination_top)/(target_y_max))-0.5)
+        final_y_pct = -2.0*(((pt[1]+destination_top) / target_y_max) - 0.5)
         final_y_pct = 100 * max(min(final_y_pct, 1.0), -1.0)
 
         final_r_pct = math.sqrt((final_x_pct ** 2) + (final_y_pct ** 2))
@@ -1011,11 +1107,12 @@ class EDAutopilot:
                 print("exception in getdest: "+str(e))
             cv2.waitKey(30)
 
-        #print (maxVal)
         # must be > x to have solid hit, otherwise we are facing wrong way (empty circle)
         if maxVal < scr_reg.target_thresh:
+            #logger.debug(f"Target offset not found (x: {final_x_pct:5.2f} y: {final_y_pct:5.2f} at {maxVal:5.2f})")
             result = None
         else:
+            #logger.debug(f"Target offset found (x: {final_x_pct:5.2f} y: {final_y_pct:5.2f} at {maxVal:5.2f}%)")
             result = {'x': round(final_x_pct, 2), 'y': round(final_y_pct, 2), 'r': round(final_r_pct, 2)}
 
         return result
@@ -1393,78 +1490,6 @@ class EDAutopilot:
         # Not aligned
         self.ap_ckb('log+vce', 'Compass Align failed - exhausted all retries')
         return False
-
-    def fsd_target_align(self, scr_reg):
-        """
-        This function is deprecated. Using target align for both FSD jump align and SC align.
-
-        Coarse align to the target to support FSD jumping.
-        """
-        self.vce.say("Target Align")
-
-        logger.debug('align= fine align')
-
-        close = 50
-
-        # TODO: should use Pitch Rates to calculate, but this seems to work fine with all ships
-        hold_pitch = 0.150
-        hold_yaw = 0.300
-        new = None  # Initialize to avoid unbound variable
-        off = None  # Initialize to avoid unbound variable
-        
-        for i in range(5):
-            new = self.get_destination_offset(scr_reg)
-            if new:
-                off = new
-                break
-            sleep(0.25)
-
-        # try one more time to align
-        if new is None:
-            self.nav_align(scr_reg)
-            new = self.get_destination_offset(scr_reg)
-            if new:
-                off = new
-            else:
-                logger.debug('  out of fine -not off-'+'\n')
-                return
-        
-        # Safety check to ensure off is valid before using it
-        if off is None:
-            logger.debug('  off is None, cannot continue alignment')
-            return
-            
-        while (off['x'] > close) or \
-              (off['x'] < -close) or \
-              (off['y'] > close) or \
-              (off['y'] < -close):
-
-
-            #print("off:"+str(new))
-            if off['x'] > close:
-                self.keys.send('YawRightButton', hold=hold_yaw)
-            if off['x'] < -close:
-                self.keys.send('YawLeftButton', hold=hold_yaw)
-            if off['y'] > close:
-                self.keys.send('PitchUpButton', hold=hold_pitch)
-            if off['y'] < -close:
-                self.keys.send('PitchDownButton', hold=hold_pitch)
-
-            if self.jn.ship_state()['status'] == 'starting_hyperspace':
-                return
-
-            for i in range(5):
-                sleep(0.1)
-                new = self.get_destination_offset(scr_reg)
-                if new:
-                    off = new
-                    break
-                sleep(0.25)
-
-            if not off:
-                return
-
-        logger.debug('align=complete')
 
     def mnvr_to_target(self, scr_reg):
         logger.debug('align')
