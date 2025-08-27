@@ -606,7 +606,7 @@ class EDAutopilot:
         # small scaling range at 0.1% increments.
         # Find out which scale factor meets the highest threshold value.
         for i in range(2):
-            threshold = 0.5  # Minimum match is constant. Result will always be the highest match.
+            threshold = 0.0  # Minimum match is constant. Result will always be the highest match.
             scale, max_pick = self.calibrate_region(range_low, range_high, range_step, threshold, 'target', 'target')
             if scale != 0:
                 scale_max = scale
@@ -675,16 +675,12 @@ class EDAutopilot:
         range_step = 1  # Scale increment to step (1%)
         scale_max = 0
         max_val = 0
-        start = self.compass_scale * 100
-        range_low = start - 5
-        range_high = start + 5
-        range_step = 0.25
 
         # loop through the test twice. Once over the wide scaling range at 1% increments and once over a
         # small scaling range at 0.1% increments.
         # Find out which scale factor meets the highest threshold value.
         for i in range(1):
-            threshold = 0.5  # Minimum match is constant. Result will always be the highest match.
+            threshold = 0.0  # Minimum match is constant. Result will always be the highest match.
             scale, max_pick = self.calibrate_region(range_low, range_high, range_step, threshold, 'compass','compass')
             if scale != 0:
                 scale_max = scale
@@ -864,7 +860,7 @@ class EDAutopilot:
         self.jn.ship_state()['interdicted'] = False  # reset flag
         return True
 
-    def get_nav_offset(self, scr_reg):
+    def get_nav_offset(self, scr_reg, disable_auto_cal: bool = False):
         """ Determine the x,y offset from center of the compass of the nav point.
          Returns the x,y,z value as x,y in degrees (-90 to 90) and z as 1 or -1.
          {'roll': r, 'pit': p, 'yaw': y}
@@ -886,7 +882,8 @@ class EDAutopilot:
                 return None
             elif maxVal < scr_reg.compass_match_thresh:
                 # We are below match, but only just, recalibrate
-                self.quick_calibrate_compass()
+                if not disable_auto_cal:
+                    self.quick_calibrate_compass()
 
         pt = maxLoc
 
@@ -1038,7 +1035,7 @@ class EDAutopilot:
             #logger.debug(f"Target is not occluded ({maxVal:5.4f} < {scr_reg.target_occluded_thresh:5.2f})")
             return False
 
-    def get_destination_offset(self, scr_reg):
+    def get_destination_offset(self, scr_reg, disable_auto_cal: bool = False):
         """ TODO - Rename to get_target_offset
         Determine how far off we are from the target being in the middle of the screen
         (in this case the specified region). """
@@ -1054,7 +1051,8 @@ class EDAutopilot:
                 return None
             elif maxVal < scr_reg.target_thresh:
                 # We are below match, but only just, recalibrate
-                self.quick_calibrate_target()
+                if not disable_auto_cal:
+                    self.quick_calibrate_target()
 
         pt = maxLoc
 
@@ -2473,8 +2471,8 @@ class EDAutopilot:
     def engine_loop(self):
         while not self.terminate:
             # TODO - Remove these show compass/target all the time
-            self.get_nav_offset(self.scrReg)
-            self.get_destination_offset(self.scrReg)
+            self.get_nav_offset(self.scrReg, True)
+            self.get_destination_offset(self.scrReg, True)
 
             self._sc_sco_active_loop_enable = True
 
