@@ -93,7 +93,7 @@ class Screen_Regions:
         # Define the thresholds for template matching to be consistent throughout the program
         self.compass_match_thresh = 0.50
         self.navpoint_match_thresh = 0.8
-        self.target_thresh = 0.54
+        self.target_thresh = 0.50
         self.target_occluded_thresh = 0.55
         self.sun_threshold = 125
         self.disengage_thresh = 0.25

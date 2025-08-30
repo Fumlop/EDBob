@@ -507,11 +507,11 @@ class EDAutopilot:
                 if maxVal > threshold and maxVal > max_pick:
                     # Draw box around region
                     self.overlay.overlay_rect(20, (left, top), (left + width, top + height), (0, 255, 0), 2)
-                    self.overlay.overlay_floating_text(20, f'Match: {maxVal:5.4f}', left, top - 25, (0, 255, 0))
+                    self.overlay.overlay_floating_text(20, f'Match: {maxVal:5.4f}(%)', left, top - 25, (0, 255, 0))
                 else:
                     # Draw box around region
                     self.overlay.overlay_rect(21, (left, top), (left + width, top + height), (255, 0, 0), 2)
-                    self.overlay.overlay_floating_text(21, f'Match: {maxVal:5.4f}', left, top - 25, (255, 0, 0))
+                    self.overlay.overlay_floating_text(21, f'Match: {maxVal:5.4f}(%)', left, top - 25, (255, 0, 0))
 
                 self.overlay.overlay_paint()
 
@@ -542,12 +542,17 @@ class EDAutopilot:
         # Draw the target and compass regions on the screen
         key = 'target'
         targ_region = self.scrReg.reg[key]
-        self.overlay.overlay_rect1('calib_target', targ_region['rect'], (0, 0, 255), 2)
-        self.overlay.overlay_floating_text('calib_target', key, targ_region['rect'][0], targ_region['rect'][1], (0, 0, 255))
+        self.overlay.overlay_rect1('calib_target', targ_region['rect'], (0, 0, 255), 2, -1)
+        self.overlay.overlay_floating_text('calib_target', key, targ_region['rect'][0], targ_region['rect'][1], (0, 0, 255), -1)
         self.overlay.overlay_paint()
 
         # Calibrate system target
         self.calibrate_target_worker()
+
+        # Clean up
+        self.overlay.overlay_remove_rect('calib_target')
+        self.overlay.overlay_remove_floating_text('calib_target')
+        self.overlay.overlay_paint()
 
         self.ap_ckb('log+vce', 'Calibration complete.')
 
@@ -566,12 +571,17 @@ class EDAutopilot:
         # Draw the target and compass regions on the screen
         key = 'compass'
         targ_region = self.scrReg.reg[key]
-        self.overlay.overlay_rect1('calib_compass', targ_region['rect'], (0, 0, 255), 2)
-        self.overlay.overlay_floating_text('calib_compass', key, targ_region['rect'][0], targ_region['rect'][1], (0, 0, 255))
+        self.overlay.overlay_rect1('calib_compass', targ_region['rect'], (0, 0, 255), 2, -1)
+        self.overlay.overlay_floating_text('calib_compass', key, targ_region['rect'][0], targ_region['rect'][1], (0, 0, 255), -1)
         self.overlay.overlay_paint()
 
         # Calibrate compass
         self.calibrate_compass_worker()
+
+        # Clean up
+        self.overlay.overlay_remove_rect('calib_compass')
+        self.overlay.overlay_remove_floating_text('calib_compass')
+        self.overlay.overlay_paint()
 
         self.ap_ckb('log+vce', 'Calibration complete.')
 
@@ -597,10 +607,10 @@ class EDAutopilot:
                 range_step = 0.1  # Scale increment to step (0.1%)
                 if i == 1:
                     self.ap_ckb('log',
-                                f'Target Cal: Best rough match: {max_val * 100:5.2f}% at scale: {float(scale_max / 100):5.4f}')
+                                f'Target Cal: Best rough match: {max_val:5.4f}(%) at scale: {float(scale_max / 100):5.4f}')
                 else:
                     self.ap_ckb('log',
-                                f'Target Cal: Best fine match: {max_val * 100:5.2f}% at scale: {float(scale_max / 100):5.4f}')
+                                f'Target Cal: Best fine match: {max_val:5.4f}(%) at scale: {float(scale_max / 100):5.4f}')
 
             else:
                 break  # no match found with threshold
@@ -609,14 +619,14 @@ class EDAutopilot:
         if max_val != 0:
             self.scr.scaleX = float(scale_max / 100)
             self.scr.scaleY = self.scr.scaleX
-            self.ap_ckb('log', f'Target Cal: Best match: {max_val * 100:5.2f}% at scale: {self.scr.scaleX:5.4f}')
+            self.ap_ckb('log', f'Target Cal: Best match: {max_val:5.4f}(%) at scale: {self.scr.scaleX:5.4f}')
             self.config['TargetScale'] = round(self.scr.scaleX, 4)
             # self.scr.scales['Calibrated'] = [self.scr.scaleX, self.scr.scaleY]
             self.scr.write_config(
                 data=None)  # None means the writer will use its own scales variable which we modified
         else:
             self.ap_ckb('log',
-                        f'Target Cal: Insufficient matching to meet reliability, max % match: {max_val * 100:5.2f}%')
+                        f'Target Cal: Insufficient matching to meet reliability, max % match: {max_val:5.4f}(%)')
 
         # reload the templates with the new (or previous value)
         self.templ.reload_templates(self.scr.scaleX, self.scr.scaleY, self.compass_scale)
@@ -637,14 +647,13 @@ class EDAutopilot:
         if max_val != 0:
             self.scr.scaleX = float(scale_max / 100)
             self.scr.scaleY = self.scr.scaleX
-            self.ap_ckb('log', f'Target Cal: Best match: {max_val * 100:5.2f}% at scale: {self.scr.scaleX:5.4f}')
+            self.ap_ckb('log', f'Target Cal: Best match: {max_val:5.4f}(%) at scale: {self.scr.scaleX:5.4f}')
             self.config['TargetScale'] = round(self.scr.scaleX, 4)
             # self.scr.scales['Calibrated'] = [self.scr.scaleX, self.scr.scaleY]
             self.scr.write_config(
                 data=None)  # None means the writer will use its own scales variable which we modified
         else:
-            self.ap_ckb('log',
-                        f'Target Cal: Insufficient matching to meet reliability, max % match: {max_val * 100:5.2f}%')
+            self.ap_ckb('log', f'Target Cal: Insufficient matching to meet reliability, max % match: {max_val:5.4f}(%)')
 
         # reload the templates with the new (or previous value)
         self.templ.reload_templates(self.scr.scaleX, self.scr.scaleY, self.compass_scale)
@@ -864,6 +873,7 @@ class EDAutopilot:
             elif maxVal < scr_reg.compass_match_thresh:
                 # We are below match, but only just, recalibrate
                 if not disable_auto_cal:
+                    self.ap_ckb('log', f'Compass Offset below threshold: {maxVal:5.4f} with scale: {self.compass_scale:5.4f}')
                     self.quick_calibrate_compass()
 
         pt = maxLoc
@@ -1033,6 +1043,7 @@ class EDAutopilot:
             elif maxVal < scr_reg.target_thresh:
                 # We are below match, but only just, recalibrate
                 if not disable_auto_cal:
+                    self.ap_ckb('log', f'Target Offset below threshold: {maxVal:5.4f} with scale: {self.scr.scaleX:5.4f}')
                     self.quick_calibrate_target()
 
         pt = maxLoc
@@ -1514,6 +1525,7 @@ class EDAutopilot:
         # self.ap_ckb('log+vce', 'Target Align')
 
         for i in range(5):
+            self.get_nav_offset(scr_reg)
             new = self.get_destination_offset(scr_reg)
             if new:
                 off = new
@@ -1570,6 +1582,7 @@ class EDAutopilot:
                     self.stop_sco_monitoring()
                     return ScTargetAlignReturn.Disengage
 
+            self.get_nav_offset(scr_reg)
             new = self.get_destination_offset(scr_reg)
             if new:
                 off = new
