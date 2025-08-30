@@ -1,5 +1,6 @@
 import threading
 from ctypes.wintypes import PRECT
+from datetime import datetime
 from time import sleep
 
 import win32api
@@ -63,6 +64,8 @@ class Overlay:
         self.overlay_thr.start()
         self.targetRect = Vector(0, 0, 1920, 1080)
         self.tHwnd = None
+        self._overlay_update_thread = threading.Thread(target=self._overlay_cleanup_loop, daemon=True)
+        self._overlay_update_thread.start()
 
     def overlay_win32_run(self):
         hInstance = win32api.GetModuleHandle()
@@ -123,13 +126,17 @@ class Overlay:
         ret = Vector(rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1])
         return ret
 
-    def overlay_rect(self, key, pt1, pt2, color, thick):
+    def overlay_rect(self, key, pt1, pt2, color, thick, duration: float = 3.0):
+        """ Adds a rectangle overlay. Does not force a redraw.
+        @duration: Duration to display overlay in secs before it is removed, or <0.0 to prevent removal. """
         global lines
-        lines[key] = [pt1, pt2, color, thick]
+        lines[key] = [pt1, pt2, color, thick, duration, datetime.now()]
 
-    def overlay_rect1(self, key, rect, color, thick):
+    def overlay_rect1(self, key, rect, color, thick, duration: float = 3.0):
+        """ Adds a rectangle overlay. Does not force a redraw.
+        @duration: Duration to display overlay in secs before it is removed, or <0.0 to prevent removal. """
         global lines
-        lines[key] = [(rect[0], rect[1]), (rect[2], rect[3]), color, thick]
+        lines[key] = [(rect[0], rect[1]), (rect[2], rect[3]), color, thick, duration, datetime.now()]
 
     def overlay_setfont(self, fontname, fsize ):
         global fnt
@@ -139,15 +146,20 @@ class Overlay:
         global pos
         pos = [x, y]
 
-    def overlay_text(self, key, txt, row, col, color):
+    def overlay_text(self, key, txt, row, col, color, duration: float = 3.0):
+        """ Adds a text overlay. Does not force a redraw.
+        @duration: Duration to display overlay in secs before it is removed, or <0.0 to prevent removal. """
         global text
-        text[key] = [txt, row, col, color]
+        text[key] = [txt, row, col, color, duration, datetime.now()]
 
-    def overlay_floating_text(self, key, txt, x, y, color):
+    def overlay_floating_text(self, key, txt, x, y, color, duration: float = 3.0):
+        """ Adds a floating text overlay. Does not force a redraw.
+        @duration: Duration to display overlay in secs before it is removed, or <0.0 to prevent removal. """
         global floating_text
-        floating_text[key] = [txt, x, y, color]
+        floating_text[key] = [txt, x, y, color, duration, datetime.now()]
 
     def overlay_paint(self):
+        """ Forces a redraw of all overlays. Call after adding or removing an overlay. """
         # if a parent was specified check to see if it moved, if so reposition our origin to new window location
         if self.tHwnd:
             if self.targetRect != self._GetTargetWindowRect():
@@ -158,24 +170,68 @@ class Overlay:
         win32gui.RedrawWindow(self.hWindow, None, None, win32con.RDW_INVALIDATE | win32con.RDW_ERASE) 
 
     def overlay_clear(self):
+        """ Removes rectangle, text and floating text overlays. Does not force a redraw."""
         lines.clear()
         text.clear()
         floating_text.clear()
 
     def overlay_remove_rect(self, key):
+        """ Removes a rectangle overlay. Does not force a redraw."""
         if key in lines:
             lines.pop(key)
 
     def overlay_remove_text(self, key):
+        """ Removes a text overlay. Does not force a redraw."""
         if key in text:
             text.pop(key)
 
     def overlay_remove_floating_text(self, key):
+        """ Removes a floating text overlay. Does not force a redraw."""
         if key in floating_text:
             floating_text.pop(key)
 
     def overlay_quit(self):
-        win32gui.PostMessage(self.hWindow, win32con.WM_CLOSE, 0, 0)  
+        win32gui.PostMessage(self.hWindow, win32con.WM_CLOSE, 0, 0)
+
+    def _overlay_cleanup_loop(self):
+        """ Cleans up the overlay by removing overlays that are old from the list. """
+        global lines, text, floating_text
+        while 1:
+            # Check each list and remove items that are old
+            time_now = datetime.now()
+            force_redraw = False
+
+            # Check lines
+            for key in list(lines):
+                # Check the datetime diff between when the overlay was added and now
+                time_diff = (time_now - lines[key][5]).total_seconds()
+                # Remove overlay if it is too old. Keep overlay if dur < 0
+                if 0 < lines[key][4] < time_diff:
+                    del lines[key]
+                    force_redraw = True
+
+            # Check text
+            for key in list(text):
+                # Check the datetime diff between when the overlay was added and now
+                time_diff = (time_now - text[key][5]).total_seconds()
+                # Remove overlay if it is too old. Keep overlay if dur < 0
+                if 0 < text[key][4] < time_diff:
+                    del text[key]
+                    force_redraw = True
+
+            # Check floating_text
+            for key in list(floating_text):
+                # Check the datetime diff between when the overlay was added and now
+                time_diff = (time_now - floating_text[key][5]).total_seconds()
+                # Remove overlay if it is too old. Keep overlay if dur < 0
+                if 0 < floating_text[key][4] < time_diff:
+                    del floating_text[key]
+                    force_redraw = True
+
+            if force_redraw:
+                self.overlay_paint()
+
+            sleep(0.5)
 
     @staticmethod 
     def overlay_draw_rect(hdc, pt1, pt2, line_type, color, thick):

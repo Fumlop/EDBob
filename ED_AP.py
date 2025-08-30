@@ -525,17 +525,6 @@ class EDAutopilot:
             # Next range
             i = i + range_step
 
-        # Leave the results for the user for a couple of seconds
-        sleep(2)
-
-        # Clean up screen
-        if not no_overlay:
-            self.overlay.overlay_remove_rect(20)
-            self.overlay.overlay_remove_floating_text(20)
-            self.overlay.overlay_remove_rect(21)
-            self.overlay.overlay_remove_floating_text(21)
-            self.overlay.overlay_paint()
-
         return scale, max_pick
 
     def calibrate_target(self):
@@ -560,10 +549,6 @@ class EDAutopilot:
         # Calibrate system target
         self.calibrate_target_worker()
 
-        # Clean up
-        self.overlay.overlay_clear()
-        self.overlay.overlay_paint()
-
         self.ap_ckb('log+vce', 'Calibration complete.')
 
     def calibrate_compass(self):
@@ -587,10 +572,6 @@ class EDAutopilot:
 
         # Calibrate compass
         self.calibrate_compass_worker()
-
-        # Clean up
-        self.overlay.overlay_clear()
-        self.overlay.overlay_paint()
 
         self.ap_ckb('log+vce', 'Calibration complete.')
 
@@ -1603,15 +1584,6 @@ class EDAutopilot:
                 self.ap_ckb('log', 'Target Align failed - lost target.')
                 return ScTargetAlignReturn.Lost
 
-        # TODO - find a better way to clear these
-        if self.debug_overlay:
-            sleep(2)
-            # self.overlay.overlay_remove_rect('sc_disengage_label_up')
-            # self.overlay.overlay_remove_floating_text('sc_disengage_label_up')
-            self.overlay.overlay_remove_rect('sc_disengage_active')
-            self.overlay.overlay_remove_floating_text('sc_disengage_active')
-            self.overlay.overlay_paint()
-
         #self.ap_ckb('log', 'Target Align complete.')
         return ScTargetAlignReturn.Found
 
@@ -2231,13 +2203,6 @@ class EDAutopilot:
                     self.keys.send('HyperSuperCombination')
                     self.stop_sco_monitoring()
                     break
-
-        # TODO - find a better way to clear these
-        if self.debug_overlay:
-            sleep(2)
-            self.overlay.overlay_remove_rect('sc_disengage_active')
-            self.overlay.overlay_remove_floating_text('sc_disengage_active')
-            self.overlay.overlay_paint()
 
         # if no error, we must have gotten disengage
         if not align_failed and do_docking:

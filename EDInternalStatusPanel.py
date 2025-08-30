@@ -173,13 +173,6 @@ class EDInternalStatusPanel:
             # In case we are on a picture tab, cycle to the next tab
             self.keys.send('CycleNextPanel')
 
-        # Clean up screen
-        if self.ap.debug_overlay:
-            sleep(2)
-            self.ap.overlay.overlay_remove_rect('right_panel_active')
-            self.ap.overlay.overlay_remove_floating_text('right_panel_text')
-            self.ap.overlay.overlay_paint()
-
         # Return Tab text or nothing
         if tab_text != "":
             return True, tab_text

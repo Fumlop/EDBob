@@ -146,13 +146,6 @@ class EDNavigationPanel:
         sleep(0.2)
         self.keys.send('CycleNextPanel', hold=0.2)  # NAVIGATION tab
 
-        # Clean up screen
-        if self.ap.debug_overlay:
-            sleep(2)
-            self.ap.overlay.overlay_remove_rect('nav_panel_active')
-            self.ap.overlay.overlay_remove_floating_text('nav_panel_text')
-            self.ap.overlay.overlay_paint()
-
         sleep(0.3)
         self.keys.send('UI_Back')
         self.keys.send('HeadLookReset')

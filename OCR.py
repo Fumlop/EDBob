@@ -288,11 +288,4 @@ class OCR:
 
             time.sleep(0.25)
 
-        # Clean up screen
-        if ap.debug_overlay:
-            time.sleep(2)
-            ap.overlay.overlay_remove_rect('wait_for_text')
-            ap.overlay.overlay_remove_floating_text('wait_for_text')
-            ap.overlay.overlay_paint()
-
         return text_found
