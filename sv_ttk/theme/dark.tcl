@@ -412,7 +412,7 @@ namespace eval ttk::theme::sv_dark {
     }
 
     ttk::style element create Labelframe.border image $I(card) -border 5 -padding 4 -sticky nsew
-    ttk::style configure TLabelframe.Label -font SunValleyCaptionFont
+    ttk::style configure TLabelframe.Label -font SunValleyBodyFont
 
     # Notebook
     ttk::style layout TNotebook {
