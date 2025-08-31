@@ -20,10 +20,10 @@ from tkinter import messagebox
 from tkinter import ttk
 import sv_ttk
 import pywinstyles
-from idlelib.tooltip import Hovertip
 
 from Voice import *
 from MousePt import MousePoint
+from tktooltip import ToolTip  # In requirements.txt as 'tkinter-tooltip'. Keep 'import sys' to avoid a 'super' error.
 
 from Image_Templates import *
 from Screen import *
@@ -31,7 +31,6 @@ from Screen_Regions import *
 from EDKeys import *
 from EDJournal import *
 from ED_AP import *
-
 from EDlogger import logger
 
 
@@ -111,7 +110,8 @@ class APGui():
             'Calibrate': "Will iterate through a set of scaling values \ngetting the best match for your system. \nSee HOWTO-Calibrate.md",
             'Waypoint List Button': "Read in a file with with your Waypoints.",
             'Cap Mouse XY': "This will provide the StationCoord value of the Station in the SystemMap. \nSelecting this button and then clicking on the Station in the SystemMap \nwill return the x,y value that can be pasted in the waypoints file",
-            'Reset Waypoint List': "Reset your waypoint list, \nthe waypoint assist will start again at the first point in the list."
+            'Reset Waypoint List': "Reset your waypoint list, \nthe waypoint assist will start again at the first point in the list.",
+            'Debug Overlay': "Enables debug data to be displayed over the \nElite Dangerous screen while playing the game.",
         }
 
         self.gui_loaded = False
@@ -508,15 +508,15 @@ class APGui():
                 self.wp_filelabel.set("<no list loaded>")
 
     def reset_wp_file(self):
-        if self.WP_A_running != True:
+        if not self.WP_A_running:
             mb = messagebox.askokcancel("Waypoint List Reset", "After resetting the Waypoint List, the Waypoint Assist will start again from the first point in the list at the next start.")
-            if mb == True:
+            if mb:
                 self.ed_ap.waypoint.mark_all_waypoints_not_complete()
         else:
             mb = messagebox.showerror("Waypoint List Error", "Waypoint Assist must be disabled before you can reset the list.")
 
     def save_settings(self):
-        self.entry_update()
+        self.entry_update(None)
         self.ed_ap.update_config()
         self.ed_ap.update_ship_configs()
 
@@ -530,7 +530,7 @@ class APGui():
             self.single_waypoint_station.set(f_details['Station'])
 
     # new data was added to a field, re-read them all for simple logic
-    def entry_update(self, event=''):
+    def entry_update(self, event):
         try:
             self.ed_ap.pitchrate = float(self.entries['ship']['PitchRate'].get())
             self.ed_ap.rollrate = float(self.entries['ship']['RollRate'].get())
@@ -729,7 +729,7 @@ class APGui():
             else:
                 self.ed_ap.debug_overlay = False
 
-    def makeform(self, win, ftype, fields, r=0, inc=1, rfrom=0, rto=1000):
+    def makeform(self, win, ftype, fields, r: int = 0, inc: float = 1, r_from: float = 0, rto: float = 1000):
         entries = {}
         win.columnconfigure(1, weight=1)
 
@@ -742,7 +742,7 @@ class APGui():
             else:
                 lab = ttk.Label(win, text=field + ": ")
                 if ftype == FORM_TYPE_SPINBOX:
-                    ent = ttk.Spinbox(win, width=10, from_=rfrom, to=rto, increment=inc, justify=tk.RIGHT)
+                    ent = ttk.Spinbox(win, width=10, from_=r_from, to=rto, increment=inc, justify=tk.RIGHT)
                 else:
                     ent = ttk.Entry(win, width=10, justify=tk.RIGHT)
                 ent.bind('<FocusOut>', self.entry_update)
@@ -751,6 +751,7 @@ class APGui():
                 ent.grid(row=r, column=1, padx=2, pady=2, sticky=tk.E)
                 entries[field] = ent
 
+            lab = ToolTip(lab, msg=self.tooltips[field], delay=1.0, bg="#808080", fg="#FFFFFF")
             r += 1
         return entries
 
@@ -844,11 +845,11 @@ class APGui():
         self.wp_filelabel.set("<no list loaded>")
         btn_wp_file = ttk.Button(blk_wp_buttons, textvariable=self.wp_filelabel, command=self.open_wp_file)
         btn_wp_file.grid(row=0, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
-        tip_wp_file = Hovertip(btn_wp_file, self.tooltips['Waypoint List Button'], hover_delay=1000)
+        tip_wp_file = ToolTip(btn_wp_file, msg=self.tooltips['Waypoint List Button'], delay=1.0, bg="#808080", fg="#FFFFFF")
 
         btn_reset = ttk.Button(blk_wp_buttons, text='Reset List', command=self.reset_wp_file)
         btn_reset.grid(row=1, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
-        tip_reset = Hovertip(btn_reset, self.tooltips['Reset Waypoint List'], hover_delay=1000)
+        tip_reset = ToolTip(btn_reset, msg=self.tooltips['Reset Waypoint List'], delay=1.0, bg="#808080", fg="#FFFFFF")
 
         # log window
         log = ttk.LabelFrame(page0, text="LOG", padding=(10, 5))
@@ -873,13 +874,13 @@ class APGui():
         self.entries['autopilot'] = self.makeform(blk_ap, FORM_TYPE_SPINBOX, autopilot_entry_fields)
         self.checkboxvar['Enable Randomness'] = tk.BooleanVar()
         cb_random = ttk.Checkbutton(blk_ap, text='Enable Randomness', variable=self.checkboxvar['Enable Randomness'], command=(lambda field='Enable Randomness': self.check_cb(field)))
-        cb_random.grid(row=5, column=0, columnspan=2, sticky=(tk.W))
+        cb_random.grid(row=5, column=0, columnspan=2, sticky=tk.W)
         self.checkboxvar['Activate Elite for each key'] = tk.BooleanVar()
         cb_activate_elite = ttk.Checkbutton(blk_ap, text='Activate Elite for each key', variable=self.checkboxvar['Activate Elite for each key'], command=(lambda field='Activate Elite for each key': self.check_cb(field)))
-        cb_activate_elite.grid(row=6, column=0, columnspan=2, sticky=(tk.W))
+        cb_activate_elite.grid(row=6, column=0, columnspan=2, sticky=tk.W)
         self.checkboxvar['Automatic logout'] = tk.BooleanVar()
         cb_logout = ttk.Checkbutton(blk_ap, text='Automatic logout', variable=self.checkboxvar['Automatic logout'], command=(lambda field='Automatic logout': self.check_cb(field)))
-        cb_logout.grid(row=7, column=0, columnspan=2, sticky=(tk.W))
+        cb_logout.grid(row=7, column=0, columnspan=2, sticky=tk.W)
 
         # buttons settings block
         blk_buttons = ttk.LabelFrame(blk_settings, text="BUTTONS", padding=(10, 5))
@@ -887,12 +888,12 @@ class APGui():
         blk_dss = ttk.Frame(blk_buttons)
         blk_dss.grid(row=0, column=0, columnspan=2, padx=0, pady=0, sticky="NSEW")
         lb_dss = ttk.Label(blk_dss, text="DSS Button: ")
-        lb_dss.grid(row=0, column=0, sticky=(tk.W))
+        lb_dss.grid(row=0, column=0, sticky=tk.W)
         self.radiobuttonvar['dss_button'] = tk.StringVar()
         rb_dss_primary = ttk.Radiobutton(blk_dss, text="Primary", variable=self.radiobuttonvar['dss_button'], value="Primary", command=(lambda field='dss_button': self.check_cb(field)))
-        rb_dss_primary.grid(row=0, column=1, sticky=(tk.W))
+        rb_dss_primary.grid(row=0, column=1, sticky=tk.W)
         rb_dss_secandary = ttk.Radiobutton(blk_dss, text="Secondary", variable=self.radiobuttonvar['dss_button'], value="Secondary", command=(lambda field='dss_button': self.check_cb(field)))
-        rb_dss_secandary.grid(row=1, column=1, sticky=(tk.W))
+        rb_dss_secandary.grid(row=1, column=1, sticky=tk.W)
         self.entries['buttons'] = self.makeform(blk_buttons, FORM_TYPE_ENTRY, buttons_entry_fields, 2)
 
         # refuel settings block
@@ -905,7 +906,7 @@ class APGui():
         blk_overlay.grid(row=1, column=1, padx=2, pady=2, sticky="NSEW")
         self.checkboxvar['Enable Overlay'] = tk.BooleanVar()
         cb_enable = ttk.Checkbutton(blk_overlay, text='Enable (requires restart)', variable=self.checkboxvar['Enable Overlay'], command=(lambda field='Enable Overlay': self.check_cb(field)))
-        cb_enable.grid(row=0, column=0, columnspan=2, sticky=(tk.W))
+        cb_enable.grid(row=0, column=0, columnspan=2, sticky=tk.W)
         self.entries['overlay'] = self.makeform(blk_overlay, FORM_TYPE_SPINBOX, overlay_entry_fields, 1, 1.0, 0.0, 3000.0)
 
         # tts / voice settings block
@@ -913,7 +914,7 @@ class APGui():
         blk_voice.grid(row=2, column=0, padx=2, pady=2, sticky="NSEW")
         self.checkboxvar['Enable Voice'] = tk.BooleanVar()
         cb_enable = ttk.Checkbutton(blk_voice, text='Enable', variable=self.checkboxvar['Enable Voice'], command=(lambda field='Enable Voice': self.check_cb(field)))
-        cb_enable.grid(row=0, column=0, columnspan=2, sticky=(tk.W))
+        cb_enable.grid(row=0, column=0, columnspan=2, sticky=tk.W)
 
         # Scanner settings block
         blk_voice = ttk.LabelFrame(blk_settings, text="ELW SCANNER", padding=(10, 5))
@@ -1010,6 +1011,7 @@ class APGui():
         self.checkboxvar['Debug Overlay'] = tk.BooleanVar()
         cb_debug_overlay = ttk.Checkbutton(blk_debug_buttons, text='Debug Overlay', variable=self.checkboxvar['Debug Overlay'], command=(lambda field='Debug Overlay': self.check_cb(field)))
         cb_debug_overlay.grid(row=6, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
+        tip = ToolTip(cb_debug_overlay, msg=self.tooltips['Debug Overlay'], delay=1.0, bg="#808080", fg="#FFFFFF")
 
         btn_save = ttk.Button(blk_debug_buttons, text='Save All Settings', command=self.save_settings, style="Accent.TButton")
         btn_save.grid(row=7, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
