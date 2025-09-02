@@ -53,39 +53,54 @@ class Screen:
         self.mss = mss.mss()
         self.using_screen = True  # True to use screen, false to use an image. Set screen_image to the image
         self._screen_image = None  # Screen image captured from screen, or loaded by user for testing.
+        self.screen_width = 0
+        self.screen_height = 0
+        self.monitor_number = 0
+        self.mon = None
 
         # Find ED window position to determine which monitor it is on
         ed_rect = self.get_elite_window_rect()
         if ed_rect is None:
-            self.ap_ckb('log', f"ERROR: Could not find window {elite_dangerous_window}.")
-            logger.error(f'Could not find window {elite_dangerous_window}.')
+            msg = f"Could not find window '{elite_dangerous_window}'. Once Elite Dangerous is running, restart EDAP."
+            self.ap_ckb('log', f"ERROR: {msg}")
+            logger.error(msg)
         else:
             logger.debug(f'Found Elite Dangerous window position: {ed_rect}')
 
         # Examine all monitors to determine match with ED
         self.mons = self.mss.monitors
         mon_num = 0
+        default = True
         for item in self.mons:
+            logger.debug(f'Found monitor {mon_num} with details: {item}')
             if mon_num > 0:  # ignore monitor 0 as it is the complete desktop (dims of all monitors)
-                logger.debug(f'Found monitor {mon_num} with details: {item}')
-                if ed_rect is None:
-                    self.monitor_number = mon_num
-                    self.mon = self.mss.monitors[self.monitor_number]
-                    logger.debug(f'Defaulting to monitor {mon_num}.')
-                    self.screen_width = item['width']
-                    self.screen_height = item['height']
-                    break
-                else:
+                if ed_rect is not None:
                     if item['left'] == ed_rect[0] and item['top'] == ed_rect[1]:
-                        # Get information of monitor 2
+                        # Get information of monitor
                         self.monitor_number = mon_num
                         self.mon = self.mss.monitors[self.monitor_number]
-                        logger.debug(f'Elite Dangerous is on monitor {mon_num}.')
                         self.screen_width = item['width']
                         self.screen_height = item['height']
+                        logger.debug(f'Elite Dangerous is on monitor {mon_num}.')
+                        default = False
+                        break
+
+            # Store the first monitor incase we need it as default
+            if mon_num == 1:
+                self.monitor_number = mon_num
+                self.mon = self.mss.monitors[self.monitor_number]
+                self.screen_width = item['width']
+                self.screen_height = item['height']
 
             # Next monitor
             mon_num = mon_num + 1
+
+        # Check if ED was found on a monitor, or if we are using the default monitor
+        if default:
+            msg = (f"Elite Dangerous could not be located on any monitor. Check Elite Dangerous is not minimized and "
+                   f"is visible on screen.")
+            self.ap_ckb('log', f"ERROR: {msg}")
+            logger.error(msg)
 
         # Add new screen resolutions here with tested scale factors
         # this table will be default, overwritten when loading resolution.json file

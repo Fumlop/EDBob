@@ -3,6 +3,7 @@
  - Updated GUI.
  - Added auto calibration (WIP).
  - Improved debug overlay.
+ - Improved fallback for ED client window detection.
 
 # 8/19/2025 v1.7.0: General updates.
  - Changed all Parser files to UTF-8 format.
