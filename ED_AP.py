@@ -2449,8 +2449,8 @@ class EDAutopilot:
     def engine_loop(self):
         while not self.terminate:
             # TODO - Remove these show compass/target all the time
-            self.get_nav_offset(self.scrReg, True)
-            self.get_destination_offset(self.scrReg, True)
+            #self.get_nav_offset(self.scrReg, True)
+            #self.get_destination_offset(self.scrReg, True)
 
             self._sc_sco_active_loop_enable = True
 
