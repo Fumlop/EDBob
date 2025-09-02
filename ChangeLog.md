@@ -1,3 +1,9 @@
+# 9/1/2025 v1.8.0 beta 2:
+ - Fixed error on missing NavRoute.json file.
+ - Updated GUI.
+ - Added auto calibration (WIP).
+ - Improved debug overlay.
+
 # 8/19/2025 v1.7.0: General updates.
  - Changed all Parser files to UTF-8 format.
  - Fixed CARTOGRAPHICS detection.
