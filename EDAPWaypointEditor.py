@@ -35,6 +35,10 @@ def select_treeview_items_by_idx(tree: tkinter.ttk.Treeview, indexes: list[int])
         tree.see(selected_children[len(selected_children) - 1])  # Scroll to the item (optional)
 
 
+def remove_non_ascii(text):
+    return text.encode('ascii', 'ignore').decode('ascii')
+
+
 class SearchableCombobox(ttk.Frame):
     def __init__(self, parent, options, on_select_callback, on_cancel_callback):
         super().__init__(parent)
@@ -1096,13 +1100,19 @@ class WaypointEditorTab:
             if line.startswith("From"):
                 parts = line.replace("From", "").split('|')
                 if len(parts) >= 2:
-                    from_waypoint.station_name.set(parts[0].strip())
-                    from_waypoint.system_name.set(parts[1].strip())
+                    station = remove_non_ascii(parts[0]).strip()
+                    system = remove_non_ascii(parts[1]).strip()
+                    from_waypoint.station_name.set(station)
+                    from_waypoint.system_name.set(system)
+
             elif line.startswith("To"):
                 parts = line.replace("To", "").split('|')
                 if len(parts) >= 2:
-                    to_waypoint.station_name.set(parts[0].strip())
-                    to_waypoint.system_name.set(parts[1].strip())
+                    station = remove_non_ascii(parts[0]).strip()
+                    system = remove_non_ascii(parts[1]).strip()
+                    to_waypoint.station_name.set(station)
+                    to_waypoint.system_name.set(system)
+
             elif line.startswith("Buy") and not line.startswith("Buy price"):
                 commodity = line.replace("Buy", "").strip()
                 if from_buy:
@@ -1110,6 +1120,7 @@ class WaypointEditorTab:
                 else:
                     to_waypoint.buy_commodities.append(ShoppingItem(commodity, 9999))
                 from_buy = False
+
             elif line.startswith("Sell") and not line.startswith("Sell price"):
                 commodity = line.replace("Sell", "").strip()
                 if from_sell:
@@ -1122,3 +1133,5 @@ class WaypointEditorTab:
         self.waypoints.waypoints.append(to_waypoint)
         self.update_waypoints_list()
         messagebox.showinfo("Inara Route Added", "The trade route has been added to your waypoints.")
+
+
