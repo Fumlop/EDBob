@@ -347,12 +347,14 @@ class WaypointEditorTab:
         frame = ttk.Frame(parent)
         frame.pack(fill="both", expand=True)
 
-        columns = ("name", "quantity")
+        columns = ("name", "quantity", "add_sub")
         tree = ttk.Treeview(frame, columns=columns, show="headings")
         tree.heading("name", text="Name")
-        tree.heading("quantity", text="Quantity")
         tree.column("name", width=150)
+        tree.heading("quantity", text="Quantity")
         tree.column("quantity", width=70, anchor=tk.W)
+        tree.heading("add_sub", text="Add/Sub")
+        tree.column("add_sub", width=70, anchor=tk.W)
         tree.pack(side="left", fill="both", expand=True)
 
         tree.bind("<Double-1>", lambda event, lt=list_type: self.on_commodity_cell_double_click(event, lt))
@@ -836,12 +838,45 @@ class WaypointEditorTab:
             entry.bind("<FocusOut>", save_edit)
             entry.bind("<Escape>", cancel_edit)
 
+        elif column_index == 2:  # Add/Sub qty column
+            entry_var = tk.StringVar()
+            entry = ttk.Entry(treeview, textvariable=entry_var, font=ttk.Style().lookup('TEntry', 'font'))
+
+            # Ensure the entry is tall enough and centered
+            entry_req_height = entry.winfo_reqheight()
+            final_height = max(height, entry_req_height)
+            y_centered = y + (height - final_height) // 2
+
+            entry.place(x=x, y=y_centered, width=width, height=final_height, anchor='nw')
+            entry_var.set(treeview.item(item_id, "values")[column_index])
+            entry.focus_set()
+            entry.select_range(0, 'end')
+            entry.icursor('end')
+
+            def save_edit(save_event):
+                try:
+                    new_value = entry_var.get()
+                    cur = commodity_list[item_index].quantity.get()
+                    commodity_list[item_index].quantity.set(cur + int(new_value))
+                except ValueError:
+                    pass # Ignore invalid input
+                finally:
+                    self.update_commodity_list(commodity_list, treeview)
+                    entry.destroy()
+
+            def cancel_edit(cancel_event):
+                entry.destroy()
+
+            entry.bind("<Return>", save_edit)
+            entry.bind("<FocusOut>", save_edit)
+            entry.bind("<Escape>", cancel_edit)
+
     def update_commodity_list(self, commodity_list, treeview):
         for item in treeview.get_children():
             treeview.delete(item)
 
         for i, item in enumerate(commodity_list):
-            treeview.insert('', 'end', values=(item.name.get(), item.quantity.get()))
+            treeview.insert('', 'end', values=(item.name.get(), item.quantity.get(), ''))
 
     def add_waypoint(self):
         new_waypoint = InternalWaypoint(system_name="New System")
