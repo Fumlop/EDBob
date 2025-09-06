@@ -417,13 +417,13 @@ class EDAutopilot:
             location = self.jn.ship_state()['location']
             if location == None:
                 location = "<init>"
-            self.overlay.overlay_text('1', "AP MODE: "+ap_mode, 1, 1, (136, 53, 0))
-            self.overlay.overlay_text('2', "AP STATUS: "+self.ap_state, 2, 1, (136, 53, 0))
-            self.overlay.overlay_text('3', "SHIP STATUS: "+ship_state, 3, 1, (136, 53, 0))
-            self.overlay.overlay_text('4', "CURRENT SYSTEM: "+location+", "+sclass, 4, 1, (136, 53, 0))
-            self.overlay.overlay_text('5', "JUMPS: {} of {}".format(self.jump_cnt, self.total_jumps), 5, 1, (136, 53, 0))
+            self.overlay.overlay_text('1', "AP MODE: "+ap_mode, 1, 1, (136, 53, 0), -1)
+            self.overlay.overlay_text('2', "AP STATUS: "+self.ap_state, 2, 1, (136, 53, 0), -1)
+            self.overlay.overlay_text('3', "SHIP STATUS: "+ship_state, 3, 1, (136, 53, 0), -1)
+            self.overlay.overlay_text('4', "CURRENT SYSTEM: "+location+", "+sclass, 4, 1, (136, 53, 0), -1)
+            self.overlay.overlay_text('5', "JUMPS: {} of {}".format(self.jump_cnt, self.total_jumps), 5, 1, (136, 53, 0), -1)
             if self.config["ElwScannerEnable"] == True:
-                self.overlay.overlay_text('6', "ELW SCANNER: "+self.fss_detected, 6, 1, (136, 53, 0))
+                self.overlay.overlay_text('6', "ELW SCANNER: "+self.fss_detected, 6, 1, (136, 53, 0), -1)
             self.overlay.overlay_paint()
 
     def update_ap_status(self, txt):
