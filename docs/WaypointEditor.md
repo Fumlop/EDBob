@@ -12,7 +12,27 @@ Waypoints editor allows you to edit Waypoints.
 * Save
 * Save As
 * Import Spansh CSV
-* Import from Inara
+* Import from Inara - see below
+
+### Import from Inara
+Select with the mouse the data from one 'row' as shown below.
+
+![Alt text](../screen/InaraTradeRoute.png?raw=true "Inara Trade Route")
+
+When pasted into the window, the data should look like this, with the data To, From, Buy, Buy Price, Sell, Sell Price on separate rows:
+
+```py
+From Fraknoi Hub | Tschapa︎
+To Aisling's Asteroid | Col 285 Sector TD-Q b19-2︎
+Station distance	936 Ls
+Buy	Bertrandite
+Buy price	1,683 Cr
+Supply	5,757
+Sell	Haematite
+Sell price	9,140 Cr | +5,567 Cr (155%)
+Demand	187,972︎
+Station distance	4 Ls
+```
 
 ### Waypoints List
 
