@@ -31,6 +31,8 @@ from Screen_Regions import *
 from EDKeys import *
 from EDJournal import *
 from ED_AP import *
+from EDAPWaypointEditor import WaypointEditorTab
+
 from EDlogger import logger
 
 
@@ -56,7 +58,7 @@ Author: sumzer0@yahoo.com
 # ---------------------------------------------------------------------------
 # must be updated with a new release so that the update check works properly!
 # contains the names of the release.
-EDAP_VERSION = "V1.8.0 beta 2"
+EDAP_VERSION = "V1.8.0 beta 3"
 # depending on how release versions are best marked you could also change it to the release tag, see function check_update.
 # ---------------------------------------------------------------------------
 
@@ -130,6 +132,8 @@ class APGui():
         self.single_waypoint_system = tk.StringVar()
         self.single_waypoint_station = tk.StringVar()
         self.TCE_Destination_Filepath = tk.StringVar()
+        self._waypoint_editor_tab = None
+        self._global_shopping_list_tab = None
 
         self.FSD_A_running = False
         self.SC_A_running = False
@@ -462,17 +466,22 @@ class APGui():
     def log_msg(self, msg):
         message = datetime.now().strftime("%H:%M:%S: ") + msg
 
-        if not self.gui_loaded:
+        try:
+            if not self.gui_loaded:
+                # Store message in queue
+                self.log_buffer.put(message)
+                logger.info(msg)
+            else:
+                # Add queued messages to the list
+                while not self.log_buffer.empty():
+                    self.msgList.insert(tk.END, self.log_buffer.get())
+
+                self.msgList.insert(tk.END, message)
+                self.msgList.yview(tk.END)
+                logger.info(msg)
+        except:
             # Store message in queue
             self.log_buffer.put(message)
-            logger.info(msg)
-        else:
-            # Add queued messages to the list
-            while not self.log_buffer.empty():
-                self.msgList.insert(tk.END, self.log_buffer.get())
-
-            self.msgList.insert(tk.END, message)
-            self.msgList.yview(tk.END)
             logger.info(msg)
 
     def set_statusbar(self, txt):
@@ -794,22 +803,37 @@ class APGui():
 
         nb.grid()
         nb.grid(row=1, padx=10, pady=5, sticky="NSEW")
+        
         page0 = ttk.Frame(nb)
-        page1 = ttk.Frame(nb)
-        page2 = ttk.Frame(nb)
+        page0.grid_columnconfigure(0, weight=1)
+        page0.grid_rowconfigure(0, weight=0)
+        page0.grid_rowconfigure(1, weight=0)
+        page0.grid_rowconfigure(2, weight=1)  # Log row
         nb.add(page0, text="Main")  # main page
+        
+        page1 = ttk.Frame(nb)
+        page1.grid_columnconfigure(0, weight=1)
         nb.add(page1, text="Settings")  # options page
+        
+        page2 = ttk.Frame(nb)
+        page2.grid_columnconfigure(0, weight=1)
         nb.add(page2, text="Debug/Test")  # debug/test page
+        
         page3 = ttk.Frame(nb)
+        page3.grid_columnconfigure(0, weight=1)
         nb.add(page3, text="Calibration")
         self.create_calibration_tab(page3)
 
         page4 = ttk.Frame(nb)
+        page4.grid_columnconfigure(0, weight=1)
         nb.add(page4, text="Waypoint Editor")
+        self._waypoint_editor_tab = WaypointEditorTab(page4, self.ed_ap.waypoint)
+        self._waypoint_editor_tab.frame.pack(fill="both", expand=True)
 
+        # === MAIN TAB ===
         # main options block
         blk_main = ttk.Frame(page0)
-        blk_main.grid(row=0, column=0, padx=10, pady=5, sticky="EW")
+        blk_main.grid(row=0, column=0, padx=10, pady=5, sticky="NSEW")
         blk_main.columnconfigure([0, 1], weight=1, minsize=100, uniform="group1")
 
         # ap mode checkboxes block
@@ -853,7 +877,9 @@ class APGui():
 
         # log window
         log = ttk.LabelFrame(page0, text="LOG", padding=(10, 5))
-        log.grid(row=3, column=0, padx=10, pady=5, sticky="NSEW")
+        log.grid(row=2, column=0, padx=10, pady=5, sticky="NSEW")
+        log.grid_columnconfigure(0, weight=1)
+        log.grid_rowconfigure(0, weight=1)
         y_scrollbar = ttk.Scrollbar(log)
         y_scrollbar.grid(row=0, column=1, sticky="NSE")
         x_scrollbar = ttk.Scrollbar(log, orient="horizontal")
@@ -863,10 +889,11 @@ class APGui():
         y_scrollbar.config(command=mylist.yview)
         x_scrollbar.config(command=mylist.xview)
 
+        # === SETTINGS TAB ===
         # settings block
         blk_settings = ttk.Frame(page1)
         blk_settings.grid(row=0, column=0, padx=10, pady=5, sticky="EW")
-        blk_main.columnconfigure([0, 1], weight=1, minsize=100, uniform="group1")
+        blk_settings.columnconfigure([0, 1], weight=1, minsize=100, uniform="group1")
 
         # autopilot settings block
         blk_ap = ttk.LabelFrame(blk_settings, text="AUTOPILOT", padding=(10, 5))
@@ -1043,6 +1070,7 @@ class APGui():
         import os
         os.execv(sys.executable, ['python'] + sys.argv)
 
+
 def apply_theme_to_titlebar(root):
     version = sys.getwindowsversion()
 
@@ -1055,6 +1083,7 @@ def apply_theme_to_titlebar(root):
         # A hacky way to update the title bar's color on Windows 10 (it doesn't update instantly like on Windows 11)
         root.wm_attributes("-alpha", 0.99)
         root.wm_attributes("-alpha", 1)
+
 
 def main():
     #   handle = win32gui.FindWindow(0, "Elite - Dangerous (CLIENT)")
@@ -1071,8 +1100,9 @@ def main():
     bg_color = "#1c1c1c" if sv_ttk.get_theme() == "dark" else "#fafafa"
     style.configure("TNotebook.Tab", focuscolor=bg_color)
 
-    if sys.platform == "win32":
-        apply_theme_to_titlebar(root)
+    # if sys.platform == "win32":
+    #     apply_theme_to_titlebar(root)
+
     root.mainloop()
 
 

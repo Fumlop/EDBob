@@ -395,8 +395,8 @@ def main():
     ov.overlay_setfont("Times New Roman", 12 )
     ov.overlay_set_pos(2000, 50)
     #                                        row,col, color   based on fontSize
-    ov.overlay_text('1', "Hello World",       1, 1,(0,0,255) )
-    ov.overlay_text('2', "next test in line", 2, 1,(255,0,255) )
+    ov.overlay_text('1', "Hello World",       1, 1,(0,0,255), -1)
+    ov.overlay_text('2', "next test in line", 2, 1,(255,0,255), -1)
 
     for i, key in enumerate(rect):
         ov.overlay_rect(key, rect[key][0], rect[key][1], rect[key][2], rect[key][3])
@@ -407,15 +407,15 @@ def main():
     sleep(5)
     rect['d'] = [(400,150), (900, 550), (255, 10, 255),25]
     ov.overlay_rect('d', rect['d'][0], rect['d'][1], rect['d'][2], rect['d'][3])    
-    ov.overlay_text('3', "Changed", 3, 3,(255,0,0) )
-    ov.overlay_setfont("Times New Roman", 16 )
+    ov.overlay_text('3', "Changed", 3, 3, (255, 0, 0), -1)
+    ov.overlay_setfont("Times New Roman", 16)
     ov.overlay_set_pos(1800, 50)
     ov.overlay_paint() 
 
     sleep(5)
     rect['b'] = [(40,150), (90, 550), (155, 10, 255),10]
     ov.overlay_rect('b', rect['b'][0], rect['b'][1], rect['b'][2], rect['b'][3])  
-    ov.overlay_text('3', "", 3, 3,(255,0,0) )
+    ov.overlay_text('3', "", 3, 3,(255, 0, 0), -1)
     ov.overlay_paint()   
     sleep(5)
     ov.overlay_quit()
