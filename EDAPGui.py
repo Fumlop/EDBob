@@ -67,12 +67,9 @@ FORM_TYPE_SPINBOX = 1
 FORM_TYPE_ENTRY = 2
 
 
-def hyperlink_callback(url):
-    webbrowser.open_new(url)
-
-
 class APGui():
     def __init__(self, root):
+        self.statusbar = None
         self.root = root
         root.title("EDAutopilot " + EDAP_VERSION)
         # root.overrideredirect(True)
@@ -131,9 +128,8 @@ class APGui():
         self.lab_ck = {}
         self.single_waypoint_system = tk.StringVar()
         self.single_waypoint_station = tk.StringVar()
-        self.TCE_Destination_Filepath = tk.StringVar()
-        self._waypoint_editor_tab = None
         self._global_shopping_list_tab = None
+        self.waypoint_editor_tab = None
 
         self.FSD_A_running = False
         self.SC_A_running = False
@@ -143,8 +139,6 @@ class APGui():
         self.SWP_A_running = False
 
         self.cv_view = False
-
-        self.TCE_Destination_Filepath.set(self.ed_ap.config['TCEDestinationFilepath'])
 
         self.msgList = self.gui_gen(root)
 
@@ -529,15 +523,6 @@ class APGui():
         self.ed_ap.update_config()
         self.ed_ap.update_ship_configs()
 
-    def load_tce_dest(self):
-        filename = self.ed_ap.config['TCEDestinationFilepath']
-        if os.path.exists(filename):
-            with open(filename, 'r') as json_file:
-                f_details = json.load(json_file)
-
-            self.single_waypoint_system.set(f_details['StarSystem'])
-            self.single_waypoint_station.set(f_details['Station'])
-
     # new data was added to a field, re-read them all for simple logic
     def entry_update(self, event):
         try:
@@ -562,7 +547,6 @@ class APGui():
             self.ed_ap.config['HotKey_StartRobigo'] = str(self.entries['buttons']['Start Robigo'].get())
             self.ed_ap.config['HotKey_StopAllAssists'] = str(self.entries['buttons']['Stop All'].get())
             self.ed_ap.config['VoiceEnable'] = self.checkboxvar['Enable Voice'].get()
-            self.ed_ap.config['TCEDestinationFilepath'] = str(self.TCE_Destination_Filepath.get())
             self.ed_ap.config['DebugOverlay'] = self.checkboxvar['Debug Overlay'].get()
         except:
             messagebox.showinfo("Exception", "Invalid float entered")
@@ -816,19 +800,27 @@ class APGui():
         nb.add(page1, text="Settings")  # options page
         
         page2 = ttk.Frame(nb)
-        page2.grid_columnconfigure(0, weight=1)
+        page2.grid_columnconfigure([0, 1], weight=1)
         nb.add(page2, text="Debug/Test")  # debug/test page
-        
-        page3 = ttk.Frame(nb)
-        page3.grid_columnconfigure(0, weight=1)
-        nb.add(page3, text="Calibration")
-        self.create_calibration_tab(page3)
 
-        page4 = ttk.Frame(nb)
-        page4.grid_columnconfigure(0, weight=1)
-        nb.add(page4, text="Waypoint Editor")
-        self._waypoint_editor_tab = WaypointEditorTab(page4, self.ed_ap.waypoint)
-        self._waypoint_editor_tab.frame.pack(fill="both", expand=True)
+        # === Calibration Tab ===
+        page_calibration = ttk.Frame(nb)
+        page_calibration.grid_columnconfigure(0, weight=1)
+        nb.add(page_calibration, text="Calibration")
+        self.create_calibration_tab(page_calibration)
+
+        # === Waypoint Editor Tab ===
+        page_waypoint_editor = ttk.Frame(nb)
+        page_waypoint_editor.grid_columnconfigure(0, weight=1)
+        nb.add(page_waypoint_editor, text="Waypoint Editor")
+        self.waypoint_editor_tab = WaypointEditorTab(page_waypoint_editor, self.ed_ap.waypoint)
+        self.waypoint_editor_tab.frame.pack(fill="both", expand=True)
+
+        # === TCE Integration ===
+        page_tce_integration = ttk.Frame(nb)
+        page_tce_integration.grid_columnconfigure(0, weight=1)
+        nb.add(page_tce_integration, text="TCE")
+        tce_integration_tab = self.ed_ap.tce_integration.create_gui_tab(self, page_tce_integration)
 
         # === MAIN TAB ===
         # main options block
@@ -970,7 +962,6 @@ class APGui():
         btn_exit = ttk.Button(blk_file_actions, text="Exit", command=self.close_window)
         btn_exit.grid(row=4, column=0, padx=2, pady=2, sticky=tk.W)
 
-
         # Help Actions
         blk_help_actions = ttk.LabelFrame(page2, text="Help Actions", padding=(10, 5))
         blk_help_actions.grid(row=0, column=1, padx=10, pady=5, sticky="NSEW")
@@ -1004,8 +995,8 @@ class APGui():
         # Single Waypoint Assist frame
         blk_single_waypoint_asst = ttk.LabelFrame(page2, text="Single Waypoint Assist", padding=(10, 5))
         blk_single_waypoint_asst.grid(row=1, column=1, padx=10, pady=5, sticky="NSEW")
-        blk_single_waypoint_asst.columnconfigure(0, weight=1, minsize=10, uniform="group1")
-        blk_single_waypoint_asst.columnconfigure(1, weight=3, minsize=10, uniform="group1")
+        blk_single_waypoint_asst.columnconfigure(0, weight=1, minsize=10)
+        blk_single_waypoint_asst.columnconfigure(1, weight=3, minsize=10)
 
         lbl_system = ttk.Label(blk_single_waypoint_asst, text='System:')
         lbl_system.grid(row=0, column=0, padx=2, pady=2, columnspan=1, sticky="NSEW")
@@ -1019,18 +1010,6 @@ class APGui():
         cb_single_waypoint = ttk.Checkbutton(blk_single_waypoint_asst, text='Single Waypoint Assist', variable=self.checkboxvar['Single Waypoint Assist'], command=(lambda field='Single Waypoint Assist': self.check_cb(field)))
         cb_single_waypoint.grid(row=2, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
 
-        lbl_tce = ttk.Label(blk_single_waypoint_asst, text='Trade Computer Extension (TCE)', style="Link.TLabel")
-        lbl_tce.bind("<Button-1>", lambda e: hyperlink_callback("https://forums.frontier.co.uk/threads/trade-computer-extension-mk-ii.223056/"))
-        lbl_tce.grid(row=3, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
-        lbl_tce_dest = ttk.Label(blk_single_waypoint_asst, text='TCE Dest json:')
-        lbl_tce_dest.grid(row=4, column=0, padx=2, pady=2, columnspan=1, sticky="NSEW")
-        txt_tce_dest = ttk.Entry(blk_single_waypoint_asst, textvariable=self.TCE_Destination_Filepath)
-        txt_tce_dest.bind('<FocusOut>', self.entry_update)
-        txt_tce_dest.grid(row=4, column=1, padx=2, pady=2, columnspan=1, sticky="NSEW")
-
-        btn_load_tce = ttk.Button(blk_single_waypoint_asst, text='Load TCE Destination', command=self.load_tce_dest)
-        btn_load_tce.grid(row=5, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
-
         blk_debug_buttons = ttk.Frame(page2)
         blk_debug_buttons.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="NSEW")
         blk_debug_buttons.columnconfigure([0, 1], weight=1, minsize=100)
@@ -1043,7 +1022,7 @@ class APGui():
         btn_save = ttk.Button(blk_debug_buttons, text='Save All Settings', command=self.save_settings, style="Accent.TButton")
         btn_save.grid(row=7, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
 
-        # Statusbar
+        # === Status Bar ===
         statusbar = ttk.Frame(win)
         statusbar.grid(row=4, column=0)
         self.status = ttk.Label(win, text="Status: ", relief=tk.SUNKEN, anchor=tk.W, justify=tk.LEFT, width=29)
