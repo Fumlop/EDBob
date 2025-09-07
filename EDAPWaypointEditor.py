@@ -11,7 +11,7 @@ import time
 import csv
 
 import EDAP_data
-from EDAP_EDMesg_Interface import (create_edap_client, LoadWaypointFileAction)
+from EDAP_EDMesg_Interface import (create_edap_client, LoadWaypointFileAction, GalaxyMapTargetSystemByNameAction)
 
 
 def select_treeview_items_by_idx(tree: tkinter.ttk.Treeview, indexes: list[int]):
@@ -260,6 +260,7 @@ class WaypointEditorTab:
         ttk.Button(waypoint_buttons_frame, text="Down", command=self.move_waypoint_down).pack(padx=5, pady=2, fill="x")
         ttk.Button(waypoint_buttons_frame, text="Add", command=self.add_waypoint).pack(padx=5, pady=2, fill="x")
         ttk.Button(waypoint_buttons_frame, text="Del", command=self.delete_waypoint).pack(padx=5, pady=2, fill="x")
+        ttk.Button(waypoint_buttons_frame, text="Plot to System", command=self.plot_waypoint_system).pack(padx=5, pady=20, fill="x")
 
         # Bottom frame for waypoint options and commodity lists
         bottom_frame = ttk.Frame(page0)
@@ -890,6 +891,15 @@ class WaypointEditorTab:
         # Select the new item at the bottom of the list
         selected_indexes = [len(self.waypoints.waypoints) - 1]
         select_treeview_items_by_idx(self.waypoints_tree, selected_indexes)
+
+    def plot_waypoint_system(self):
+        selected_item = self.waypoints_tree.selection()
+        if selected_item:
+            index = self.waypoints_tree.index(selected_item[0])
+            wp = self.waypoints.waypoints[index]
+            sys_name = wp.system_name.get()
+            # TODO - replace this with direct EDAP control in case client comms not working?
+            self.mesg_client.publish(GalaxyMapTargetSystemByNameAction(name=sys_name))
 
     def delete_waypoint(self):
         selected_item = self.waypoints_tree.selection()
