@@ -73,6 +73,7 @@ class EDKeys:
             'TargetNextRouteSystem',  # Target next system in route
             'CamTranslateForward',
             'CamTranslateRight',
+            'OrderAggressiveBehaviour',
         ]
         self.keys = self.get_bindings()
         self.bindings = self.get_bindings_dict()

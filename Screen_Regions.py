@@ -162,8 +162,8 @@ class Screen_Regions:
         # Convert to HSV and split.
         img_hsv = cv2.cvtColor(img_region, cv2.COLOR_BGR2HSV)
         h, s, v = cv2.split(img_hsv)
-        #hsv_comb = np.concatenate((h, s, v), axis=1)  # Combine 3 images
-        #cv2.imshow("Split HSV", hsv_comb)
+        # hsv_comb = np.concatenate((h, s, v), axis=1)  # Combine 3 images
+        # cv2.imshow("Split HSV", hsv_comb)
 
         # Perform matches
         match_h = cv2.matchTemplate(h, templ, cv2.TM_CCOEFF_NORMED)

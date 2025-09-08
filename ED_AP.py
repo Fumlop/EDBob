@@ -106,6 +106,7 @@ class EDAutopilot:
             "EDMesgActionsPort": 15570,
             "EDMesgEventsPort": 15571,
             "DebugOverlay": False,
+            "AFKCombat_AttackAtWill": False,
         }
         # NOTE!!! When adding a new config value above, add the same after read_config() to set
         # a default value or an error will occur reading the new value!
@@ -154,6 +155,8 @@ class EDAutopilot:
                 cnf['EDMesgEventsPort'] = 15571
             if 'DebugOverlay' not in cnf:
                 cnf['DebugOverlay'] = False
+            if 'AFKCombat_AttackAtWill' not in cnf:
+                cnf['AFKCombat_AttackAtWill'] = False
             self.config = cnf
             logger.debug("read AP json:"+str(cnf))
         else:
@@ -214,7 +217,7 @@ class EDAutopilot:
         self.jn = EDJournal(cb)
         self.keys = EDKeys(cb)
         self.keys.activate_window = self.config['ActivateEliteEachKey']
-        self.afk_combat = AFK_Combat(self.keys, self.jn, self.vce)
+        self.afk_combat = AFK_Combat(self, self.keys, self.jn, self.vce)
         self.waypoint = EDWayPoint(self, self.jn.ship_state()['odyssey'])
         self.robigo = Robigo(self)
         self.status = StatusParser()

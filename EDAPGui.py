@@ -20,10 +20,11 @@ from tkinter import messagebox
 from tkinter import ttk
 import sv_ttk
 import pywinstyles
+import sys
+from tktooltip import ToolTip  # In requirements.txt as 'tkinter-tooltip'. Keep 'import sys' to avoid a 'super' error.
 
 from Voice import *
 from MousePt import MousePoint
-from tktooltip import ToolTip  # In requirements.txt as 'tkinter-tooltip'. Keep 'import sys' to avoid a 'super' error.
 
 from Image_Templates import *
 from Screen import *
@@ -204,6 +205,7 @@ class APGui():
             self.radiobuttonvar['debug_mode'].set("Error")
 
         self.checkboxvar['Debug Overlay'].set(self.ed_ap.config['DebugOverlay'])
+        self.checkboxvar['AFKCombat AttackAtWill'].set(self.ed_ap.config['AFKCombat_AttackAtWill'])
 
         # global trap for these keys, the 'end' key will stop any current AP action
         # the 'home' key will start the FSD Assist.  May want another to start SC Assist
@@ -548,6 +550,7 @@ class APGui():
             self.ed_ap.config['HotKey_StopAllAssists'] = str(self.entries['buttons']['Stop All'].get())
             self.ed_ap.config['VoiceEnable'] = self.checkboxvar['Enable Voice'].get()
             self.ed_ap.config['DebugOverlay'] = self.checkboxvar['Debug Overlay'].get()
+            self.ed_ap.config['AFKCombat_AttackAtWill'] = self.checkboxvar['AFKCombat AttackAtWill'].get()
         except:
             messagebox.showinfo("Exception", "Invalid float entered")
 
@@ -721,6 +724,8 @@ class APGui():
                 self.ed_ap.debug_overlay = True
             else:
                 self.ed_ap.debug_overlay = False
+
+        self.ed_ap.config['AFKCombat_AttackAtWill'] = self.checkboxvar['AFKCombat AttackAtWill'].get()
 
     def makeform(self, win, ftype, fields, r: int = 0, inc: float = 1, r_from: float = 0, rto: float = 1000):
         entries = {}
@@ -928,23 +933,30 @@ class APGui():
         cb_enable.grid(row=0, column=0, columnspan=2, sticky=tk.W)
         self.entries['overlay'] = self.makeform(blk_overlay, FORM_TYPE_SPINBOX, overlay_entry_fields, 1, 1.0, 0.0, 3000.0)
 
-        # tts / voice settings block
+        # voice settings block
         blk_voice = ttk.LabelFrame(blk_settings, text="VOICE", padding=(10, 5))
         blk_voice.grid(row=2, column=0, padx=2, pady=2, sticky="NSEW")
         self.checkboxvar['Enable Voice'] = tk.BooleanVar()
         cb_enable = ttk.Checkbutton(blk_voice, text='Enable', variable=self.checkboxvar['Enable Voice'], command=(lambda field='Enable Voice': self.check_cb(field)))
         cb_enable.grid(row=0, column=0, columnspan=2, sticky=tk.W)
 
-        # Scanner settings block
+        # ELW Scanner settings block
         blk_voice = ttk.LabelFrame(blk_settings, text="ELW SCANNER", padding=(10, 5))
         blk_voice.grid(row=2, column=1, padx=2, pady=2, sticky="NSEW")
         self.checkboxvar['ELW Scanner'] = tk.BooleanVar()
         cb_enable = ttk.Checkbutton(blk_voice, text='Enable', variable=self.checkboxvar['ELW Scanner'], command=(lambda field='ELW Scanner': self.check_cb(field)))
         cb_enable.grid(row=0, column=0, columnspan=2, sticky=tk.W)
 
+        # AFK Combat settings block
+        blk_afk_combat = ttk.LabelFrame(blk_settings, text="AFK Combat", padding=(10, 5))
+        blk_afk_combat.grid(row=3, column=0, padx=2, pady=2, sticky="NSEW")
+        self.checkboxvar['AFKCombat AttackAtWill'] = tk.BooleanVar()
+        cb_enable = ttk.Checkbutton(blk_afk_combat, text='Command SLF to Attack At Will', variable=self.checkboxvar['AFKCombat AttackAtWill'], command=(lambda field='AFKCombat AttackAtWill': self.check_cb(field)))
+        cb_enable.grid(row=0, column=0, columnspan=2, sticky=tk.W)
+
         # settings button block
         blk_settings_buttons = ttk.Frame(page1)
-        blk_settings_buttons.grid(row=3, column=0, padx=10, pady=5, sticky="NSEW")
+        blk_settings_buttons.grid(row=4, column=0, padx=10, pady=5, sticky="NSEW")
         blk_settings_buttons.columnconfigure([0, 1], weight=1, minsize=100)
         btn_save = ttk.Button(blk_settings_buttons, text='Save All Settings', command=self.save_settings, style="Accent.TButton")
         btn_save.grid(row=0, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
