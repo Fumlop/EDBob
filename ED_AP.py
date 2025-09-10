@@ -869,15 +869,15 @@ class EDAutopilot:
             full_compass_image, (minVal, maxVal, minLoc, maxLoc), match = (
                 scr_reg.match_template_in_region_x3('compass', 'compass'))
 
-            # need > x in the match to say we do have a destination
-            if maxVal < (scr_reg.compass_match_thresh / 2):
-                # If we are so far below threshold, then compass must not be up
-                return None
-            elif maxVal < scr_reg.compass_match_thresh:
-                # We are below match, but only just, recalibrate
-                if not disable_auto_cal:
-                    self.ap_ckb('log', f'Compass Offset below threshold: {maxVal:5.4f} with scale: {self.compass_scale:5.4f}')
-                    self.quick_calibrate_compass()
+            # # need > x in the match to say we do have a destination
+            # if maxVal < (scr_reg.compass_match_thresh / 2):
+            #     # If we are so far below threshold, then compass must not be up
+            #     return None
+            # if maxVal < scr_reg.compass_match_thresh:
+            #     # We are below match, but only just, recalibrate
+            #     if not disable_auto_cal:
+            #         self.ap_ckb('log', f'Compass Offset below threshold: {maxVal:5.4f} with scale: {self.compass_scale:5.4f}')
+            #         self.quick_calibrate_compass()
 
         pt = maxLoc
 
