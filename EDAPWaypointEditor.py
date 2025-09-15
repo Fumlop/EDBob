@@ -431,14 +431,31 @@ class WaypointEditorTab:
         try:
             with open(filepath, 'r', newline='', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
+
+                mb = messagebox.askyesno("Spansh Import","Include Body Name and/or Station Name?")
+                include_body = mb
+
+                last_system = ''
+                last_station = ''
                 for row in reader:
-                    # Use literal_eval to extract dictionary from csv row
-                    # TODO - test if this works!
-                    system_name = ast.literal_eval(row).get("System Name")
-                    if system_name:
-                        # Use system name for both waypoint name and system name for simplicity
-                        new_waypoint = InternalWaypoint(name=system_name, system_name=system_name)
-                        self.waypoints.waypoints.append(new_waypoint)
+                    if isinstance(row, dict):
+                        system_name = row.get("System Name")
+                        body_name = row.get("Body Name", "")
+
+                        if system_name:
+                            station_name = ''
+                            if include_body:
+                                station_name = body_name
+
+                            # Check if this is a new system/body
+                            if system_name != last_system or station_name != last_station:
+                                # Use system name for both waypoint name and system name for simplicity
+                                new_waypoint = InternalWaypoint(name=system_name, system_name=system_name, station_name=station_name)
+                                self.waypoints.waypoints.append(new_waypoint)
+
+                                last_system = system_name
+                                last_station = station_name
+
             self.update_waypoints_list()
             messagebox.showinfo("Import Successful", f"Imported waypoints from {os.path.basename(filepath)}")
         except Exception as e:

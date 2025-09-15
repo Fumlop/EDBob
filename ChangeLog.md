@@ -1,4 +1,5 @@
-# 9/1/2025 v1.8.0 beta 3:
+# 9/1/2025 v1.8.0 beta 4:
+ - Made fix to Spansh import.
  - Added waypoint editor tab from DankShaman's branch.
  - Fixed error on missing NavRoute.json file.
  - Updated GUI.
