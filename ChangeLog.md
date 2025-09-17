@@ -1,4 +1,5 @@
-# 9/1/2025 v1.8.0 beta 4:
+# 9/1/2025 v1.8.0 beta 5:
+ - Updated requirements to remove OCR crash
  - Made fix to Spansh import.
  - Added waypoint editor tab from DankShaman's branch.
  - Fixed error on missing NavRoute.json file.
