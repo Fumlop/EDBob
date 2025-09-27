@@ -20,9 +20,10 @@ from tkinter import messagebox
 from tkinter import ttk
 import sv_ttk
 import pywinstyles
-import sys
-from tktooltip import ToolTip  # In requirements.txt as 'tkinter-tooltip'. Keep 'import sys' to avoid a 'super' error.
+import sys  # Do not delete - prevents a 'super' error from tktoolip.
+from tktooltip import ToolTip  # In requirements.txt as 'tkinter-tooltip'.
 
+from OCR import RegionCalibration
 from Voice import *
 from MousePt import MousePoint
 
@@ -59,7 +60,7 @@ Author: sumzer0@yahoo.com
 # ---------------------------------------------------------------------------
 # must be updated with a new release so that the update check works properly!
 # contains the names of the release.
-EDAP_VERSION = "V1.8.0 beta 5"
+EDAP_VERSION = "V1.8.0 beta 6"
 # depending on how release versions are best marked you could also change it to the release tag, see function check_update.
 # ---------------------------------------------------------------------------
 
@@ -69,6 +70,7 @@ FORM_TYPE_ENTRY = 2
 
 
 class APGui():
+
     def __init__(self, root):
         self.statusbar = None
         self.root = root
@@ -118,8 +120,10 @@ class APGui():
         self.log_buffer = queue.Queue()
         self.callback('log', f'Starting ED Autopilot {EDAP_VERSION}.')
 
+        self.load_ocr_calibration_data()
         self.ed_ap = EDAutopilot(cb=self.callback)
         self.ed_ap.robigo.set_single_loop(self.ed_ap.config['Robigo_Single_Loop'])
+        self.calibrator = RegionCalibration(root, self.ed_ap, cb=self.callback)
 
         self.mouse = MousePoint()
 
@@ -524,6 +528,7 @@ class APGui():
         self.entry_update(None)
         self.ed_ap.update_config()
         self.ed_ap.update_ship_configs()
+        self.save_ocr_calibration_data()
 
     # new data was added to a field, re-read them all for simple logic
     def entry_update(self, event):
@@ -753,12 +758,50 @@ class APGui():
             r += 1
         return entries
 
+    # OCR calibration methods moved to before __init__
+
+    def on_region_select(self, event):
+        selected_region = self.calibration_region_var.get()
+        if selected_region in self.ocr_calibration_data:
+            rect = self.ocr_calibration_data[selected_region]['rect']
+            self.calibration_rect_label_var.set(f"[{rect[0]:.4f}, {rect[1]:.4f}, {rect[2]:.4f}, {rect[3]:.4f}]")
+            self.calibration_rect_text_var.set(f"{self.ocr_calibration_data[selected_region].get('text','')}")
+
+            reg_f = Rectangle.from_rect(rect)
+            reg_i = self.ed_ap.scr.screen_region_pct_to_pix(reg_f)
+            self.ed_ap.overlay.overlay_rect_int('region select', reg_i, (0, 255, 0), 2)
+            self.ed_ap.overlay.overlay_paint()
+
     def create_calibration_tab(self, tab):
+        self.load_ocr_calibration_data()
         tab.columnconfigure(0, weight=1)
+
+        # Region Calibration
+        blk_region_cal = ttk.LabelFrame(tab, text="Region Calibration")
+        blk_region_cal.grid(row=0, column=0, padx=10, pady=5, sticky="NSEW")
+        blk_region_cal.columnconfigure(1, weight=1)
+
+        region_keys = sorted([key for key, value in self.ocr_calibration_data.items() if isinstance(value, dict) and 'rect' in value and 'compass' not in key and 'target' not in key])
+        self.calibration_region_var = tk.StringVar()
+        self.calibration_region_combo = ttk.Combobox(blk_region_cal, textvariable=self.calibration_region_var, values=region_keys)
+        self.calibration_region_combo.grid(row=0, column=1, padx=5, pady=5, sticky="EW")
+        self.calibration_region_combo.bind("<<ComboboxSelected>>", self.on_region_select)
+
+        ttk.Label(blk_region_cal, text="Region:").grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
+
+        ttk.Label(blk_region_cal, text="Procedure:").grid(row=1, column=0, padx=5, pady=5, sticky="NW")
+        self.calibration_rect_text_var = tk.StringVar()
+        ttk.Label(blk_region_cal, textvariable=self.calibration_rect_text_var).grid(row=1, column=1, padx=5, pady=5, sticky=tk.W)
+
+        ttk.Label(blk_region_cal, text="Rect:").grid(row=2, column=0, padx=5, pady=5, sticky=tk.W)
+        self.calibration_rect_label_var = tk.StringVar()
+        ttk.Label(blk_region_cal, textvariable=self.calibration_rect_label_var).grid(row=2, column=1, padx=5, pady=5, sticky=tk.W)
+
+        ttk.Button(blk_region_cal, text="Calibrate Region", command=self.calibrate_ocr_region).grid(row=3, column=0, padx=5, pady=5, sticky=tk.W)
 
         # Compass and Target Calibrations
         blk_other_cal = ttk.LabelFrame(tab, text="Compass and Target Calibrations")
-        blk_other_cal.grid(row=1, column=0, padx=10, pady=5, sticky="NSEW")
+        blk_other_cal.grid(row=2, column=0, padx=10, pady=5, sticky="NSEW")
 
         btn_calibrate_compass = ttk.Button(blk_other_cal, text="Calibrate Compass", command=self.calibrate_compass_callback)
         btn_calibrate_compass.grid(row=1, padx=10, pady=5, sticky="W")
@@ -775,6 +818,12 @@ class APGui():
                                                                              'screen. Perform when the target is '
                                                                              'visible center screen.')
         lbl_calibrate_target.grid(row=2, column=1, padx=10, pady=5, sticky=tk.W)
+
+        # Button Frame
+        button_frame = ttk.Frame(tab)
+        button_frame.grid(row=3, column=0, padx=10, pady=10, sticky=tk.W)
+        ttk.Button(button_frame, text="Save All Calibrations", command=self.save_ocr_calibration_data, style="Accent.TButton").pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Reset All to Default", command=self.reset_all_calibrations).pack(side=tk.LEFT, padx=5)
 
     def gui_gen(self, win):
 
@@ -1043,6 +1092,124 @@ class APGui():
         self.jumpcount.pack(in_=statusbar, side=tk.RIGHT, fill=tk.Y, expand=False)
 
         return mylist
+
+    def calibrate_ocr_region(self):
+        selected_region = self.calibration_region_var.get()
+        self.calibrator.calibrate_ocr_region(self.ocr_calibration_data, selected_region)
+
+        # Update label
+        self.on_region_select(None)
+
+    def load_ocr_calibration_data(self):
+        self.ocr_calibration_data = {}
+        calibration_file = 'configs/ocr_calibration.json'
+
+        default_regions = {
+            # "Screen_Regions.sun": {"rect": [0.30, 0.30, 0.70, 0.68]},
+            # "Screen_Regions.disengage": {"rect": [0.42, 0.65, 0.60, 0.80]},
+            # "Screen_Regions.sco": {"rect": [0.42, 0.65, 0.60, 0.80]},
+            # "Screen_Regions.fss": {"rect": [0.5045, 0.7545, 0.532, 0.7955]},
+            # "Screen_Regions.mission_dest": {"rect": [0.46, 0.38, 0.65, 0.86]},
+            # "Screen_Regions.missions": {"rect": [0.50, 0.78, 0.65, 0.85]},
+            "EDCodex.full_panel": {"rect": [0.0589, 0.0983, 0.9406, 0.8617], "text": "1. Open the Codex from right hand cockpit panel.\n2. Draw a rectangle from the top left corner of the codex 'book' to the end of the line above the exit button at the bottom right."},
+            # "EDInternalStatusPanel.tab_bar": {"rect": [0.35, 0.2, 0.85, 0.26]},
+            # "EDInternalStatusPanel.inventory_list": {"rect": [0.2, 0.3, 0.8, 0.9]},
+            # "EDInternalStatusPanel.size.inventory_item": {"width": 100, "height": 20},
+            # "EDInternalStatusPanel.size.nav_pnl_tab": {"width": 100, "height": 20},
+            "EDStationServicesInShip.station_services": {"rect": [0.0809, 0.1136, 0.9186, 0.8464], "text": "1. Open Station Service.\n2. Draw a rectangle from the top left of the left panel box to the bottom right of the right panel box."},
+            "EDStationServicesInShip.commodities_market": {"rect": [0.0479, 0.0983, 0.9516, 0.8617], "text": "This is calculated automatically from the Codex screen values. Do not change."},
+            "EDStationServicesInShip.connected_to": {"rect": [0.0, 0.0, 0.0, 0.0], "text": "This is calculated automatically from the Codex screen values. Do not change."},
+            # "EDStationServicesInShip.carrier_admin_header": {"rect": [0.4, 0.1, 0.6, 0.2]},
+            # "EDStationServicesInShip.commodities_list": {"rect": [0.2, 0.2, 0.8, 0.9]},
+            # "EDStationServicesInShip.commodity_quantity": {"rect": [0.4, 0.5, 0.6, 0.6]},
+            # "EDStationServicesInShip.size.commodity_item": {"width": 100, "height": 15},
+            # "EDStationServicesInShip.mission_board_header": {"rect": [0.4, 0.1, 0.6, 0.2]},
+            # "EDStationServicesInShip.missions_list": {"rect": [0.06, 0.25, 0.48, 0.8]},
+            # "EDStationServicesInShip.mission_loaded": {"rect": [0.06, 0.25, 0.48, 0.35]},
+            # "EDStationServicesInShip.size.mission_item": {"width": 100, "height": 15},
+            # "EDSystemMap.cartographics": {"rect": [0.0, 0.0, 0.25, 0.25]},
+            "EDSystemMap.full_panel": {"rect": [0.0, 0.0, 0.0, 0.0], "text": "This is calculated automatically from the Codex screen values. Do not change."},
+            "EDNavigationPanel.panel_bounds1": {"rect": [0.1197, 0.2733, 0.6937, 0.7125], "text": "1. Open Navigation Panel.\n2. Draw a rectangle from the top left corner of the nav panel to the bottom right corner."},
+            "EDNavigationPanel.panel_bounds2": {"rect": [0.1541, 0.2408, 0.6781, 0.8], "text": "1. Open Navigation Panel.\n2. Draw a rectangle from the bottom left corner of the nav panel to the top right corner."},
+            # "EDNavigationPanel.tab_bar": {"rect": [0.0, 0.2, 0.7, 0.35]},
+            # "EDNavigationPanel.size.nav_pnl_tab": {"width": 260, "height": 35},
+            # "EDNavigationPanel.size.nav_pnl_location": {"width": 500, "height": 35},
+            # "EDNavigationPanel.deskew_angle": -1.0
+        }
+
+        if not os.path.exists(calibration_file):
+            # Create the file with default values if it doesn't exist
+            with open(calibration_file, 'w') as f:
+                json.dump(default_regions, f, indent=4)
+            self.ocr_calibration_data = default_regions
+        else:
+            with open(calibration_file, 'r') as f:
+                self.ocr_calibration_data = json.load(f)
+
+            # Check for missing keys and add them
+            updated = False
+            for key, value in default_regions.items():
+                if key not in self.ocr_calibration_data:
+                    self.ocr_calibration_data[key] = value
+                    updated = True
+
+            # If we updated the data, save it back to the file
+            if updated:
+                with open(calibration_file, 'w') as f:
+                    json.dump(self.ocr_calibration_data, f, indent=4)
+
+    def save_ocr_calibration_data(self):
+        # q = Quad.from_rect(self.ocr_calibration_data['EDCodex.full_panel']['rect'])
+        # fx = 0.95
+        # fy = 0.96
+        # q.scale(fx, fy)
+        # self.ocr_calibration_data['EDStationServicesInShip.station_services']['rect'] = q.to_rect_list(round_dp=4)
+
+        q = Quad.from_rect(self.ocr_calibration_data['EDCodex.full_panel']['rect'])
+        q.scale(fx=1.025, fy=1.0)
+        self.ocr_calibration_data['EDStationServicesInShip.commodities_market']['rect'] = q.to_rect_list(round_dp=4)
+
+        q = Quad.from_rect(self.ocr_calibration_data['EDCodex.full_panel']['rect'])
+        q.scale(fx=1.05, fy=1.08)
+        self.ocr_calibration_data['EDSystemMap.full_panel']['rect'] = q.to_rect_list(round_dp=4)
+
+        q = Quad.from_rect(self.ocr_calibration_data['EDStationServicesInShip.station_services']['rect'])
+        q.crop(0.0, 0.0, 0.25, 0.25)
+        self.ocr_calibration_data['EDStationServicesInShip.connected_to']['rect'] = q.to_rect_list(round_dp=4)
+
+        calibration_file = 'configs/ocr_calibration.json'
+        with open(calibration_file, 'w') as f:
+            json.dump(self.ocr_calibration_data, f, indent=4)
+        self.log_msg("OCR calibration data saved.")
+        messagebox.showinfo("Saved", "OCR calibration data saved.\nPlease restart the application for changes to take effect.")
+
+    def reset_all_calibrations(self):
+        if messagebox.askyesno("Reset All Calibrations", "Are you sure you want to reset all OCR calibrations to their default values? This cannot be undone."):
+            calibration_file = 'configs/ocr_calibration.json'
+            if os.path.exists(calibration_file):
+                os.remove(calibration_file)
+                self.log_msg("Removed existing ocr_calibration.json.")
+
+            # This will recreate the file with defaults
+            self.load_ocr_calibration_data()
+
+            # --- Repopulate UI ---
+            # Clear current selections
+            self.calibration_region_var.set('')
+            # self.calibration_size_var.set('')
+            self.calibration_rect_label_var.set('')
+            # self.calibration_size_label_var.set('')
+
+            # Repopulate region dropdown
+            region_keys = sorted([key for key in self.ocr_calibration_data.keys() if '.size.' not in key and 'compass' not in key and 'target' not in key])
+            self.calibration_region_combo['values'] = region_keys
+
+            # Repopulate size dropdown
+            # size_keys = sorted([key for key in self.ocr_calibration_data.keys() if '.size.' in key])
+            # self.calibration_size_combo['values'] = size_keys
+
+            self.log_msg("All OCR calibrations have been reset to default.")
+            messagebox.showinfo("Reset Complete", "All calibrations have been reset to default. Please restart the application for all changes to take effect.")
 
     def restart_program(self):
         logger.debug("Entered: restart_program")

@@ -1,4 +1,5 @@
 import threading
+from copy import copy
 from ctypes.wintypes import PRECT
 from datetime import datetime
 from time import sleep
@@ -7,6 +8,7 @@ import win32api
 import win32con
 import win32gui
 import win32ui
+from Screen_Regions import Rectangle, Quad, Point
 
 """
 File:Overlay.py    
@@ -35,6 +37,7 @@ ov.overlay_quit()
 lines = {}
 text = {}
 floating_text = {}
+quadrilaterals = {}
 fnt = ["Times New Roman", 12, 12]
 pos = [0,0]
 elite_dangerous_window = "Elite - Dangerous (CLIENT)"
@@ -62,7 +65,7 @@ class Overlay:
         self.overlay_thr = threading.Thread(target=self.overlay_win32_run)
         self.overlay_thr.setDaemon(False)
         self.overlay_thr.start()
-        self.targetRect = Vector(0, 0, 1920, 1080)
+        self.targetRect = Vector(0, 0, 1920, 1200)
         self.tHwnd = None
         self._overlay_update_thread = threading.Thread(target=self._overlay_cleanup_loop, daemon=True)
         self._overlay_update_thread.start()
@@ -138,6 +141,38 @@ class Overlay:
         global lines
         lines[key] = [(rect[0], rect[1]), (rect[2], rect[3]), color, thick, duration, datetime.now()]
 
+    @staticmethod
+    def overlay_rect_int(key, rect: Rectangle, color, thick, duration: float = 3.0):
+        """ Adds a rectangle overlay. Does not force a redraw.
+        @duration: Duration to display overlay in secs before it is removed, or <0.0 to prevent removal. """
+        global lines
+        lines[key] = [(int(rect.left), int(rect.top)), (int(rect.right), int(rect.bottom)), color, thick, duration, datetime.now()]
+
+    def overlay_quad_pct(self, key, quad: Quad, color, thick, duration: float = 3.0):
+        """ Adds a quadrilateral overlay. Does not force a redraw.
+        @param key: Name of the overlay.
+        @param quad: The quadrilateral to display in % (0.0 - 1.0).
+        @param color: The color.
+        @param thick: The line thickness.
+        @param duration: The duration in seconds to display until removed, or <0.0 to prevent removal.
+        @duration: Duration to display overlay in secs before it is removed, or <0.0 to prevent removal. """
+        global quadrilaterals
+        q = copy(quad)
+        q.scale_from_origin(self.targetRect.w, self.targetRect.h)
+        quadrilaterals[key] = [q, color, thick, duration, datetime.now()]
+
+    @staticmethod
+    def overlay_quad_pix(key, quad: Quad, color, thick, duration: float = 3.0):
+        """ Adds a quadrilateral overlay. Does not force a redraw.
+        @param key: Name of the overlay.
+        @param quad: The quadrilateral to display in pixels.
+        @param color: The color.
+        @param thick: The line thickness.
+        @param duration: The duration in seconds to display until removed, or <0.0 to prevent removal.
+        @duration: Duration to display overlay in secs before it is removed, or <0.0 to prevent removal. """
+        global quadrilaterals
+        quadrilaterals[key] = [quad, color, thick, duration, datetime.now()]
+
     def overlay_setfont(self, fontname, fsize ):
         global fnt
         fnt = [fontname, fsize, fsize]
@@ -172,6 +207,7 @@ class Overlay:
     def overlay_clear(self):
         """ Removes rectangle, text and floating text overlays. Does not force a redraw."""
         lines.clear()
+        quadrilaterals.clear()
         text.clear()
         floating_text.clear()
 
@@ -179,6 +215,11 @@ class Overlay:
         """ Removes a rectangle overlay. Does not force a redraw."""
         if key in lines:
             lines.pop(key)
+
+    def overlay_remove_quad(self, key):
+        """ Removes a quadrilateral overlay. Does not force a redraw."""
+        if key in quadrilaterals:
+            quadrilaterals.pop(key)
 
     def overlay_remove_text(self, key):
         """ Removes a text overlay. Does not force a redraw."""
@@ -195,7 +236,7 @@ class Overlay:
 
     def _overlay_cleanup_loop(self):
         """ Cleans up the overlay by removing overlays that are old from the list. """
-        global lines, text, floating_text
+        global lines, quadrilaterals, text, floating_text
         while 1:
             # Check each list and remove items that are old
             time_now = datetime.now()
@@ -208,6 +249,15 @@ class Overlay:
                 # Remove overlay if it is too old. Keep overlay if dur < 0
                 if 0 < lines[key][4] < time_diff:
                     del lines[key]
+                    force_redraw = True
+
+            # Check quadrilaterals
+            for key in list(quadrilaterals):
+                # Check the datetime diff between when the overlay was added and now
+                time_diff = (time_now - quadrilaterals[key][4]).total_seconds()
+                # Remove overlay if it is too old. Keep overlay if dur < 0
+                if 0 < quadrilaterals[key][3] < time_diff:
+                    del quadrilaterals[key]
                     force_redraw = True
 
             # Check text
@@ -313,6 +363,19 @@ class Overlay:
             win32gui.MoveToEx(hdc, int(pt2[0]),    int(pt1[1]+half_hgt))
             win32gui.LineTo  (hdc, int(pt2[0]+tic_len),   int(pt1[1]+half_hgt))
 
+    @staticmethod
+    def overlay_draw_quad(hdc, quad: Quad, line_type, color, thick):
+        pin_thick = win32gui.CreatePen(line_type, thick, win32api.RGB(color[0], color[1], color[2]))
+        pin_thin = win32gui.CreatePen(line_type, 1, win32api.RGB(color[0], color[1], color[2]))
+
+        # top
+        win32gui.SelectObject(hdc, pin_thick)
+        win32gui.MoveToEx(hdc, int(quad.pt1.getX()), int(quad.pt1.getY()))
+        win32gui.LineTo(hdc, int(quad.pt2.getX()), int(quad.pt2.getY()))
+        win32gui.LineTo(hdc, int(quad.pt3.getX()), int(quad.pt3.getY()))
+        win32gui.LineTo(hdc, int(quad.pt4.getX()), int(quad.pt4.getY()))
+        win32gui.LineTo(hdc, int(quad.pt1.getX()), int(quad.pt1.getY()))
+
     @staticmethod 
     def overlay_set_font(hdc, fontname, fontSize):
         global fnt
@@ -327,7 +390,6 @@ class Overlay:
         hf = win32gui.CreateFontIndirect(lf)
         win32gui.SelectObject(hdc, hf)
         fnt[2] = lf.lfHeight
-   
 
     @staticmethod 
     def overlay_draw_text(hWnd, hdc, txt, row, col, color):
@@ -340,18 +402,16 @@ class Overlay:
 
         win32gui.DrawText(hdc,  txt,  -1,  rect,   win32con.DT_LEFT | win32con.DT_NOCLIP | win32con.DT_SINGLELINE | win32con.DT_TOP   )
 
-
     @staticmethod
     def overlay_draw_floating_text(hWnd, hdc, txt, x, y, color):
-        rect = (x, y, 1, 1)
+        rect = (int(x), int(y), 1, 1)
         win32gui.SetTextColor(hdc,win32api.RGB(color[0], color[1], color[2]))
 
         win32gui.DrawText(hdc,  txt,  -1,  rect,   win32con.DT_LEFT | win32con.DT_NOCLIP | win32con.DT_SINGLELINE | win32con.DT_TOP   )
 
-
     @staticmethod 
     def wndProc(hWnd, message, wParam, lParam):
-        global lines, text
+        global lines, quadrilaterals, text
         if message == win32con.WM_PAINT:
             hdc, paintStruct = win32gui.BeginPaint(hWnd)
 
@@ -360,6 +420,11 @@ class Overlay:
             for i, key in enumerate(lines):
                 #print(lines[key])
                 Overlay.overlay_draw_rect(hdc, lines[key][0], lines[key][1], win32con.PS_SOLID, lines[key][2], lines[key][3])
+
+            for i, key in enumerate(quadrilaterals):
+                #print(lines[key])
+                Overlay.overlay_draw_quad(hdc, quadrilaterals[key][0], win32con.PS_SOLID, quadrilaterals[key][1],
+                                          quadrilaterals[key][2])
 
             for i, key in enumerate(text):
                 #print(text[key])
@@ -390,7 +455,8 @@ def main():
             'b': [(800,800), (1000, 1000), (20, 10, 255),15] ,
             'c': [(220,30), (350, 700), (255, 20, 10),1] 
            }
-
+    #               TL            TR          BR        BL
+    quad = {'a': [(.1, .1), (.3, .05), (.275, .45), (.15, .5), (120, 255, 0), 2]}
 
     ov.overlay_setfont("Times New Roman", 12 )
     ov.overlay_set_pos(2000, 50)
@@ -399,14 +465,17 @@ def main():
     ov.overlay_text('2', "next test in line", 2, 1,(255,0,255), -1)
 
     for i, key in enumerate(rect):
-        ov.overlay_rect(key, rect[key][0], rect[key][1], rect[key][2], rect[key][3])
+        ov.overlay_rect(key, rect[key][0], rect[key][1], rect[key][2], rect[key][3], 5)
         print("Adding")
         print(rect[key])
+    q = Quad(Point.from_xy(quad['a'][0]), Point.from_xy(quad['a'][1]),
+             Point.from_xy(quad['a'][2]), Point.from_xy(quad['a'][3]))
+    ov.overlay_quad_pct('a', q, quad['a'][4], quad['a'][5],5)
+    ov.overlay_paint()
 
-    ov.overlay_paint()  
     sleep(5)
     rect['d'] = [(400,150), (900, 550), (255, 10, 255),25]
-    ov.overlay_rect('d', rect['d'][0], rect['d'][1], rect['d'][2], rect['d'][3])    
+    ov.overlay_rect('d', rect['d'][0], rect['d'][1], rect['d'][2], rect['d'][3],5)
     ov.overlay_text('3', "Changed", 3, 3, (255, 0, 0), -1)
     ov.overlay_setfont("Times New Roman", 16)
     ov.overlay_set_pos(1800, 50)
@@ -414,7 +483,7 @@ def main():
 
     sleep(5)
     rect['b'] = [(40,150), (90, 550), (155, 10, 255),10]
-    ov.overlay_rect('b', rect['b'][0], rect['b'][1], rect['b'][2], rect['b'][3])  
+    ov.overlay_rect('b', rect['b'][0], rect['b'][1], rect['b'][2], rect['b'][3],5)
     ov.overlay_text('3', "", 3, 3,(255, 0, 0), -1)
     ov.overlay_paint()   
     sleep(5)

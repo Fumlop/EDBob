@@ -1,3 +1,7 @@
+# 9/1/2025 v1.8.0 beta 6:
+ - Updated PaddleOCR.
+ - Added screen calibration.
+
 # 9/1/2025 v1.8.0 beta 5:
  - Updated requirements to remove OCR crash
  - Made fix to Spansh import.

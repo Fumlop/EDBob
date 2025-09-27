@@ -1,3 +1,5 @@
+from copy import copy
+
 import numpy as np
 from numpy import array, sum
 import cv2
@@ -275,3 +277,203 @@ class Screen_Regions:
         result = int((wht / (wht+blk))*100)
 
         return result
+
+
+class Point:
+    """Creates a point on a coordinate plane with values x and y."""
+    def __init__(self, x, y):
+        """Defines x and y variables"""
+        self.x: float = x
+        self.y: float = y
+
+    def __str__(self):
+        return "Point(%s, %s)" % (self.x, self.y)
+
+    def getX(self) -> float:
+        return self.x
+
+    def getY(self) -> float:
+        return self.y
+
+    def to_list(self) -> [float, float]:
+        return [self.x, self.y]
+
+    @classmethod
+    def from_xy(cls, xy_tuple: (float, float)):
+        """ From (x, y) """
+        return cls(xy_tuple[0], xy_tuple[1])
+
+    @classmethod
+    def from_list(cls, xy_list: [float, float]):
+        """ From (x, y) """
+        return cls(xy_list[0], xy_list[1])
+
+
+class Rectangle:
+    def __init__(self, left=0.0, top=0.0, right=0.0, bottom=0.0):
+        self.top: float = top
+        self.left: float = left
+        self.right: float = right
+        self.bottom: float = bottom
+
+    def get_pt1(self):
+        return Point(self.left, self.top)
+
+    def get_pt2(self):
+        return Point(self.right, self.bottom)
+
+    @classmethod
+    def from_rect(cls, rect):
+        return cls(rect[0], rect[1], rect[2], rect[3])
+
+    def __str__(self):
+        return (f"Rectangle:\n"
+                f" pt1: ({self.get_pt1().x}, {self.get_pt1().y})\n"
+                f" pt2: ({self.get_pt2().x}, {self.get_pt2().y})")
+
+
+class Quad:
+    """ Represents a quadrilateral (a four-sided polygon that has four edges and four vertices).
+    It can be classified into various types, such as squares, rectangles, trapezoids, and rhombuses.
+    """
+    def __init__(self, p1: Point = None, p2: Point = None, p3: Point = None, p4: Point = None):
+        self.pt1: Point = p1
+        self.pt2: Point = p2
+        self.pt3: Point = p3
+        self.pt4: Point = p4
+
+    @classmethod
+    def from_list(cls, pt_list: [[float, float], [float, float], [float, float], [float, float]]):
+        """ Creates a quad from a list of points as
+        [[left, top], [right, top], [right, bottom], [left, bottom]]."""
+        return cls(Point.from_list(pt_list[0]), Point.from_list(pt_list[1]),
+                   Point.from_list(pt_list[2]), Point.from_list(pt_list[3]))
+
+    @classmethod
+    def from_rect(cls, pt_list: [float, float, float, float]):
+        """ Creates a quad from a list of points as [left, top, right, bottom] """
+        return cls(Point(pt_list[0], pt_list[1]), Point(pt_list[2], pt_list[1]),
+                   Point(pt_list[2], pt_list[3]), Point(pt_list[0], pt_list[3]))
+
+    def to_rect_list(self, round_dp: int = -1) -> [float, float, float, float]:
+        """ Returns the bounds of the quadrilateral as a list of values [left, top, right, bottom].
+        @param: round_dp: If >=0, the number of decimal places to round numbers to, otherwise no rounding.
+        """
+        if round_dp < 0:
+            return [self.get_left(), self.get_top(), self.get_right(), self.get_bottom()]
+        else:
+            return [round(self.get_left(), round_dp), round(self.get_top(), round_dp),
+                    round(self.get_right(), round_dp), round(self.get_bottom(), round_dp)]
+
+    def to_list(self) -> [[float, float], [float, float], [float, float], [float, float]]:
+        """ Returns the list of points of the quadrilateral as
+        [[left, top], [right, top], [right, bottom], [left, bottom]]."""
+        return [self.pt1.to_list(), self.pt2.to_list(), self.pt3.to_list(), self.pt4.to_list()]
+
+    def get_left(self) -> float:
+        """ Returns the value of the left most point. """
+        return min(self.pt1.x, self.pt2.x, self.pt3.x, self.pt4.x)
+
+    def get_top(self) -> float:
+        """ Returns the value of the top most point. """
+        return min(self.pt1.y, self.pt2.y, self.pt3.y, self.pt4.y)
+
+    def get_right(self) -> float:
+        """ Returns the value of the right most point. """
+        return max(self.pt1.x, self.pt2.x, self.pt3.x, self.pt4.x)
+
+    def get_bottom(self) -> float:
+        """ Returns the value of the bottom most point. """
+        return max(self.pt1.y, self.pt2.y, self.pt3.y, self.pt4.y)
+
+    def get_width(self):
+        """Returns the maximum width."""
+        return self.get_right() - self.get_left()
+
+    def get_height(self):
+        """Returns the maximum height."""
+        return self.get_bottom() - self.get_top()
+
+    def get_bounds(self) -> (Point, Point):
+        """ Returns the bounds of the quadrilateral as a rectangle defined by two points,
+        the top-left and bottom-right."""
+        return Point(self.get_left(), self.get_top()), Point(self.get_right(), self.get_bottom())
+
+    def get_center(self) -> Point:
+        cx = (self.pt1.x + self.pt2.x + self.pt3.x + self.pt4.x) / 4
+        cy = (self.pt1.y + self.pt2.y + self.pt3.y + self.pt4.y) / 4
+        return Point(cx, cy)
+
+    def scale(self, fx: float, fy: float):
+        """ Scales the quad from the center.
+        @param fy: Scaling in the Y direction.
+        @param fx: Scaling in the X direction.
+        """
+        center = self.get_center()
+        self.pt1 = self._scale_point(self.pt1, center, fx, fy)
+        self.pt2 = self._scale_point(self.pt2, center, fx, fy)
+        self.pt3 = self._scale_point(self.pt3, center, fx, fy)
+        self.pt4 = self._scale_point(self.pt4, center, fx, fy)
+
+    def crop(self, l_pct: float, t_pct: float, r_pct: float, b_pct: float):
+        """ Crops the quad as region specified by the % (0.0-1.0) inputs.
+        NOTE: This assumes that the quad is a rectangle or square. Won't work with other shapes!
+        Example: An input of [0.0, 0.0, 1.0, 1.0] returns the quad unchanged.
+        Example: An input of [0.0, 0.0, 0.25, 0.25] returns the top left quarter of the quad.
+        @param l_pct: Left %.
+        @param t_pct: Top %.
+        @param r_pct: Right %.
+        @param b_pct: Bottom %.
+        """
+        new_l = (l_pct * self.get_width()) + self.get_left()
+        new_t = (t_pct * self.get_height()) + self.get_top()
+        new_r = (r_pct * self.get_width()) + self.get_left()
+        new_b = (b_pct * self.get_height()) + self.get_top()
+
+        self.pt1 = Point(new_l, new_t)
+        self.pt2 = Point(new_r, new_t)
+        self.pt3 = Point(new_r, new_b)
+        self.pt4 = Point(new_l, new_b)
+
+    def scale_from_origin(self, fx: float, fy: float):
+        """ Scales the quad from the origin (0,0).
+        @param fy: Scaling in the Y direction.
+        @param fx: Scaling in the X direction.
+        """
+        origin = Point(0, 0)
+        self.pt1 = self._scale_point(self.pt1, origin, fx, fy)
+        self.pt2 = self._scale_point(self.pt2, origin, fx, fy)
+        self.pt3 = self._scale_point(self.pt3, origin, fx, fy)
+        self.pt4 = self._scale_point(self.pt4, origin, fx, fy)
+
+    def offset(self, dx: float, dy: float):
+        """ Offsets (moves) the quad by the given amount.
+        @param dx: The amount to move in the x direction.
+        @param dy: The amount to move in the y direction.
+        """
+        self.pt1 = self._offset_point(self.pt1, dx, dy)
+        self.pt2 = self._offset_point(self.pt2, dx, dy)
+        self.pt3 = self._offset_point(self.pt3, dx, dy)
+        self.pt4 = self._offset_point(self.pt4, dx, dy)
+
+    @staticmethod
+    def _scale_point(pt: Point, center: Point, fx: float, fy: float) -> Point:
+        return Point(
+            center.x + (pt.x - center.x) * fx,
+            center.y + (pt.y - center.y) * fy
+        )
+
+    @staticmethod
+    def _offset_point(pt: Point, dx: float, dy: float) -> Point:
+        return Point(pt.x + dx, pt.y + dy)
+
+    def __str__(self):
+        return (f"Quadrilateral:\n"
+                f" pt1: ({self.pt1.x}, {self.pt1.y})\n"
+                f" pt2: ({self.pt2.x}, {self.pt2.y})\n"
+                f" pt3: ({self.pt3.x}, {self.pt3.y})\n"
+                f" pt4: ({self.pt4.x}, {self.pt4.y})")
+
+
+
+
