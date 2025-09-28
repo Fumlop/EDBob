@@ -69,7 +69,7 @@ FORM_TYPE_SPINBOX = 1
 FORM_TYPE_ENTRY = 2
 
 
-class APGui():
+class APGui:
 
     def __init__(self, root):
         self.statusbar = None
@@ -124,6 +124,8 @@ class APGui():
         self.ed_ap = EDAutopilot(cb=self.callback)
         self.ed_ap.robigo.set_single_loop(self.ed_ap.config['Robigo_Single_Loop'])
         self.calibrator = RegionCalibration(root, self.ed_ap, cb=self.callback)
+
+        self.ocr_calibration_data = {}
 
         self.mouse = MousePoint()
 
@@ -766,10 +768,10 @@ class APGui():
             rect = self.ocr_calibration_data[selected_region]['rect']
             self.calibration_rect_label_var.set(f"[{rect[0]:.4f}, {rect[1]:.4f}, {rect[2]:.4f}, {rect[3]:.4f}]")
             self.calibration_rect_text_var.set(f"{self.ocr_calibration_data[selected_region].get('text','')}")
+            # self.calibration_rect_left_var.set(rect[0])
 
-            reg_f = Rectangle.from_rect(rect)
-            reg_i = self.ed_ap.scr.screen_region_pct_to_pix(reg_f)
-            self.ed_ap.overlay.overlay_rect_int('region select', reg_i, (0, 255, 0), 2)
+            reg_f = Quad.from_rect(rect)
+            self.ed_ap.overlay.overlay_quad_pct('region select', reg_f, (0, 255, 0), 2)
             self.ed_ap.overlay.overlay_paint()
 
     def create_calibration_tab(self, tab):
@@ -797,7 +799,15 @@ class APGui():
         self.calibration_rect_label_var = tk.StringVar()
         ttk.Label(blk_region_cal, textvariable=self.calibration_rect_label_var).grid(row=2, column=1, padx=5, pady=5, sticky=tk.W)
 
-        ttk.Button(blk_region_cal, text="Calibrate Region", command=self.calibrate_ocr_region).grid(row=3, column=0, padx=5, pady=5, sticky=tk.W)
+        # # TODO - new
+        # self.calibration_rect_left_var = tk.StringVar()
+        # lbl_sun_pitch_up = ttk.Label(blk_region_cal, text='Left:')
+        # lbl_sun_pitch_up.grid(row=3, column=0, pady=3, sticky=tk.W)
+        # spn_sun_pitch_up = ttk.Spinbox(blk_region_cal, textvariable=self.calibration_rect_left_var, width=10, from_=0, to=1, increment=0.001, justify=tk.RIGHT, command=on_spinbox_change)
+        # spn_sun_pitch_up.grid(row=3, column=1, padx=2, pady=2, sticky=tk.E)
+        # #spn_sun_pitch_up.bind('<FocusOut>', self.entry_update)
+
+        ttk.Button(blk_region_cal, text="Calibrate Region", command=self.calibrate_ocr_region).grid(row=4, column=0, padx=5, pady=5, sticky=tk.W)
 
         # Compass and Target Calibrations
         blk_other_cal = ttk.LabelFrame(tab, text="Compass and Target Calibrations")
@@ -1112,13 +1122,15 @@ class APGui():
             # "Screen_Regions.mission_dest": {"rect": [0.46, 0.38, 0.65, 0.86]},
             # "Screen_Regions.missions": {"rect": [0.50, 0.78, 0.65, 0.85]},
             "EDCodex.full_panel": {"rect": [0.0589, 0.0983, 0.9406, 0.8617], "text": "1. Open the Codex from right hand cockpit panel.\n2. Draw a rectangle from the top left corner of the codex 'book' to the end of the line above the exit button at the bottom right."},
+            "EDInternalStatusPanel.panel_bounds1": {"rect": [0.1197, 0.2733, 0.6937, 0.7125], "text": "1. Open Internal Status Panel (right hand panel).\n2. Draw a rectangle from the top left corner of the nav panel to the bottom right corner."},
+            "EDInternalStatusPanel.panel_bounds2": {"rect": [0.1541, 0.2408, 0.6781, 0.8], "text": "1. Open Internal Status Panel (right hand panel).\n2. Draw a rectangle from the bottom left corner of the nav panel to the top right corner."},
             # "EDInternalStatusPanel.tab_bar": {"rect": [0.35, 0.2, 0.85, 0.26]},
             # "EDInternalStatusPanel.inventory_list": {"rect": [0.2, 0.3, 0.8, 0.9]},
             # "EDInternalStatusPanel.size.inventory_item": {"width": 100, "height": 20},
             # "EDInternalStatusPanel.size.nav_pnl_tab": {"width": 100, "height": 20},
             "EDStationServicesInShip.station_services": {"rect": [0.0809, 0.1136, 0.9186, 0.8464], "text": "1. Open Station Service.\n2. Draw a rectangle from the top left of the left panel box to the bottom right of the right panel box."},
             "EDStationServicesInShip.commodities_market": {"rect": [0.0479, 0.0983, 0.9516, 0.8617], "text": "This is calculated automatically from the Codex screen values. Do not change."},
-            "EDStationServicesInShip.connected_to": {"rect": [0.0, 0.0, 0.0, 0.0], "text": "This is calculated automatically from the Codex screen values. Do not change."},
+            # "EDStationServicesInShip.connected_to": {"rect": [0.0, 0.0, 0.0, 0.0], "text": "This is calculated automatically from the Codex screen values. Do not change."},
             # "EDStationServicesInShip.carrier_admin_header": {"rect": [0.4, 0.1, 0.6, 0.2]},
             # "EDStationServicesInShip.commodities_list": {"rect": [0.2, 0.2, 0.8, 0.9]},
             # "EDStationServicesInShip.commodity_quantity": {"rect": [0.4, 0.5, 0.6, 0.6]},
@@ -1128,6 +1140,7 @@ class APGui():
             # "EDStationServicesInShip.mission_loaded": {"rect": [0.06, 0.25, 0.48, 0.35]},
             # "EDStationServicesInShip.size.mission_item": {"width": 100, "height": 15},
             # "EDSystemMap.cartographics": {"rect": [0.0, 0.0, 0.25, 0.25]},
+            "EDGalaxyMap.full_panel": {"rect": [0.0, 0.0, 0.0, 0.0], "text": "This is calculated automatically from the Codex screen values. Do not change."},
             "EDSystemMap.full_panel": {"rect": [0.0, 0.0, 0.0, 0.0], "text": "This is calculated automatically from the Codex screen values. Do not change."},
             "EDNavigationPanel.panel_bounds1": {"rect": [0.1197, 0.2733, 0.6937, 0.7125], "text": "1. Open Navigation Panel.\n2. Draw a rectangle from the top left corner of the nav panel to the bottom right corner."},
             "EDNavigationPanel.panel_bounds2": {"rect": [0.1541, 0.2408, 0.6781, 0.8], "text": "1. Open Navigation Panel.\n2. Draw a rectangle from the bottom left corner of the nav panel to the top right corner."},
@@ -1173,9 +1186,13 @@ class APGui():
         q.scale(fx=1.05, fy=1.08)
         self.ocr_calibration_data['EDSystemMap.full_panel']['rect'] = q.to_rect_list(round_dp=4)
 
-        q = Quad.from_rect(self.ocr_calibration_data['EDStationServicesInShip.station_services']['rect'])
-        q.crop(0.0, 0.0, 0.25, 0.25)
-        self.ocr_calibration_data['EDStationServicesInShip.connected_to']['rect'] = q.to_rect_list(round_dp=4)
+        q = Quad.from_rect(self.ocr_calibration_data['EDCodex.full_panel']['rect'])
+        q.scale(fx=1.05, fy=1.08)
+        self.ocr_calibration_data['EDGalaxyMap.full_panel']['rect'] = q.to_rect_list(round_dp=4)
+
+        # q = Quad.from_rect(self.ocr_calibration_data['EDStationServicesInShip.station_services']['rect'])
+        # q.crop(0.0, 0.0, 0.25, 0.25)
+        # self.ocr_calibration_data['EDStationServicesInShip.connected_to']['rect'] = q.to_rect_list(round_dp=4)
 
         calibration_file = 'configs/ocr_calibration.json'
         with open(calibration_file, 'w') as f:
@@ -1198,6 +1215,7 @@ class APGui():
             self.calibration_region_var.set('')
             # self.calibration_size_var.set('')
             self.calibration_rect_label_var.set('')
+            # self.calibration_rect_left_var.set('')
             # self.calibration_size_label_var.set('')
 
             # Repopulate region dropdown

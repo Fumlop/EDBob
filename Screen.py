@@ -10,7 +10,7 @@ import mss
 import json
 
 from EDlogger import logger
-from Screen_Regions import Rectangle, Quad
+from Screen_Regions import Quad
 
 """
 File:Screen.py    
@@ -271,14 +271,14 @@ class Screen:
                     int(rect[2] * self.screen_width), int(rect[3] * self.screen_height)]
         return abs_rect
 
-    def screen_region_pct_to_pix(self, rect: Rectangle) -> Rectangle:
+    def screen_region_pct_to_pix(self, quad: Quad) -> Quad:
         """ Converts and array of real percentage screen values to int absolutes.
-        @param rect: A rect array ([L, T, R, B]) in percent (0.0 - 1.0)
+        @param quad: A rect array ([L, T, R, B]) in percent (0.0 - 1.0)
         @return: A rect array ([L, T, R, B]) in pixels
         """
-        abs_rect = Rectangle(rect.left * self.screen_width, rect.top * self.screen_height,
-                             rect.right * self.screen_width, rect.bottom * self.screen_height)
-        return abs_rect
+        q = copy(quad)
+        q.scale_from_origin(self.screen_width, self.screen_height)
+        return q
 
     def get_screen_full(self):
         """ Grabs a full screenshot and returns the image.

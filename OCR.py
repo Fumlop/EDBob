@@ -24,10 +24,9 @@ Author: Stumpii
 
 
 class OCR:
-    def __init__(self, screen, language: str = 'en'):
+    def __init__(self, ed_ap, screen):
+        self.ap = ed_ap
         self.screen = screen
-        # self.paddleocr = PaddleOCR(use_angle_cls=True, lang=language, use_gpu=False, show_log=False, use_dilation=True,
-        #                            use_space_char=True)
         self.paddleocr = PaddleOCR(
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
@@ -57,13 +56,14 @@ class OCR:
         s2_new = s2_new.replace(">",  "")
         s2_new = s2_new.replace(" ",  "")
 
-        #return self.jarowinkler.similarity(s1, s2)
+        # return self.jarowinkler.similarity(s1, s2)
         return self.normalized_levenshtein.similarity(s1_new, s2_new)
-        #return self.sorensendice.similarity(s1_new, s2_new)
+        # return self.sorensendice.similarity(s1_new, s2_new)
 
     def image_ocr(self, image):
         """ Perform OCR with no filtering. Returns the full OCR data and a simplified list of strings.
         This routine is slower than the simplified OCR.
+        @param image: The image to check.
 
         'ocr_data' is returned in the following format, or (None, None):
         [[[[[86.0, 8.0], [208.0, 8.0], [208.0, 34.0], [86.0, 34.0]], ('ROBIGO 1 A', 0.9815958738327026)]]]
@@ -83,9 +83,9 @@ class OCR:
                     return None, None
 
                 # Debug - places all detected data to 'output' folder
-                #res.print()
-                res.save_to_img("ocr_output")
-                res.save_to_json("ocr_output")
+                if self.ap.debug_overlay:
+                    res.save_to_img("ocr_output")
+                    res.save_to_json("ocr_output")
 
                 # Added detected text to list
                 ocr_textlist.extend(res['rec_texts'])
@@ -98,7 +98,7 @@ class OCR:
         """ Perform OCR with no filtering. Returns a simplified list of strings with no positional data.
         This routine is faster than the function that returns the full data. Generally good when you
         expect to only return one or two lines of text.
-
+        @param image: The image to check.
         'ocr_textlist' is returned in the following format, or None:
         ['DESTINATION', 'SIRIUS ATMOSPHERICS']
         """
@@ -118,9 +118,9 @@ class OCR:
                     return None
 
                 # Debug - places all detected data to 'output' folder
-                #res.print()
-                res.save_to_img("ocr_output")
-                res.save_to_json("ocr_output")
+                if self.ap.debug_overlay:
+                    res.save_to_img("ocr_output")
+                    res.save_to_json("ocr_output")
 
                 # Added detected text to list
                 ocr_textlist.extend(res['rec_texts'])
@@ -136,7 +136,7 @@ class OCR:
             @param image: The image to check.
             @param min_h: Minimum height in percent of the input image.
             @param min_w: Minimum width in percent of the input image.
-        """
+     """
         # Find the selected item/menu (solid orange)
         img_selected, quad = self.get_highlighted_item_in_image(image, min_w, min_h)
         if img_selected is not None:
@@ -161,7 +161,7 @@ class OCR:
         @param image: The image to check.
         @param min_h: Minimum height in percent of the input image.
         @param min_w: Minimum width in percent of the input image.
-        @return: The highlighted image and the matching Quad position in pixels, or (None, None)
+        @return: The highlighted image and the matching Quad position in percentage of the image size, or (None, None)
         """
         # Existing size
         img_h, img_w, _ = image.shape
@@ -278,7 +278,7 @@ class OCR:
         ocr_textlist = self.image_simple_ocr(image)
         # print(str(ocr_textlist))
 
-        # PaddleOCR has difficulty detecting spaces, so strip out spaces for the comapare
+        # PaddleOCR has difficulty detecting spaces, so strip out spaces for the compare
         text_ns = text.replace(' ', '').upper()
         ocr_textlist_ns = str(ocr_textlist).replace(' ', '').upper()
 

@@ -31,6 +31,7 @@ def reg_scale_for_station(region, w: int, h: int) -> [int, int, int, int]:
     @param region: The region at 1920x1080
     @return: The new region in %
     """
+    # TODO - remove this function
     ref_w = 1920
     ref_h = 1080
 
@@ -72,6 +73,7 @@ def size_scale_for_station(width: int, height: int, w: int, h: int) -> (int, int
     @param h: The screen height in pixels
     @param w: The screen width in pixels
     """
+    # TODO - remove this function
     ref_w = 1920
     ref_h = 1080
 
@@ -87,6 +89,14 @@ def size_scale_for_station(width: int, height: int, w: int, h: int) -> (int, int
     return new_width, new_height
 
 
+def sub_region_to_region_scaling(region, sub_region) -> [float, float, float, float]:
+    """ Converts a sub region scale to a region scale """
+    r = Quad.from_rect(region)
+    sr = Quad.from_rect(sub_region)
+    r.subregion_from_quad(sr)
+    return r.to_rect_list()
+
+
 class Screen_Regions:
     def __init__(self, screen, templ):
         self.screen = screen
@@ -98,7 +108,7 @@ class Screen_Regions:
         self.target_thresh = 0.50
         self.target_occluded_thresh = 0.55
         self.sun_threshold = 125
-        self.disengage_thresh = 0.25
+        self.disengage_thresh = 0.35
 
         # array is in HSV order which represents color ranges for filtering
         self.orange_color_range   = [array([0, 130, 123]),  array([25, 235, 220])]
@@ -121,7 +131,7 @@ class Screen_Regions:
         self.reg['mission_dest']  = {'rect': [0.46, 0.38, 0.65, 0.86], 'width': 1, 'height': 1, 'filterCB': self.equalize, 'filter': None}    
         self.reg['missions']    = {'rect': [0.50, 0.78, 0.65, 0.85], 'width': 1, 'height': 1, 'filterCB': self.equalize, 'filter': None}   
         self.reg['nav_panel']   = {'rect': [0.25, 0.36, 0.60, 0.85], 'width': 1, 'height': 1, 'filterCB': self.equalize, 'filter': None}  
-        
+
         # convert rect from percent of screen into pixel location, calc the width/height of the area
         for i, key in enumerate(self.reg):
             xx = self.reg[key]['rect']
@@ -289,10 +299,10 @@ class Point:
     def __str__(self):
         return "Point(%s, %s)" % (self.x, self.y)
 
-    def getX(self) -> float:
+    def get_x(self) -> float:
         return self.x
 
-    def getY(self) -> float:
+    def get_y(self) -> float:
         return self.y
 
     def to_list(self) -> [float, float]:
@@ -307,29 +317,6 @@ class Point:
     def from_list(cls, xy_list: [float, float]):
         """ From (x, y) """
         return cls(xy_list[0], xy_list[1])
-
-
-class Rectangle:
-    def __init__(self, left=0.0, top=0.0, right=0.0, bottom=0.0):
-        self.top: float = top
-        self.left: float = left
-        self.right: float = right
-        self.bottom: float = bottom
-
-    def get_pt1(self):
-        return Point(self.left, self.top)
-
-    def get_pt2(self):
-        return Point(self.right, self.bottom)
-
-    @classmethod
-    def from_rect(cls, rect):
-        return cls(rect[0], rect[1], rect[2], rect[3])
-
-    def __str__(self):
-        return (f"Rectangle:\n"
-                f" pt1: ({self.get_pt1().x}, {self.get_pt1().y})\n"
-                f" pt2: ({self.get_pt2().x}, {self.get_pt2().y})")
 
 
 class Quad:
@@ -415,20 +402,17 @@ class Quad:
         self.pt3 = self._scale_point(self.pt3, center, fx, fy)
         self.pt4 = self._scale_point(self.pt4, center, fx, fy)
 
-    def crop(self, l_pct: float, t_pct: float, r_pct: float, b_pct: float):
+    def subregion_from_quad(self, quad):
         """ Crops the quad as region specified by the % (0.0-1.0) inputs.
         NOTE: This assumes that the quad is a rectangle or square. Won't work with other shapes!
         Example: An input of [0.0, 0.0, 1.0, 1.0] returns the quad unchanged.
         Example: An input of [0.0, 0.0, 0.25, 0.25] returns the top left quarter of the quad.
-        @param l_pct: Left %.
-        @param t_pct: Top %.
-        @param r_pct: Right %.
-        @param b_pct: Bottom %.
+        @param quad: A quad.
         """
-        new_l = (l_pct * self.get_width()) + self.get_left()
-        new_t = (t_pct * self.get_height()) + self.get_top()
-        new_r = (r_pct * self.get_width()) + self.get_left()
-        new_b = (b_pct * self.get_height()) + self.get_top()
+        new_l = (quad.get_left() * self.get_width()) + self.get_left()
+        new_t = (quad.get_top() * self.get_height()) + self.get_top()
+        new_r = (quad.get_right() * self.get_width()) + self.get_left()
+        new_b = (quad.get_bottom() * self.get_height()) + self.get_top()
 
         self.pt1 = Point(new_l, new_t)
         self.pt2 = Point(new_r, new_t)
@@ -465,6 +449,8 @@ class Quad:
 
     @staticmethod
     def _offset_point(pt: Point, dx: float, dy: float) -> Point:
+        """ Offsets the point.
+        Using this instead of calling offset on the point directly allows shallow copy of the quad."""
         return Point(pt.x + dx, pt.y + dy)
 
     def __str__(self):

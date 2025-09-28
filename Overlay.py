@@ -8,7 +8,7 @@ import win32api
 import win32con
 import win32gui
 import win32ui
-from Screen_Regions import Rectangle, Quad, Point
+from Screen_Regions import Quad, Point
 
 """
 File:Overlay.py    
@@ -140,13 +140,6 @@ class Overlay:
         @duration: Duration to display overlay in secs before it is removed, or <0.0 to prevent removal. """
         global lines
         lines[key] = [(rect[0], rect[1]), (rect[2], rect[3]), color, thick, duration, datetime.now()]
-
-    @staticmethod
-    def overlay_rect_int(key, rect: Rectangle, color, thick, duration: float = 3.0):
-        """ Adds a rectangle overlay. Does not force a redraw.
-        @duration: Duration to display overlay in secs before it is removed, or <0.0 to prevent removal. """
-        global lines
-        lines[key] = [(int(rect.left), int(rect.top)), (int(rect.right), int(rect.bottom)), color, thick, duration, datetime.now()]
 
     def overlay_quad_pct(self, key, quad: Quad, color, thick, duration: float = 3.0):
         """ Adds a quadrilateral overlay. Does not force a redraw.
@@ -370,11 +363,11 @@ class Overlay:
 
         # top
         win32gui.SelectObject(hdc, pin_thick)
-        win32gui.MoveToEx(hdc, int(quad.pt1.getX()), int(quad.pt1.getY()))
-        win32gui.LineTo(hdc, int(quad.pt2.getX()), int(quad.pt2.getY()))
-        win32gui.LineTo(hdc, int(quad.pt3.getX()), int(quad.pt3.getY()))
-        win32gui.LineTo(hdc, int(quad.pt4.getX()), int(quad.pt4.getY()))
-        win32gui.LineTo(hdc, int(quad.pt1.getX()), int(quad.pt1.getY()))
+        win32gui.MoveToEx(hdc, int(quad.pt1.get_x()), int(quad.pt1.get_y()))
+        win32gui.LineTo(hdc, int(quad.pt2.get_x()), int(quad.pt2.get_y()))
+        win32gui.LineTo(hdc, int(quad.pt3.get_x()), int(quad.pt3.get_y()))
+        win32gui.LineTo(hdc, int(quad.pt4.get_x()), int(quad.pt4.get_y()))
+        win32gui.LineTo(hdc, int(quad.pt1.get_x()), int(quad.pt1.get_y()))
 
     @staticmethod 
     def overlay_set_font(hdc, fontname, fontSize):

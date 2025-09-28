@@ -11,7 +11,7 @@ import numpy as np
 
 from EDAP_data import GuiFocusExternalPanel
 from EDlogger import logger
-from Screen_Regions import size_scale_for_station, Quad, Point, Rectangle
+from Screen_Regions import Quad, Point
 from StatusParser import StatusParser
 from Screen import crop_image_by_pct
 
@@ -92,15 +92,16 @@ def image_reverse_perspective_transform(image, src_quad: Quad, transform) -> Qua
     return q_out
 
 
-def rects_to_quadrilateral(rect_tlbr: Rectangle, rect_bltr: Rectangle) -> Quad:
+def rects_to_quadrilateral(rect_tlbr: Quad, rect_bltr: Quad) -> Quad:
     """
-        rect - [L, T, R, B]
-        The panel is rotated slightly anti-clockwise
-        """
-    q = Quad(Point(rect_tlbr.left, rect_tlbr.top),
-             Point(rect_bltr.right, rect_bltr.top),
-             Point(rect_tlbr.right, rect_tlbr.bottom),
-             Point(rect_bltr.left, rect_bltr.bottom))
+    Convert two rectangles that cover the points of the nav panel to a quad.
+    rect - [L, T, R, B]
+    The panel is rotated slightly anti-clockwise
+    """
+    q = Quad(Point(rect_tlbr.get_left(), rect_tlbr.get_top()),
+             Point(rect_bltr.get_right(), rect_bltr.get_top()),
+             Point(rect_tlbr.get_right(), rect_tlbr.get_bottom()),
+             Point(rect_bltr.get_left(), rect_bltr.get_bottom()))
     return q
 
 
@@ -123,21 +124,16 @@ class EDNavigationPanel:
 
         # The rect is [L, T, R, B], top left x, y, and bottom right x, y in fraction of screen resolution
         # Nav Panel region covers the entire navigation panel.
-        self.reg = {'nav_panel': {'rect': [0.11, 0.21, 0.70, 0.86]},
-                    'temp_tab_bar': {'rect': [0.0, 0.2, 0.7, 0.35]},
-                    'panel_bounds1': {'rect': [0.0, 0.2, 0.7, 0.35]},
+        self.reg = {'panel_bounds1': {'rect': [0.0, 0.2, 0.7, 0.35]},
                     'panel_bounds2': {'rect': [0.0, 0.2, 0.7, 0.35]},
                     }
         self.sub_reg = {'tab_bar': {'rect': [0.0, 0.0, 1.0, 0.08]},
                         'location_panel': {'rect': [0.2218, 0.3, 0.8, 1.0]}}
-
-        self.nav_pnl_tab_width = 0.23  # Nav panel tab width in percent
-        self.nav_pnl_tab_height = 0.7  # Nav panel tab height in percent
-        self.nav_pnl_location_width = 1.0  # Nav panel location width in percent
-        self.nav_pnl_location_height = 0.08  # Nav panel location height in percent
+        self.sub_reg_size = {'nav_pnl_tab': {"width": 0.23, "height": 0.7},  # Nav panel tab size in percent
+                             'nav_pnl_location': {"width": 1.0, "height": 0.08}}  # Nav panel location size in percent
         self.panel_quad_pct = Quad()
         self.panel_quad_pix = Quad()
-        self.nav_panel = None
+        self.panel = None
         self._transform = None  # Warp transform to deskew the Nav panel
         self._rev_transform = None  # Reverse warp transform to skew to match the Nav panel
 
@@ -155,112 +151,13 @@ class EDNavigationPanel:
                     self.reg[key]['rect'] = calibrated_regions[calibrated_key]['rect']
 
             # Produce quadrilateral from the two bounds rectangles
-            reg1 = Rectangle.from_rect(self.reg['panel_bounds1']['rect'])
-            reg2 = Rectangle.from_rect(self.reg['panel_bounds2']['rect'])
+            reg1 = Quad.from_rect(self.reg['panel_bounds1']['rect'])
+            reg2 = Quad.from_rect(self.reg['panel_bounds2']['rect'])
             self.panel_quad_pct = rects_to_quadrilateral(reg1, reg2)
             self.panel_quad_pix = copy(self.panel_quad_pct)
             self.panel_quad_pix.scale_from_origin(self.ap.scr.screen_width, self.ap.scr.screen_height)
 
-    def request_docking_ocr(self) -> bool:
-        """ Try to request docking with OCR.
-        """
-        res = self.show_contacts_tab()
-        if res is None:
-            return False
-        if not res:
-            print("Contacts Panel could not be opened")
-            return False
-
-        # On the CONTACT TAB, go to top selection, do this 4 seconds to ensure at top
-        # then go right, which will be "REQUEST DOCKING" and select it
-        self.keys.send("UI_Down")  # go down
-        self.keys.send('UI_Up', hold=2)  # got to top row
-        self.keys.send('UI_Right')
-        self.keys.send('UI_Select')
-        sleep(0.3)
-
-        self.hide_nav_panel()
-        return True
-
-    def request_docking(self):
-        """ Request docking from Nav Panel. """
-        self.keys.send('UI_Back', repeat=10)
-        self.keys.send('HeadLookReset')
-        self.keys.send('UIFocus', state=1)
-        self.keys.send('UI_Left')
-
-        self.keys.send('UIFocus', state=0)
-        sleep(0.5)
-
-        # Draw box around region
-        abs_rect = self.screen.screen_rect_to_abs(self.reg['temp_tab_bar']['rect'])
-
-        if self.ap.debug_overlay:
-            self.ap.overlay.overlay_quad_pct('nav_panel_active', self.panel_quad_pct, (0, 255, 0), 2, 5)
-            self.ap.overlay.overlay_paint()
-
-        tab_text = ""
-
-        # Take screenshot of the panel
-        image = self.ocr.capture_region_pct(self.reg['temp_tab_bar'])
-
-        img_selected, _, ocr_textlist = self.ocr.get_highlighted_item_data(image, self.nav_pnl_tab_width,
-                                                                           self.nav_pnl_tab_height)
-        if img_selected is not None:
-            logger.debug("is_nav_panel_active: image selected")
-            logger.debug(f"is_nav_panel_active: OCR: {ocr_textlist}")
-
-            # Overlay OCR result
-            if self.ap.debug_overlay:
-                self.ap.overlay.overlay_floating_text('nav_panel_text', f'{ocr_textlist}', abs_rect[0],
-                                                      abs_rect[1] - 25, (0, 255, 0))
-                self.ap.overlay.overlay_paint()
-
-            # Test OCR string
-            if self.navigation_tab_text in str(ocr_textlist):
-                tab_text = self.navigation_tab_text
-            if self.transactions_tab_text in str(ocr_textlist):
-                tab_text = self.transactions_tab_text
-            if self.contacts_tab_text in str(ocr_textlist):
-                tab_text = self.contacts_tab_text
-            if self.target_tab_text in str(ocr_textlist):
-                tab_text = self.target_tab_text
-        else:
-            logger.debug("is_right_panel_active: no image selected")
-
-        if tab_text == "":
-            # we start with the Left Panel having "NAVIGATION" highlighted, we then need to right
-            # twice to "CONTACTS".  Notice of a FSD run, the LEFT panel is reset to "NAVIGATION"
-            # otherwise it is on the last tab you selected. Thus must start AP with "NAVIGATION" selected
-            self.keys.send('CycleNextPanel', hold=0.2)
-            sleep(0.2)
-            self.keys.send('CycleNextPanel', hold=0.2)
-        elif tab_text is self.navigation_tab_text:
-            self.keys.send('CycleNextPanel', repeat=2)
-        elif tab_text is self.transactions_tab_text:
-            self.keys.send('CycleNextPanel', repeat=1)
-        elif tab_text is self.contacts_tab_text:
-            pass
-        elif tab_text is self.target_tab_text:
-            self.keys.send('CycleNextPanel', repeat=4)
-
-        # On the CONTACT TAB, go to top selection, do this 4 seconds to ensure at top
-        # then go right, which will be "REQUEST DOCKING" and select it
-        self.keys.send('UI_Up', hold=4)
-        self.keys.send('UI_Right')
-        self.keys.send('UI_Select')
-
-        sleep(0.5)
-        # Go back to NAVIGATION tab
-        self.keys.send('CycleNextPanel', hold=0.2)  # STATS tab
-        sleep(0.2)
-        self.keys.send('CycleNextPanel', hold=0.2)  # NAVIGATION tab
-
-        sleep(0.3)
-        self.keys.send('UI_Back')
-        self.keys.send('HeadLookReset')
-
-    def capture_nav_panel_straightened(self):
+    def capture_panel_straightened(self):
         """ Grab the image based on the panel coordinates.
         Returns an unfiltered image, either from screenshot or provided image, or None if an image cannot
         be grabbed.
@@ -293,12 +190,38 @@ class EDNavigationPanel:
 
         return straightened
 
+    def capture_tab_bar(self):
+        """ Get the tab bar (NAVIGATION/TRANSACTIONS/CONTACTS/TARGET).
+        Returns an image, or None.
+        """
+        # Scale the regions based on the target resolution.
+        self.panel = self.capture_panel_straightened()
+        if self.panel is None:
+            return None
+
+        # Convert region rect to quad
+        tab_bar_quad = Quad.from_rect(self.sub_reg['tab_bar']['rect'])
+        # Crop the image to the extents of the quad
+        tab_bar = crop_image_by_pct(self.panel, tab_bar_quad)
+        cv2.imwrite(f'test/nav-panel/out/tab_bar.png', tab_bar)
+
+        if self.ap.debug_overlay:
+            # Transform the array of coordinates to the skew of the nav panel
+            q_out = image_reverse_perspective_transform(self.panel, tab_bar_quad, self._rev_transform)
+            # Offset to match the nav panel offset
+            q_out.offset(self.panel_quad_pix.get_left(), self.panel_quad_pix.get_top())
+
+            self.ap.overlay.overlay_quad_pix('nav_panel_tab_bar', q_out, (0, 255, 0), 2, 5)
+            self.ap.overlay.overlay_paint()
+
+        return tab_bar
+
     def capture_location_panel(self):
         """ Get the location panel from within the nav panel.
         Returns an image, or None.
         """
         # Scale the regions based on the target resolution.
-        nav_panel = self.capture_nav_panel_straightened()
+        nav_panel = self.capture_panel_straightened()
         if nav_panel is None:
             return None
 
@@ -319,38 +242,12 @@ class EDNavigationPanel:
 
         return location_panel
 
-    def capture_tab_bar(self):
-        """ Get the tab bar (NAVIGATION/TRANSACTIONS/CONTACTS/TARGET).
-        Returns an image, or None.
-        """
-        # Scale the regions based on the target resolution.
-        self.nav_panel = self.capture_nav_panel_straightened()
-        if self.nav_panel is None:
-            return None
-
-        # Convert region rect to quad
-        tab_bar_quad = Quad.from_rect(self.sub_reg['tab_bar']['rect'])
-        # Crop the image to the extents of the quad
-        tab_bar = crop_image_by_pct(self.nav_panel, tab_bar_quad)
-        cv2.imwrite(f'test/nav-panel/out/tab_bar.png', tab_bar)
-
-        if self.ap.debug_overlay:
-            # Transform the array of coordinates to the skew of the nav panel
-            q_out = image_reverse_perspective_transform(self.nav_panel, tab_bar_quad, self._rev_transform)
-            # Offset to match the nav panel offset
-            q_out.offset(self.panel_quad_pix.get_left(), self.panel_quad_pix.get_top())
-
-            self.ap.overlay.overlay_quad_pix('nav_panel_tab_bar', q_out, (0, 255, 0), 2, 5)
-            self.ap.overlay.overlay_paint()
-
-        return tab_bar
-
-    def show_nav_panel(self):
+    def show_panel(self):
         """ Shows the Nav Panel. Opens the Nav Panel if not already open.
         Returns True if successful, else False.
         """
         # Is nav panel active?
-        active, active_tab_name = self.is_nav_panel_active()
+        active, active_tab_name = self.is_panel_active()
         if active:
             # Store image
             image = self.screen.get_screen_full()
@@ -367,7 +264,7 @@ class EDNavigationPanel:
             sleep(0.5)
 
             # Check if it opened
-            active, active_tab_name = self.is_nav_panel_active()
+            active, active_tab_name = self.is_panel_active()
             if active:
                 # Store image
                 image = self.screen.get_screen_full()
@@ -376,12 +273,80 @@ class EDNavigationPanel:
             else:
                 return False, ""
 
+    def hide_panel(self):
+        """ Hides the Nav Panel if open.
+        """
+        # Is nav panel active?
+        if self.status_parser.get_gui_focus() == GuiFocusExternalPanel:
+            self.ap.ship_control.goto_cockpit_view()
+
+    def is_panel_active(self) -> (bool, str):
+        """ Determine if the Nav Panel is open and if so, which tab is active.
+            Returns True if active, False if not and also the string of the tab name.
+        """
+        # Check if nav panel is open
+        if not self.status_parser.wait_for_gui_focus(GuiFocusExternalPanel, 3):
+            logger.debug("is_nav_panel_active: right panel not focused")
+            return False, ""
+
+        # Try this 'n' times before giving up
+        tab_text = ""
+        for i in range(10):
+            # Is open, so proceed
+            tab_bar = self.capture_tab_bar()
+            if tab_bar is None:
+                return False, ""
+
+            img_selected, _, ocr_textlist, quad = self.ocr.get_highlighted_item_data(tab_bar, self.sub_reg_size['nav_pnl_tab']['width'], self.sub_reg_size['nav_pnl_tab']['height'])
+            if img_selected is not None:
+                if self.ap.debug_overlay:
+                    tab_bar_quad = Quad.from_rect(self.sub_reg['tab_bar']['rect'])
+                    # Convert to a percentage of the nav panel
+                    quad.scale_from_origin(tab_bar_quad.get_width(), tab_bar_quad.get_height())
+                    # quad.offset(tab_bar_quad.get_left(), tab_bar_quad.get_top())
+
+                    # Transform the array of coordinates to the skew of the nav panel
+                    q_out = image_reverse_perspective_transform(self.panel, quad, self._rev_transform)
+                    # Offset to match the nav panel offset
+                    q_out.offset(self.panel_quad_pix.get_left(), self.panel_quad_pix.get_top())
+
+                    # Overlay OCR result
+                    self.ap.overlay.overlay_floating_text('nav_panel_item_text', f'{str(ocr_textlist)}', q_out.get_left(), q_out.get_top() - 25,                                                         (0, 255, 0))
+                    self.ap.overlay.overlay_quad_pix('nav_panel_item', q_out, (0, 255, 0), 2)
+                    self.ap.overlay.overlay_paint()
+
+                # Test OCR string
+                if self.navigation_tab_text in str(ocr_textlist):
+                    tab_text = self.navigation_tab_text
+                    break
+                if self.transactions_tab_text in str(ocr_textlist):
+                    tab_text = self.transactions_tab_text
+                    break
+                if self.contacts_tab_text in str(ocr_textlist):
+                    tab_text = self.contacts_tab_text
+                    break
+                if self.target_tab_text in str(ocr_textlist):
+                    tab_text = self.target_tab_text
+                    break
+
+            # Wait and retry
+            sleep(1)
+
+            # In case we are on a picture tab, cycle to the next tab
+            self.keys.send('CycleNextPanel')
+
+        # Return Tab text or nothing
+        if tab_text != "":
+            return True, tab_text
+        else:
+            return False, ""
+
     def show_navigation_tab(self) -> bool | None:
         """ Shows the NAVIGATION tab of the Nav Panel. Opens the Nav Panel if not already open.
         Returns True if successful, else False.
         """
         # Show nav panel
-        active, active_tab_name = self.show_nav_panel()
+        active, active_tab_name = self.show_panel()
         if active is None:
             return None
         if not active:
@@ -391,17 +356,12 @@ class EDNavigationPanel:
             # Do nothing
             return True
         elif active_tab_name is self.transactions_tab_text:
-            # self.keys.send('CycleNextPanel', hold=0.2)
-            # sleep(0.2)
-            # self.keys.send('CycleNextPanel', hold=0.2)
             self.keys.send('CycleNextPanel', repeat=3)
             return True
         elif active_tab_name is self.contacts_tab_text:
-            # self.keys.send('CycleNextPanel', hold=0.2)
             self.keys.send('CycleNextPanel', repeat=2)
             return True
         elif active_tab_name is self.target_tab_text:
-            # self.keys.send('CycleNextPanel', hold=0.2)
             self.keys.send('CycleNextPanel', repeat=2)
             return True
 
@@ -410,7 +370,7 @@ class EDNavigationPanel:
         Returns True if successful, else False.
         """
         # Show nav panel
-        active, active_tab_name = self.show_nav_panel()
+        active, active_tab_name = self.show_panel()
         if active is None:
             return None
         if not active:
@@ -428,62 +388,6 @@ class EDNavigationPanel:
         elif active_tab_name is self.target_tab_text:
             self.keys.send('CycleNextPanel', repeat=3)
             return True
-
-    def hide_nav_panel(self):
-        """ Hides the Nav Panel if open.
-        """
-        # Is nav panel active?
-        if self.status_parser.get_gui_focus() == GuiFocusExternalPanel:
-            self.ap.ship_control.goto_cockpit_view()
-
-    def is_nav_panel_active(self) -> (bool, str):
-        """ Determine if the Nav Panel is open and if so, which tab is active.
-            Returns True if active, False if not and also the string of the tab name.
-        """
-        # Check if nav panel is open
-        status = self.status_parser.get_cleaned_data()
-        if status['GuiFocus'] != GuiFocusExternalPanel:
-            return False, ""
-
-        # Try this 'n' times before giving up
-        for i in range(10):
-            # Is open, so proceed
-            tab_bar = self.capture_tab_bar()
-            if tab_bar is None:
-                return False, ""
-
-            img_selected, _, ocr_textlist, quad = self.ocr.get_highlighted_item_data(tab_bar, self.nav_pnl_tab_width,
-                                                                                     self.nav_pnl_tab_height)
-            if img_selected is not None:
-                if self.ap.debug_overlay:
-                    # Scale the selected item down to the scale of the tab bar
-                    tab_bar_quad = Quad.from_rect(self.sub_reg['tab_bar']['rect'])
-                    quad.scale_from_origin(tab_bar_quad.get_width(), tab_bar_quad.get_height())
-
-                    # Transform the array of coordinates to the skew of the nav panel
-                    q_out = image_reverse_perspective_transform(self.nav_panel, quad, self._rev_transform)
-                    # Offset to match the nav panel offsetH
-                    q_out.offset(self.panel_quad_pix.get_left(), self.panel_quad_pix.get_top())
-
-                    # Overlay OCR result
-                    self.ap.overlay.overlay_floating_text('nav_panel_item_text', f'{str(ocr_textlist)}', q_out.get_left(), q_out.get_top() - 25,                                                         (0, 255, 0))
-                    self.ap.overlay.overlay_quad_pix('nav_panel_item', q_out, (0, 255, 0), 2)
-                    self.ap.overlay.overlay_paint()
-
-                if self.navigation_tab_text in str(ocr_textlist):
-                    return True, self.navigation_tab_text
-                if self.transactions_tab_text in str(ocr_textlist):
-                    return True, self.transactions_tab_text
-                if self.contacts_tab_text in str(ocr_textlist):
-                    return True, self.contacts_tab_text
-                if self.target_tab_text in str(ocr_textlist):
-                    return True, self.target_tab_text
-
-            # Wait and retry
-            sleep(1)
-
-        # Did not find anything
-        return False, ""
 
     def lock_destination(self, dst_name) -> bool:
         """ Checks if destination is already locked and if not, Opens Nav Panel, Navigation Tab,
@@ -509,8 +413,29 @@ class EDNavigationPanel:
         else:
             return False
 
-        self.hide_nav_panel()
+        self.hide_panel()
         return found
+
+    def request_docking(self) -> bool:
+        """ Try to request docking with OCR.
+        """
+        res = self.show_contacts_tab()
+        if res is None:
+            return False
+        if not res:
+            print("Contacts Panel could not be opened")
+            return False
+
+        # On the CONTACT TAB, go to top selection, do this 4 seconds to ensure at top
+        # then go right, which will be "REQUEST DOCKING" and select it
+        self.keys.send("UI_Down")  # go down
+        self.keys.send('UI_Up', hold=2)  # got to top row
+        self.keys.send('UI_Right')
+        self.keys.send('UI_Select')
+        sleep(0.3)
+
+        self.hide_panel()
+        return True
 
     def scroll_to_top_of_list(self) -> bool | None:
         """ Attempts to scroll to the top of the list by holding 'up' and waiting until the resulting OCR
@@ -529,8 +454,7 @@ class EDNavigationPanel:
                 return None
 
             # Find the selected item/menu (solid orange)
-            img_selected, _ = self.ocr.get_highlighted_item_in_image(loc_panel, self.nav_pnl_location_width,
-                                                                     self.nav_pnl_location_height)
+            img_selected, q = self.ocr.get_highlighted_item_in_image(loc_panel, self.sub_reg_size['nav_pnl_location']['width'], self.sub_reg_size['nav_pnl_location']['height'])
 
             # Check if end of list.
             if img_selected is None and in_list:
@@ -557,6 +481,7 @@ class EDNavigationPanel:
     def find_destination_in_list(self, dst_name) -> bool:
         # tries is the number of rows to go through to find the item looking for
         # the Nav Panel should be filtered to reduce the number of rows in the list
+        q_out = None
 
         # Scroll to top of list
         res = self.scroll_to_top_of_list()
@@ -573,24 +498,47 @@ class EDNavigationPanel:
                 return False
 
             # Find the selected item/menu (solid orange)
-            img_selected, q = self.ocr.get_highlighted_item_in_image(loc_panel, self.nav_pnl_location_width,
-                                                                     self.nav_pnl_location_height)
+            img_selected, quad = self.ocr.get_highlighted_item_in_image(loc_panel, self.sub_reg_size['nav_pnl_location']['width'], self.sub_reg_size['nav_pnl_location']['height'])
             # Check if end of list.
             if img_selected is None and in_list:
                 logger.debug(f"Off end of list. Did not find '{dst_name}' in list.")
                 return False
 
-            # Check if this item is above the last item (we cycled to top).
-            if q.get_top() < y_last - 100:
+            if self.ap.debug_overlay:
+                # Scale the selected item down to the scale of the tab bar
+                loc_pnl_quad = Quad.from_rect(self.sub_reg['location_panel']['rect'])
+                q = copy(quad)
+                # Convert to a percentage of the nav panel
+                q.scale_from_origin(loc_pnl_quad.get_width(), loc_pnl_quad.get_height())
+                q.offset(loc_pnl_quad.get_left(), loc_pnl_quad.get_top())
+
+                # Transform the array of coordinates to the skew of the nav panel
+                q_out = image_reverse_perspective_transform(self.panel, q, self._rev_transform)
+                # Offset to match the nav panel offset
+                q_out.offset(self.panel_quad_pix.get_left(), self.panel_quad_pix.get_top())
+
+                # Overlay OCR result
+                # self.ap.overlay.overlay_floating_text('nav_panel_item_text', f'{str(ocr_textlist)}', q_out.get_left(), q_out.get_top() - 25, (0, 255, 0))
+                self.ap.overlay.overlay_quad_pix('nav_panel_item', q_out, (0, 255, 0), 2)
+                self.ap.overlay.overlay_paint()
+
+            # Check if this item is above the last item (we cycled to top). The quad is a percent decimal (0.0 - 1.0).
+            if quad.get_top() < y_last - 0.1:
                 logger.debug(f"Cycled back to top. Did not find '{dst_name}' in list.")
                 return False
             else:
-                y_last = q.get_top()
+                y_last = quad.get_top()
 
             # OCR the selected item
             sim_match = 0.8  # Similarity match 0.0 - 1.0 for 0% - 100%)
             ocr_textlist = self.ocr.image_simple_ocr(img_selected)
             if ocr_textlist is not None:
+                if self.ap.debug_overlay:
+                    # Overlay OCR result
+                    self.ap.overlay.overlay_floating_text('nav_panel_item_text', f'{str(ocr_textlist)}',
+                                                          q_out.get_left(), q_out.get_top() - 25, (0, 255, 0))
+                    self.ap.overlay.overlay_paint()
+
                 sim = self.ocr.string_similarity(f"['{dst_name.upper()}']", str(ocr_textlist))
                 #print(f"Similarity of ['{dst_name.upper()}'] and {str(ocr_textlist)} is {sim}")
                 if sim > sim_match:
