@@ -2,6 +2,7 @@
 This document explains how to perform calibration for the
 Elite Dangerous Autopilot (GUI) version. 
 Calibration is performed from the Calibration tab:
+
 ![Calibration.png](../screen/Calibration.png)
 
 ## Region Calibration
@@ -18,7 +19,7 @@ The process is generally the same for each region:
 6. Left click and drag with the mouse to select a new region. It will be highlighted blue. Release the mouse button to complete the selection. To cancel selection, right click the mouse.
 7. Click **Save All Calibrations** and select the region again in the dropdown list to check the region is correct. Repeat until correct.
 
-To further aid calibration, the following give examples of the correct region.
+To further aid calibration, the following give examples of the correct region. Note that in the examples below, some additional space was added to make it easier to see where the region is. Try to get as close as possible to the line, without going over.
 
 ### Codex
 1. Open the Codex from right hand cockpit panel.
@@ -45,6 +46,7 @@ To further aid calibration, the following give examples of the correct region.
 ![CalibrationStationServices.png](../screen/CalibrationStationServices.png)
 
 ### Navigation Panel
+Note: Appears the Nav Panel changes per ship, so increase the region for each new ship and eventually all ships will be covered. It should work out okay and will prevent having to redo every time you switch ships.
 1. Open Navigation Panel.
 2. Draw a rectangle from the top left corner of the nav panel to the bottom right corner.
 
@@ -52,6 +54,7 @@ To further aid calibration, the following give examples of the correct region.
 ![CalibrationNavPanel2.png](../screen/CalibrationNavPanel2.png)
 
 ### Status Panel
+Note: Appears the Nav Panel changes per ship, so increase the region for each new ship and eventually all ships will be covered. It should work out okay and will prevent having to redo every time you switch ships.
 1. Open Internal Status Panel (right hand panel).
 2. Draw a rectangle from the top left corner of the nav panel to the bottom right corner.
 
