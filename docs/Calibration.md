@@ -11,7 +11,7 @@ This performs calibration of certain regions of the screen that may change bsed 
 ![CalibrationRegionCalibration.png](../screen/CalibrationRegionCalibration.png)
 
 The process is generally the same for each region:
-1. Select a region from the dropdown list. The current region will be highlighted.
+1. Select a region from the dropdown list. The region will be highlighted on the screen.
 2. Review the procedure which explains the process. It may be that the highlighted region is already correct. If the procedure states 'Do not change', then the region is read only, it will automatically be calculated when **Save All Calibrations** is clicked.
 3. Follow the pictures below, if unsure of the instructions.
 4. Click the **Calibrate Region** button.

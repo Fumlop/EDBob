@@ -11,7 +11,7 @@ from EDKeys import EDKeys
 from EDNavigationPanel import rects_to_quadrilateral, image_perspective_transform, image_reverse_perspective_transform
 from OCR import OCR
 from Screen import Screen, crop_image_by_pct
-from Screen_Regions import size_scale_for_station, Quad
+from Screen_Regions import Quad
 from StatusParser import StatusParser
 from EDlogger import logger
 

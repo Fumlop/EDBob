@@ -7,7 +7,7 @@ from MarketParser import MarketParser
 from StatusParser import StatusParser
 from time import sleep
 from EDlogger import logger
-from Screen_Regions import reg_scale_for_station, Quad, sub_region_to_region_scaling
+from Screen_Regions import Quad, scale_region
 
 """
 File:StationServicesInShip.py    
@@ -33,11 +33,12 @@ class EDStationServicesInShip:
         self.status_parser = StatusParser()
         self.market_parser = MarketParser()
         # The rect is top left x, y, and bottom right x, y in fraction of screen resolution
-        self.reg = {'connected_to': {'rect': [0.0, 0.0, 0.25, 0.25]},
-                    'commodities_market': {'rect': [0.0, 0.0, 0.25, 0.25]},
-                    'station_services': {'rect': [0.10, 0.10, 0.90, 0.85]}
-                    }
-        self.sub_reg = {'connected_to': {'rect': [0.0, 0.0, 0.25, 0.25]}}
+        self.reg = {'commodities_market': {'rect': [0.0, 0.0, 0.25, 0.25]},
+                    'station_services': {'rect': [0.10, 0.10, 0.90, 0.85]},
+                    'connected_to': {'rect': [0.0, 0.0, 0.25, 0.1]},
+                    'market_header': {'rect': [0.0, 0.0, 0.25, 0.1]}}
+        self.sub_reg = {'connected_to': {'rect': [0.0, 0.0, 0.25, 0.1]},
+                        'market_header': {'rect': [0.0, 0.0, 0.25, 0.1]}}
 
         self.load_calibrated_regions()
 
@@ -53,8 +54,10 @@ class EDStationServicesInShip:
                     self.reg[key]['rect'] = calibrated_regions[calibrated_key]['rect']
 
             # Scale the regions based on the sub-region.
-            self.reg['connected_to']['rect'] = sub_region_to_region_scaling(self.reg['station_services']['rect'],
-                                                                            self.sub_reg['connected_to']['rect'])
+            self.reg['connected_to']['rect'] = scale_region(self.reg['station_services']['rect'],
+                                                            self.sub_reg['connected_to']['rect'])
+            self.reg['market_header']['rect'] = scale_region(self.reg['commodities_market']['rect'],
+                                                             self.sub_reg['market_header']['rect'])
 
     def goto_station_services(self) -> bool:
         """ Goto Station Services. """
@@ -129,7 +132,7 @@ class EDStationServicesInShip:
             logger.warning("Unable to find COMMODITIES MARKET button on Station Services screen.")
             return False
 
-        self.ap_ckb('log+vce', "Connecting to commodities market, commander.")
+        self.ap_ckb('log+vce', "Connecting to commodities market.")
 
         # Select Mission Board
         if res == "RR":
@@ -148,11 +151,13 @@ class EDStationServicesInShip:
             self.keys.send('UI_Down')
             self.keys.send('UI_Select')  # Select Commodities
 
-        # Scale the regions based on the target resolution.
-        scl_reg_rect = reg_scale_for_station(self.reg['commodities_market'], self.screen.screen_width, self.screen.screen_height)
+        if self.ap.debug_overlay:
+            mkt = Quad.from_rect(self.reg['commodities_market']['rect'])
+            self.ap.overlay.overlay_quad_pct('commodities_market', mkt, (0, 255, 0), 2, 5)
+            self.ap.overlay.overlay_paint()
 
         # Wait for screen to appear
-        res = self.ocr.wait_for_text(self.ap, [self.locale["COMMODITIES_MARKET"]], scl_reg_rect)
+        res = self.ocr.wait_for_text(self.ap, [self.locale["COMMODITIES_MARKET"]], self.reg['market_header'])
         return res
 
     @staticmethod

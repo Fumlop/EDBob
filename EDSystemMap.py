@@ -5,8 +5,7 @@ import os
 
 from EDAP_data import GuiFocusSystemMap
 from EDlogger import logger
-from OCR import OCR
-from Screen_Regions import reg_scale_for_station, sub_region_to_region_scaling, Quad
+from Screen_Regions import scale_region, Quad
 from StatusParser import StatusParser
 from time import sleep
 
@@ -41,8 +40,8 @@ class EDSystemMap:
                     self.reg[key]['rect'] = calibrated_regions[calibrated_key]['rect']
 
             # Scale the regions based on the sub-region.
-            self.reg['cartographics']['rect'] = sub_region_to_region_scaling(self.reg['full_panel']['rect'],
-                                                                             self.sub_reg['cartographics']['rect'])
+            self.reg['cartographics']['rect'] = scale_region(self.reg['full_panel']['rect'],
+                                                             self.sub_reg['cartographics']['rect'])
     def set_sys_map_dest_bookmark(self, ap, bookmark_type: str, bookmark_position: int) -> bool:
         """ Set the System Map destination using a bookmark.
         @param ap: ED_AP reference.
