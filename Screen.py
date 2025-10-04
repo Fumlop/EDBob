@@ -84,6 +84,7 @@ class Screen:
         self.screen_left = 0
         self.screen_top = 0
         self.monitor_number = 0
+        self.aspect_ratio = 0
         self.mon = None
 
         # Find ED window position to determine which monitor it is on
@@ -109,6 +110,7 @@ class Screen:
                         self.mon = self.mss.monitors[self.monitor_number]
                         self.screen_width = item['width']
                         self.screen_height = item['height']
+                        self.aspect_ratio = self.screen_width / self.screen_height
                         self.screen_left = item['left']
                         self.screen_top = item['top']
                         logger.debug(f'Elite Dangerous is on monitor {mon_num}.')
@@ -121,6 +123,7 @@ class Screen:
                 self.mon = self.mss.monitors[self.monitor_number]
                 self.screen_width = item['width']
                 self.screen_height = item['height']
+                self.aspect_ratio = self.screen_width / self.screen_height
                 self.screen_left = item['left']
                 self.screen_top = item['top']
 

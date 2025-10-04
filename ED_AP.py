@@ -205,11 +205,15 @@ class EDAutopilot:
         self.single_waypoint_enabled = False
 
         # Create instance of each of the needed Classes
-        self.gfx_settings = EDGraphicsSettings()
-
         self.scr = Screen.Screen(cb)
         self.scr.scaleX = self.config['TargetScale']
         self.scr.scaleY = self.config['TargetScale']
+
+        self.gfx_settings = EDGraphicsSettings()
+        self.hor_fov = float(self.gfx_settings.fov) * 1.5
+        cb('log', f'Horizontal FOV: {self.hor_fov} deg (-{self.hor_fov/2} to {self.hor_fov/2}).')
+        self.ver_fov = self.hor_fov / self.scr.aspect_ratio
+        cb('log', f'Vertical FOV: {self.ver_fov} deg (-{self.ver_fov/2} to {self.ver_fov/2}).')
 
         self.ocr = OCR(self, self.scr)
         self.templ = Image_Templates.Image_Templates(self.scr.scaleX, self.scr.scaleY, self.scr.scaleX)
