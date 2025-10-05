@@ -147,10 +147,10 @@ class OCR:
             if ocr_data is not None:
                 return img_selected, ocr_data, ocr_textlist, quad
             else:
-                return None, None, None
+                return None, None, None, None
 
         else:
-            return None, None, None
+            return None, None, None, None
 
     @staticmethod
     def get_highlighted_item_in_image(image, min_w, min_h) -> (MatLike, Quad):
