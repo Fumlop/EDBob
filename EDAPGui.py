@@ -497,14 +497,41 @@ class APGui:
         self.log_msg(f"Status update: {txt}")
 
     def ship_tst_pitch(self):
-        self.ed_ap.ship_tst_pitch()
+        self.ed_ap.ship_tst_pitch(360)
 
     def ship_tst_roll(self):
-        self.ed_ap.ship_tst_roll()
+        self.ed_ap.ship_tst_roll(360)
 
     def ship_tst_yaw(self):
-        self.ed_ap.ship_tst_yaw()
+        self.ed_ap.ship_tst_yaw(360)
 
+    def ship_tst_pitch_30(self):
+        self.ed_ap.ship_tst_pitch(30)
+
+    def ship_tst_roll_30(self):
+        self.ed_ap.ship_tst_roll(30)
+
+    def ship_tst_yaw_30(self):
+        self.ed_ap.ship_tst_yaw(30)
+
+    def ship_tst_pitch_45(self):
+        self.ed_ap.ship_tst_pitch(45)
+
+    def ship_tst_roll_45(self):
+        self.ed_ap.ship_tst_roll(45)
+
+    def ship_tst_yaw_45(self):
+        self.ed_ap.ship_tst_yaw(45)
+
+    def ship_tst_pitch_90(self):
+        self.ed_ap.ship_tst_pitch(90)
+
+    def ship_tst_roll_90(self):
+        self.ed_ap.ship_tst_roll(90)
+
+    def ship_tst_yaw_90(self):
+        self.ed_ap.ship_tst_yaw(90)
+        
     def open_wp_file(self):
         filetypes = (
             ('json files', '*.json'),
@@ -1092,6 +1119,31 @@ class APGui:
 
         btn_save = ttk.Button(blk_debug_buttons, text='Save All Settings', command=self.save_settings, style="Accent.TButton")
         btn_save.grid(row=7, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
+
+        blk_rpy = ttk.LabelFrame(page2, text="RPY Test", padding=(10, 5))
+        blk_rpy.grid(row=8, column=0, columnspan=2, padx=2, pady=2, sticky="NSEW")
+        blk_rpy.columnconfigure([0, 1, 2], weight=1, minsize=100)
+
+        btn_tst_roll_30 = ttk.Button(blk_rpy, text='Test Roll Rate (30 deg)', command=self.ship_tst_roll_30)
+        btn_tst_roll_30.grid(row=1, column=0, padx=2, pady=2, columnspan=1, sticky="NSEW")
+        btn_tst_pitch_30 = ttk.Button(blk_rpy, text='Test Pitch Rate (30 deg)', command=self.ship_tst_pitch_30)
+        btn_tst_pitch_30.grid(row=1, column=1, padx=2, pady=2, columnspan=1, sticky="NSEW")
+        btn_tst_yaw_30 = ttk.Button(blk_rpy, text='Test Yaw Rate (30 deg)', command=self.ship_tst_yaw_30)
+        btn_tst_yaw_30.grid(row=1, column=2, padx=2, pady=2, columnspan=1, sticky="NSEW")
+
+        btn_tst_roll_45 = ttk.Button(blk_rpy, text='Test Roll Rate (45 deg)', command=self.ship_tst_roll_45)
+        btn_tst_roll_45.grid(row=2, column=0, padx=2, pady=2, columnspan=1, sticky="NSEW")
+        btn_tst_pitch_45 = ttk.Button(blk_rpy, text='Test Pitch Rate (45 deg)', command=self.ship_tst_pitch_45)
+        btn_tst_pitch_45.grid(row=2, column=1, padx=2, pady=2, columnspan=1, sticky="NSEW")
+        btn_tst_yaw_45 = ttk.Button(blk_rpy, text='Test Yaw Rate (45 deg)', command=self.ship_tst_yaw_45)
+        btn_tst_yaw_45.grid(row=2, column=2, padx=2, pady=2, columnspan=1, sticky="NSEW")
+
+        btn_tst_roll_90 = ttk.Button(blk_rpy, text='Test Roll Rate (90 deg)', command=self.ship_tst_roll_90)
+        btn_tst_roll_90.grid(row=3, column=0, padx=2, pady=2, columnspan=1, sticky="NSEW")
+        btn_tst_pitch_90 = ttk.Button(blk_rpy, text='Test Pitch Rate (90 deg)', command=self.ship_tst_pitch_90)
+        btn_tst_pitch_90.grid(row=3, column=1, padx=2, pady=2, columnspan=1, sticky="NSEW")
+        btn_tst_yaw_90 = ttk.Button(blk_rpy, text='Test Yaw Rate (90 deg)', command=self.ship_tst_yaw_90)
+        btn_tst_yaw_90.grid(row=3, column=2, padx=2, pady=2, columnspan=1, sticky="NSEW")
 
         # === Status Bar ===
         statusbar = ttk.Frame(win)
