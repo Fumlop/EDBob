@@ -941,6 +941,8 @@ class EDAutopilot:
             final_roll_deg = 90 - degrees(atan(final_y_pct/final_x_pct))
         elif final_x_pct < 0.0:
             final_roll_deg = -90 - degrees(atan(final_y_pct/final_x_pct))
+        elif final_y_pct < 0.0:
+            final_roll_deg = 180.0
 
         # 'longitudinal' radius of compass at given 'latitude'
         lng_rad_at_lat = math.cos(math.asin(final_y_pct))
@@ -1088,6 +1090,16 @@ class EDAutopilot:
         final_yaw_deg = final_x_pct / 100 * (self.hor_fov / 2)  # X in deg (-90.0 to 90.0, 0.0 in the center)
         final_pit_deg = final_y_pct / 100 * (self.ver_fov / 2)  # Y in deg (-90.0 to 90.0, 0.0 in the center)
 
+        # Calc angle in degrees starting at 0 deg at 12 o'clock and increasing clockwise
+        # so 3 o'clock is +90° and 9 o'clock is -90°.
+        final_roll_deg = 0.0
+        if final_x_pct > 0.0:
+            final_roll_deg = 90 - degrees(atan(final_pit_deg/final_yaw_deg))
+        elif final_x_pct < 0.0:
+            final_roll_deg = -90 - degrees(atan(final_pit_deg/final_yaw_deg))
+        elif final_y_pct < 0.0:
+            final_roll_deg = 180.0
+
         # Draw box around region
         if self.debug_overlay:
             border = 10  # border to prevent the box from interfering with future matches
@@ -1095,7 +1107,7 @@ class EDAutopilot:
             top = destination_top + maxLoc[1]
             self.overlay.overlay_rect('target', (left - border, top - border), (left + width + border, top + height + border), (0, 255, 0), 2)
             self.overlay.overlay_floating_text('target', f'Match: {maxVal:5.4f}', left - border, top - border - 25, (0, 255, 0))
-            self.overlay.overlay_floating_text('target_rpy', f'p: {round(final_pit_deg, 2)} y: {round(final_yaw_deg, 2)}', left - border, top + height + border, (0, 255, 0))
+            self.overlay.overlay_floating_text('target_rpy', f'r: {round(final_roll_deg, 2)} p: {round(final_pit_deg, 2)} y: {round(final_yaw_deg, 2)}', left - border, top + height + border, (0, 255, 0))
             self.overlay.overlay_paint()
 
         if self.cv_view:
@@ -1121,7 +1133,7 @@ class EDAutopilot:
             result = None
         else:
             #logger.debug(f"Target offset found (x: {final_x_pct:5.2f} y: {final_y_pct:5.2f} at {maxVal:5.2f}%)")
-            result = {'x': round(final_yaw_deg, 4), 'y': round(final_pit_deg, 4)}
+            result = {'x': round(final_yaw_deg, 4), 'y': round(final_pit_deg, 4), 'roll': round(final_roll_deg, 4)}
 
         return result
 
@@ -1533,10 +1545,10 @@ class EDAutopilot:
             'disengage': Disengage text found
         """
 
-        close = 4.0  # 6%. Anything outside of this range will cause alignment.
-        inner_lim = 1.0  # Stop alignment when in this range to avoid endless tweaking.
-        y_off = 1.0  # To keep the target above the center line.
-        inertia_factor = 2.0  # As we are dealing with small increments, we need to up the gain to overcome the inertia
+        close = 4.0  # In deg. Anything outside of this range will cause alignment.
+        inner_lim = 1.0  # In deg. Will stop alignment when in this range.
+        y_off = 1.0  # In deg. To keep the target above the center line (prevent it going down out of view).
+        inertia_factor = 2.0  # As we are dealing with small increments, we need to up the gain to overcome the inertia.
 
         new = None  # Initialize to avoid unbound variable
         off = None  # Initialize to avoid unbound variable
