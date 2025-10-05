@@ -27,17 +27,24 @@ To further aid calibration, the following give examples of the correct region. N
 
 ![CalibrationCodex.png](../screen/CalibrationCodex.png)
 
+### Commodities Market
+NOTE: This is calculated from the Codex screen. It is included as a verification that the calculated region is correct.
+1. When docked, open Station Services and then the Commodities Market.
+2. TBD.
+
 ### Galaxy Map
+NOTE: This is calculated from the Codex screen. It is included as a verification that the calculated region is correct.
 1. Open Galaxy Map.
-2. Draw a rectangle from the top left corner of the cartographics logo to the right of the right hand map icons and the bottom of the route box at the bottom.
+2. The rectangle should extend from the top left corner of the cartographics logo to the right of the right hand map icons and the bottom of the route box at the bottom.
 
 ![CalibrationGalaxyMap.png](../screen/CalibrationGalaxyMap.png)
 
 ### System Map
+NOTE: This is calculated from the Codex screen. It is included as a verification that the calculated region is correct.
 1. Open System Map.
-2. Draw a rectangle from the top left corner of the cartographics logo to the right of the right hand map icons and the bottom of the route box at the bottom.
+2. The rectangle should extend from the top left corner of the cartographics logo to the right of the right hand map icons and the bottom of the route box at the bottom.
 
-3. ![CalibrationSystemMap.png](../screen/CalibrationSystemMap.png)
+![CalibrationSystemMap.png](../screen/CalibrationSystemMap.png)
 
 ### Station Services
 1. Open Station Services.

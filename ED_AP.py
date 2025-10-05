@@ -210,10 +210,18 @@ class EDAutopilot:
         self.scr.scaleY = self.config['TargetScale']
 
         self.gfx_settings = EDGraphicsSettings()
-        self.hor_fov = float(self.gfx_settings.fov) * 1.5
-        cb('log', f'Horizontal FOV: {self.hor_fov} deg (-{self.hor_fov/2} to {self.hor_fov/2}).')
-        self.ver_fov = self.hor_fov / self.scr.aspect_ratio
-        cb('log', f'Vertical FOV: {self.ver_fov} deg (-{self.ver_fov/2} to {self.ver_fov/2}).')
+        # Aspect ratio greater than 1920/1080 (1.7777) seems to be the magic cutoff. At > 1920/1080 (1.7777), the FOV
+        # appears to be the top of the screen. Looks like FDev made the FOV for 1920x1080 resolution height.
+        if self.scr.aspect_ratio >= 1.7777:
+            self.ver_fov = round(float(self.gfx_settings.fov), 4)
+            cb('log', f'Vertical FOV: {self.ver_fov} deg (-{self.ver_fov / 2} to {self.ver_fov / 2} deg).')
+            self.hor_fov = round(self.ver_fov * self.scr.aspect_ratio, 4)
+            cb('log', f'Horizontal FOV: {self.hor_fov} deg (-{self.hor_fov / 2} to {self.hor_fov / 2} deg).')
+        else:
+            self.ver_fov = round(float(self.gfx_settings.fov) * (1.7777 / self.scr.aspect_ratio), 4)
+            cb('log', f'Vertical FOV: {self.ver_fov} deg (-{self.ver_fov / 2} to {self.ver_fov / 2}).')
+            self.hor_fov = round(self.ver_fov * self.scr.aspect_ratio, 4)
+            cb('log', f'Horizontal FOV: {self.hor_fov} deg (-{self.hor_fov / 2} to {self.hor_fov / 2}).')
 
         self.ocr = OCR(self, self.scr)
         self.templ = Image_Templates.Image_Templates(self.scr.scaleX, self.scr.scaleY, self.scr.scaleX)
@@ -970,6 +978,7 @@ class EDAutopilot:
             top = c_top + maxLoc[1]
             self.overlay.overlay_rect('compass', (left - border, top - border), (left + c_wid + border, top + c_hgt + border), (0, 255, 0), 2)
             self.overlay.overlay_floating_text('compass', f'Match: {maxVal:5.4f}', left - border, top - border - 25, (0, 255, 0))
+            self.overlay.overlay_floating_text('compass_rpy', f'r: {round(final_roll_deg, 2)} p: {round(final_pit_deg, 2)} y: {round(final_yaw_deg, 2)}', left - border, top + c_hgt + border, (0, 255, 0))
             self.overlay.overlay_paint()
 
         if self.cv_view:
@@ -1036,10 +1045,12 @@ class EDAutopilot:
     def get_destination_offset(self, scr_reg, disable_auto_cal: bool = False):
         """ TODO - Rename to get_target_offset
         Determine how far off we are from the target being in the middle of the screen
-        (in this case the specified region). """
+        (in this case the specified region).
+        @return: {'x': x.xxxx, 'y': y.yyyy}, where x.xxxx and y.yyyy are in degrees
+        """
         dst_image = None
-        maxLoc = 0
-        maxVal = 0
+        maxLoc = [0, 0]
+        maxVal = [0, 0]
         for i in range(2):
             dst_image, (minVal, maxVal, minLoc, maxLoc), match = scr_reg.match_template_in_region('target', 'target')
 
@@ -1069,14 +1080,13 @@ class EDAutopilot:
         # X as percent (-1.0 to 1.0, 0.0 in the center)
         final_x_pct = 2.0*(((pt[0]+destination_left) / target_x_max) - 0.5)
         final_x_pct = 100 * max(min(final_x_pct, 1.0), -1.0)
-        # Scale for aspect ratio so the % is the same x and y.
-        final_x_pct = final_x_pct * self.scr.screen_width/self.scr.screen_height
 
         # Y as percent (-1.0 to 1.0, 0.0 in the center)
         final_y_pct = -2.0*(((pt[1]+destination_top) / target_y_max) - 0.5)
         final_y_pct = 100 * max(min(final_y_pct, 1.0), -1.0)
 
-        final_r_pct = math.sqrt((final_x_pct ** 2) + (final_y_pct ** 2))
+        final_yaw_deg = final_x_pct / 100 * (self.hor_fov / 2)  # X in deg (-90.0 to 90.0, 0.0 in the center)
+        final_pit_deg = final_y_pct / 100 * (self.ver_fov / 2)  # Y in deg (-90.0 to 90.0, 0.0 in the center)
 
         # Draw box around region
         if self.debug_overlay:
@@ -1085,6 +1095,7 @@ class EDAutopilot:
             top = destination_top + maxLoc[1]
             self.overlay.overlay_rect('target', (left - border, top - border), (left + width + border, top + height + border), (0, 255, 0), 2)
             self.overlay.overlay_floating_text('target', f'Match: {maxVal:5.4f}', left - border, top - border - 25, (0, 255, 0))
+            self.overlay.overlay_floating_text('target_rpy', f'p: {round(final_pit_deg, 2)} y: {round(final_yaw_deg, 2)}', left - border, top + height + border, (0, 255, 0))
             self.overlay.overlay_paint()
 
         if self.cv_view:
@@ -1096,7 +1107,7 @@ class EDAutopilot:
                 img = cv2.resize(dst_image_d, dim, interpolation=cv2.INTER_AREA)
                 img = cv2.rectangle(img, (0, 0), (1000, 25), (0, 0, 0), -1)
                 cv2.putText(img, f'{maxVal:5.4f} > {scr_reg.target_thresh:5.2f}', (1, 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
-                cv2.putText(img, f'x: {final_x_pct:5.2f} y: {final_y_pct:5.2f} r: {final_r_pct:5.2f}',
+                cv2.putText(img, f'p: {round(final_pit_deg, 4)} y: {round(final_yaw_deg, 4)}',
                             (1, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
                 cv2.imshow('target', img)
                 #cv2.moveWindow('target', self.cv_view_x, self.cv_view_y+425)
@@ -1110,7 +1121,7 @@ class EDAutopilot:
             result = None
         else:
             #logger.debug(f"Target offset found (x: {final_x_pct:5.2f} y: {final_y_pct:5.2f} at {maxVal:5.2f}%)")
-            result = {'x': round(final_x_pct, 2), 'y': round(final_y_pct, 2), 'r': round(final_r_pct, 2)}
+            result = {'x': round(final_yaw_deg, 4), 'y': round(final_pit_deg, 4)}
 
         return result
 
@@ -1522,9 +1533,10 @@ class EDAutopilot:
             'disengage': Disengage text found
         """
 
-        close = 6.0  # 6%. Anything outside of this range will cause alignment.
-        inner_lim = 2.5  # Stop alignment when in this range to avoid endless tweaking.
+        close = 4.0  # 6%. Anything outside of this range will cause alignment.
+        inner_lim = 1.0  # Stop alignment when in this range to avoid endless tweaking.
         y_off = 1.0  # To keep the target above the center line.
+        inertia_factor = 2.0  # As we are dealing with small increments, we need to up the gain to overcome the inertia
 
         new = None  # Initialize to avoid unbound variable
         off = None  # Initialize to avoid unbound variable
@@ -1557,24 +1569,19 @@ class EDAutopilot:
 
             close = inner_lim  # 2.0% Alignment will continue until within this range.
 
-            pitch_factor = 0.5
-            hold_pitch = abs(off['y']) * pitch_factor / self.pitchrate
-            #hold_pitch = max(hold_pitch, 0.05)
+            # Calc pitch time based on nav point location
+            if abs(off['y']) > close:
+                if off['y'] < 0:
+                    self.pitchDown(inertia_factor * abs(off['y']))
+                else:
+                    self.pitchUp(inertia_factor * abs(off['y']))
 
-            yaw_factor = 0.5
-            hold_yaw = abs(off['x']) * yaw_factor / self.yawrate
-            #hold_yaw = max(hold_yaw, 0.05)
-
-            if off['x'] > close:
-                self.keys.send('YawRightButton', hold=hold_yaw)
-            if off['x'] < -close:
-                self.keys.send('YawLeftButton', hold=hold_yaw)
-            if off['y'] > close:
-                self.keys.send('PitchUpButton', hold=hold_pitch)
-            if off['y'] < -close:
-                self.keys.send('PitchDownButton', hold=hold_pitch)
-
-            sleep(.02)  # time for image to catch up
+            # Calc yaw time based on nav point location
+            if abs(off['x']) > close:
+                if off['x'] < 0:
+                    self.yawLeft(inertia_factor * abs(off['x']))
+                else:
+                    self.yawRight(inertia_factor * abs(off['x']))
 
             # this checks if suddenly the target show up behind the planet
             if self.is_destination_occluded(scr_reg):
