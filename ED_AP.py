@@ -1548,7 +1548,8 @@ class EDAutopilot:
         close = 4.0  # In deg. Anything outside of this range will cause alignment.
         inner_lim = 1.0  # In deg. Will stop alignment when in this range.
         y_off = 1.0  # In deg. To keep the target above the center line (prevent it going down out of view).
-        inertia_factor = 2.0  # As we are dealing with small increments, we need to up the gain to overcome the inertia.
+        inertia_pitch_factor = 2.0  # As we are dealing with small increments, we need to up the gain to overcome the inertia.
+        inertia_yaw_factor = 2.0  # As we are dealing with small increments, we need to up the gain to overcome the inertia.
 
         new = None  # Initialize to avoid unbound variable
         off = None  # Initialize to avoid unbound variable
@@ -1579,21 +1580,21 @@ class EDAutopilot:
         while ((abs(off['x']) > close) or
                (abs(off['y']) > close)):
 
-            close = inner_lim  # 2.0% Alignment will continue until within this range.
+            close = inner_lim  # Keep aligning until we are within this lower range.
 
             # Calc pitch time based on nav point location
             if abs(off['y']) > close:
                 if off['y'] < 0:
-                    self.pitchDown(inertia_factor * abs(off['y']))
+                    self.pitchDown(inertia_pitch_factor * abs(off['y']))
                 else:
-                    self.pitchUp(inertia_factor * abs(off['y']))
+                    self.pitchUp(inertia_pitch_factor * abs(off['y']))
 
             # Calc yaw time based on nav point location
             if abs(off['x']) > close:
                 if off['x'] < 0:
-                    self.yawLeft(inertia_factor * abs(off['x']))
+                    self.yawLeft(inertia_yaw_factor * abs(off['x']))
                 else:
-                    self.yawRight(inertia_factor * abs(off['x']))
+                    self.yawRight(inertia_yaw_factor * abs(off['x']))
 
             # this checks if suddenly the target show up behind the planet
             if self.is_destination_occluded(scr_reg):
