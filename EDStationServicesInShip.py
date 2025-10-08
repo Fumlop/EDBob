@@ -3,6 +3,8 @@ import json
 import os
 from copy import copy
 
+import cv2
+
 from MarketParser import MarketParser
 from StatusParser import StatusParser
 from time import sleep
@@ -36,9 +38,14 @@ class EDStationServicesInShip:
         self.reg = {'commodities_market': {'rect': [0.0, 0.0, 0.25, 0.25]},
                     'station_services': {'rect': [0.10, 0.10, 0.90, 0.85]},
                     'connected_to': {'rect': [0.0, 0.0, 0.25, 0.1]},
-                    'market_header': {'rect': [0.0, 0.0, 0.25, 0.1]}}
+                    'title': {'rect': [0.0, 0.0, 1.0, 1.0]},
+                    'commodity_column': {'rect': [0.0, 0.0, 1.0, 1.0]},
+                    'buy_sell_qty_box': {'rect': [0.0, 0.0, 1.0, 1.0]}, }
         self.sub_reg = {'connected_to': {'rect': [0.0, 0.0, 0.25, 0.1]},
-                        'market_header': {'rect': [0.0, 0.0, 0.25, 0.1]}}
+                        'title': {'rect': [0.0, 0.0, 0.25, 0.1]},
+                        'commodity_column': {'rect': [0.1575, 0.205, 0.4075, 1.0]},
+                        'buy_sell_qty_box': {'rect': [0.275, 0.335, 0.49, 0.405]}, }
+        self.sub_reg_size = {'commodity_name': {"width": 1.0, "height": 0.051}, }  # Commodity name size in percent of the commodity column
 
         self.load_calibrated_regions()
 
@@ -56,8 +63,12 @@ class EDStationServicesInShip:
             # Scale the regions based on the sub-region.
             self.reg['connected_to']['rect'] = scale_region(self.reg['station_services']['rect'],
                                                             self.sub_reg['connected_to']['rect'])
-            self.reg['market_header']['rect'] = scale_region(self.reg['commodities_market']['rect'],
-                                                             self.sub_reg['market_header']['rect'])
+            self.reg['title']['rect'] = scale_region(self.reg['commodities_market']['rect'],
+                                                     self.sub_reg['title']['rect'])
+            self.reg['commodity_column']['rect'] = scale_region(self.reg['commodities_market']['rect'],
+                                                                self.sub_reg['commodity_column']['rect'])
+            self.reg['buy_sell_qty_box']['rect'] = scale_region(self.reg['commodities_market']['rect'],
+                                                                self.sub_reg['buy_sell_qty_box']['rect'])
 
     def goto_station_services(self) -> bool:
         """ Goto Station Services. """
@@ -157,7 +168,7 @@ class EDStationServicesInShip:
             self.ap.overlay.overlay_paint()
 
         # Wait for screen to appear
-        res = self.ocr.wait_for_text(self.ap, [self.locale["COMMODITIES_MARKET"]], self.reg['market_header'])
+        res = self.ocr.wait_for_text(self.ap, [self.locale["COMMODITIES_MARKET"]], self.reg['title'])
         return res
 
     @staticmethod
@@ -292,8 +303,46 @@ class CommoditiesMarket:
         if index > -1:
             keys.send('UI_Up', hold=3.0)  # go up to top of list
             keys.send('UI_Down', hold=0.05, repeat=index)  # go down # of times user specified
+
+            # # Get the goods panel image
+            # goods_panel = self.capture_goods_panel()
+            # if goods_panel is None:
+            #     return False, 0
+            #
+            # # Find the selected item/menu (solid orange)
+            # img_selected, quad = self.ocr.get_highlighted_item_in_image(goods_panel,
+            #                                                             self.parent.sub_reg_size['commodity_name']['width'],
+            #                                                             self.parent.sub_reg_size['commodity_name']['height'])
+            # # Check if end of list.
+            # if img_selected is None:
+            #     # logger.debug(f"Off end of list. Did not find '{dst_name}' in list.")
+            #     return False, 0
+            #
+            # if self.ap.debug_overlay:
+            #     # Scale the selected item down to the scale of the tab bar
+            #     loc_pnl_quad = Quad.from_rect(self.parent.sub_reg['location_panel']['rect'])
+            #
+            #     # Overlay OCR result
+            #     self.ap.overlay.overlay_quad_pix('nav_panel_item', q_out, (0, 255, 0), 2)
+            #     self.ap.overlay.overlay_paint()
+            #
+            #     # OCR the selected item
+            #     sim_match = 0.8  # Similarity match 0.0 - 1.0 for 0% - 100%)
+            #     ocr_textlist = self.ocr.image_simple_ocr(img_selected)
+            #     if ocr_textlist is not None:
+            #         if self.ap.debug_overlay:
+            #             # Overlay OCR result
+            #             self.ap.overlay.overlay_floating_text('nav_panel_item_text', f'{str(ocr_textlist)}',
+            #                                                   q_out.get_left(), q_out.get_top() - 25, (0, 255, 0))
+            #             self.ap.overlay.overlay_paint()
+
             sleep(0.5)
             keys.send('UI_Select')  # Select that commodity
+
+            if self.ap.debug_overlay:
+                q = Quad.from_rect(self.parent.reg['buy_sell_qty_box']['rect'])
+                self.ap.overlay.overlay_quad_pct('buy_sell_qty_box', q, (0, 255, 0), 2, 5)
+                self.ap.overlay.overlay_paint()
 
             sleep(0.5)  # give time to popup
             keys.send('UI_Up', repeat=2)  # go up to quantity to buy (may not default to this)
@@ -355,6 +404,11 @@ class CommoditiesMarket:
             sleep(0.5)
             keys.send('UI_Select')  # Select that commodity
 
+            if self.ap.debug_overlay:
+                q = Quad.from_rect(self.reg['buy_sell_qty_box']['rect'])
+                self.ap.overlay.overlay_quad_pct('buy_sell_qty_box', q, (0, 255, 0), 2, 5)
+                self.ap.overlay.overlay_paint()
+
             sleep(0.5)  # give time for popup
             keys.send('UI_Up', repeat=2)  # make sure at top
 
@@ -376,6 +430,24 @@ class CommoditiesMarket:
 
         return True, act_qty
 
+    def capture_goods_panel(self):
+        """ Get the location panel from within the nav panel.
+        Returns an image, or None.
+        """
+        # Scale the regions based on the target resolution.
+        region = self.parent.reg['commodity_column']
+        img = self.ocr.capture_region_pct(region)
+        if img is None:
+            return False
+
+        if self.ap.debug_overlay:
+            # Offset to match the nav panel offset
+            q = Quad.from_rect(self.parent.reg['commodity_column']['rect'])
+            self.ap.overlay.overlay_quad_pix('capture_goods_panel', q, (0, 255, 0), 2, 5)
+            self.ap.overlay.overlay_paint()
+
+        return img
+
 
 def dummy_cb(msg, body=None):
     pass
@@ -388,7 +460,23 @@ if __name__ == "__main__":
     test_ed_ap.keys.activate_window = True
     svcs = EDStationServicesInShip(test_ed_ap, test_ed_ap.scr, test_ed_ap.keys, test_ed_ap.ap_ckb)
     #svcs.goto_station_services()
-    svcs.goto_commodities_market()
+    #svcs.goto_commodities_market()
 
+    while 1:
+        svcs.sub_reg = svcs.sub_reg
+        svcs.load_calibrated_regions()
+
+        commodities_market = Quad.from_rect(svcs.reg['commodities_market']['rect'])
+        test_ed_ap.overlay.overlay_quad_pct('commodities_market', commodities_market, (0, 255, 0), 2, 7)
+
+        commodity_column = Quad.from_rect(svcs.reg['commodity_column']['rect'])
+        test_ed_ap.overlay.overlay_quad_pct('commodity_column', commodity_column, (0, 255, 0), 2, 7)
+
+        buy_sell_qty_box = Quad.from_rect(svcs.reg['buy_sell_qty_box']['rect'])
+        test_ed_ap.overlay.overlay_quad_pct('buy_sell_qty_box', buy_sell_qty_box, (0, 255, 0), 2, 7)
+
+        test_ed_ap.overlay.overlay_paint()
+
+        sleep(0.5)
 
 

@@ -50,8 +50,6 @@ class EDInternalStatusPanel:
         self.panel = None
         self._transform = None  # Warp transform to deskew the Nav panel
         self._rev_transform = None  # Reverse warp transform to skew to match the Nav panel
-        self.nav_pnl_tab_width = 140  # Nav panel tab width in pixels at 1920x1080
-        self.nav_pnl_tab_height = 35  # Nav panel tab height in pixels at 1920x1080
 
         self.load_calibrated_regions()
 
