@@ -123,6 +123,7 @@ class EDAutopilot:
         self._prev_star_system = None
         self.honk_thread = None
         self._tce_integration = None
+        self._ocr = None
 
         # used this to write the self.config table to the json file
         # self.write_config(self.config)
@@ -223,7 +224,6 @@ class EDAutopilot:
             self.hor_fov = round(self.ver_fov * self.scr.aspect_ratio, 4)
             cb('log', f'Horizontal FOV: {self.hor_fov} deg (-{self.hor_fov / 2} to {self.hor_fov / 2}).')
 
-        self.ocr = OCR(self, self.scr)
         self.templ = Image_Templates.Image_Templates(self.scr.scaleX, self.scr.scaleY, self.scr.scaleX)
         self.scrReg = Screen_Regions.Screen_Regions(self.scr, self.templ)
         self.jn = EDJournal(cb)
@@ -299,6 +299,13 @@ class EDAutopilot:
         if not self._tce_integration:
             self._tce_integration = TceIntegration(self, self.ap_ckb)
         return self._tce_integration
+
+    @property
+    def ocr(self) -> OCR:
+        """ Load OCR class when needed. """
+        if not self._ocr:
+            self._ocr = OCR(self, self.scr)
+        return self._ocr
 
     # Loads the configuration file
     #
