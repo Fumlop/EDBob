@@ -1,8 +1,20 @@
-# 9/1/2025 v1.8.0 beta 6:
+# 10/7/2025 v1.8.0 b7
+ - Change auto calibration range.
+ - Added auto calibrate when first initialising SC instead while in SC.
+ - Target align now falls back to compass align automatically to keep on target.
+ - Changed target align thresholds.
+ - Added wait for removal of mass lock when leaving stations.
+ - Added construction requirements logging to 'configs\construction.json' file. Updated when docking with construction site.
+ - Fixed bug during auto calibration.
+ - Added FOV calculation.
+ - Updated calibration docs.
+ - Added Type-11 Prospector.
+
+# 9/1/2025 v1.8.0 b6:
  - Updated PaddleOCR.
  - Added screen calibration.
 
-# 9/1/2025 v1.8.0 beta 5:
+# 9/1/2025 v1.8.0 b5:
  - Updated requirements to remove OCR crash
  - Made fix to Spansh import.
  - Added waypoint editor tab from DankShaman's branch.
