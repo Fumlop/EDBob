@@ -502,11 +502,11 @@ class EDAutopilot:
         max_pick = 0
         i = range_low
         while i <= range_high:
-            self.scr.scaleX = float(i / 100)
-            self.scr.scaleY = self.scr.scaleX
+            scale_x = float(i / 100)
+            scale_y = scale_x
 
             # reload the templates with this scale value
-            self.templ.reload_templates(self.scr.scaleX, self.scr.scaleY, self.scr.scaleX)
+            self.templ.reload_templates(scale_x, scale_y, scale_x)
 
             # do image matching on the compass and the target
             image, (minVal, maxVal, minLoc, maxLoc), match = self.scrReg.match_template_in_region_x3(reg_name, templ_name)
