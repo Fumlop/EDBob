@@ -1461,6 +1461,12 @@ class EDAutopilot:
         # the vehicle should be positioned with the sun below us via the sun_avoid() routine after a jump
         for ii in range(self.config['NavAlignTries']):
             off = self.get_nav_offset(scr_reg)
+            if off is None:
+                self.ap_ckb('log', 'Unable to detect compass. Rolling to new position.')
+                # Try rolling if star glare is obscuring the compass
+                self.rotateRight(90)
+                continue
+
             logger.debug(f"Compass position: yaw: {str(off['yaw'])} pit: {str(off['pit'])}")
 
             # Check if we are close enough already
@@ -1474,6 +1480,9 @@ class EDAutopilot:
 
                 for i in range(20):
                     # Calc roll time based on nav point location
+                    if off is None:
+                        self.ap_ckb('log', 'Unable to detect compass.')
+                        continue
                     if abs(off['roll']) > close and (180 - abs(off['roll']) > close):
                         # first roll to get the nav point at the vertical position
                         if off['yaw'] > 0 and off['pit'] > 0:
@@ -1495,6 +1504,9 @@ class EDAutopilot:
 
             for i in range(20):
                 # Calc pitch time based on nav point location
+                if off is None:
+                    self.ap_ckb('log', 'Unable to detect compass.')
+                    continue
                 if abs(off['pit']) > close:
                     if off['pit'] < 0:
                         self.pitchDown(abs(off['pit']))
@@ -1502,11 +1514,15 @@ class EDAutopilot:
                         self.pitchUp(abs(off['pit']))
                     sleep(0.5)
                     off = self.get_nav_offset(scr_reg)
+
                 else:
                     break
 
             for i in range(20):
                 # Calc yaw time based on nav point location
+                if off is None:
+                    self.ap_ckb('log', 'Unable to detect compass.')
+                    continue
                 if abs(off['yaw']) > close:
                     if off['yaw'] < 0:
                         self.yawLeft(abs(off['yaw']))
@@ -1560,11 +1576,11 @@ class EDAutopilot:
             'found': Target found
             'disengage': Disengage text found
         """
-        close = 3.0  # In deg. Anything outside of this range will cause alignment.
+        close = 2.0  # In deg. Anything outside of this range will cause alignment.
         inner_lim = 1.0  # In deg. Will stop alignment when in this range.
         pit_off = 0.5  # In deg. To keep the target above the center line (prevent it going down out of view).
-        inertia_pitch_factor = 1.2  # As we are dealing with small increments, we need to up the gain to overcome the inertia.
-        inertia_yaw_factor = 1.2  # As we are dealing with small increments, we need to up the gain to overcome the inertia.
+        inertia_pitch_factor = 1.0  # As we are dealing with small increments, we need to up the gain to overcome the inertia.
+        inertia_yaw_factor = 1.0  # As we are dealing with small increments, we need to up the gain to overcome the inertia.
 
         new = None
         off = None

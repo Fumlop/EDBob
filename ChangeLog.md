@@ -1,3 +1,9 @@
+# 10/9/2025 v1.8.0 b8
+ - Added Delete All global shopping button.
+ - Added Load Construction Commodities button to add construction commodity requirements to global shopping list.
+ - Added additional nav_align error checking.
+ - Changed sc_assist constants.
+
 # 10/7/2025 v1.8.0 b7
  - Change auto calibration range.
  - Added auto calibrate when first initialising SC instead while in SC.

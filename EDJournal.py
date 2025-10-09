@@ -427,7 +427,7 @@ class EDJournal:
             # Load construction dict
             filepath = './configs/construction.json'
             if os.path.exists(filepath):
-                const = self.read_construction(filepath)
+                const = read_construction(filepath)
             else:
                 const = {}
 
@@ -468,31 +468,7 @@ class EDJournal:
 
                 # Save file
                 filepath = './configs/construction.json'
-                self.write_construction(const, filepath)
-
-    @staticmethod
-    def read_construction(filename='./configs/construction.json'):
-        #  TODO - move to separate class/file
-        s = None
-        try:
-            with open(filename, "r") as fp:
-                s = json.load(fp)
-        except Exception as e:
-            logger.warning("EDJournal.py read_construction error:"+str(e))
-        return s
-
-    @staticmethod
-    def write_construction(data, filename='./configs/construction.json'):
-        #  TODO - move to separate class/file
-        if data is None:
-            return False
-        try:
-            with open(filename, "w") as fp:
-                json.dump(data, fp, indent=4)
-                return True
-        except Exception as e:
-            logger.warning("EDJournal.py write_construction error:" + str(e))
-            return False
+                write_construction(const, filepath)
 
     def ship_state(self):
         latest_log = self.get_latest_log()
@@ -522,6 +498,30 @@ class EDJournal:
 
         self.last_mod_time = self.get_file_modified_time()
         return self.ship
+
+
+def write_construction(data, filename='./configs/construction.json'):
+    #  TODO - move to separate class/file
+    if data is None:
+        return False
+    try:
+        with open(filename, "w") as fp:
+            json.dump(data, fp, indent=4)
+            return True
+    except Exception as e:
+        logger.warning("EDJournal.py write_construction error:" + str(e))
+        return False
+
+
+def read_construction(filename='./configs/construction.json'):
+    #  TODO - move to separate class/file
+    s = None
+    try:
+        with open(filename, "r") as fp:
+            s = json.load(fp)
+    except Exception as e:
+        logger.warning("EDJournal.py read_construction error:"+str(e))
+    return s
 
 
 def dummy_cb(msg, body=None):

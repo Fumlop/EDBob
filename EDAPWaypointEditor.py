@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import tkinter as tk
 import tkinter.ttk
+from builtins import enumerate
 from tkinter import ttk, messagebox
 import json
 import threading
@@ -12,6 +13,7 @@ import csv
 
 import EDAP_data
 from EDAP_EDMesg_Interface import (create_edap_client, LoadWaypointFileAction, GalaxyMapTargetSystemByNameAction)
+from EDJournal import read_construction
 
 
 def select_treeview_items_by_idx(tree: tkinter.ttk.Treeview, indexes: list[int]):
@@ -321,7 +323,10 @@ class WaypointEditorTab:
 
         # Checkboxes
         self._gbl_update_commodity_count_check = ttk.Checkbutton(gbl_waypoint_options_frame, text="Update Commodity Count")
-        self._gbl_update_commodity_count_check.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="w")
+        self._gbl_update_commodity_count_check.grid(row=2, column=0, columnspan=1, padx=5, pady=5, sticky="w")
+
+        load_const_btn = ttk.Button(gbl_waypoint_options_frame, text="Load Construction Commodities", command=self.load_const_comm)
+        load_const_btn.grid(row=2, column=1, columnspan=1, padx=5, pady=5, sticky="w")
 
         # Global Buy Commodities
         gbl_buy_commodities_frame = ttk.LabelFrame(top_frame1, text="Global Buy Commodities")
@@ -382,6 +387,7 @@ class WaypointEditorTab:
             ttk.Button(buttons_frame, text="Down", command=self.move_gbl_buy_commodity_down).pack(padx=5, pady=2, fill="x")
             ttk.Button(buttons_frame, text="Add", command=self.add_gbl_buy_commodity).pack(padx=5, pady=2, fill="x")
             ttk.Button(buttons_frame, text="Del", command=self.delete_gbl_buy_commodity).pack(padx=5, pady=2, fill="x")
+            ttk.Button(buttons_frame, text="Del All", command=self.delete_all_gbl_buy_commodity).pack(padx=5, pady=2, fill="x")
 
         return tree
 
@@ -1008,6 +1014,41 @@ class WaypointEditorTab:
                     index = self.gbl_buy_commodities_list.index(item)
                     del wp.buy_commodities[index]
                 self.update_commodity_list(wp.buy_commodities, self.gbl_buy_commodities_list)
+
+    def delete_all_gbl_buy_commodity(self):
+        wp = self.get_gbl_shoppinglist_waypoint()
+        if wp:
+            wp.buy_commodities.clear()
+            self.update_commodity_list(wp.buy_commodities, self.gbl_buy_commodities_list)
+
+    def load_const_comm(self):
+
+        wp = self.get_gbl_shoppinglist_waypoint()
+        if wp:
+            # Load construction dict
+            filepath = './configs/construction.json'
+            if os.path.exists(filepath):
+                const = read_construction(filepath)
+                if const:
+                    for key in const:
+                        resources_required = const[key].get('ResourcesRequired')
+                        if resources_required:
+                            for item in resources_required:
+                                name = item['Name_Localised']
+                                req_qty = item['RequiredAmount']
+
+                                if req_qty > 0:
+                                    found = False
+                                    for comm in wp.buy_commodities:
+                                        if comm.name.get() == name:
+                                            comm.quantity.set(comm.quantity.get() + req_qty)
+                                            found = True
+                                            break
+
+                                    if not found:
+                                        wp.buy_commodities.append(ShoppingItem(name, req_qty))
+
+            self.update_commodity_list(wp.buy_commodities, self.gbl_buy_commodities_list)
 
     def move_gbl_buy_commodity_up(self):
         wp = self.get_gbl_shoppinglist_waypoint()
