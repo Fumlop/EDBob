@@ -1,8 +1,10 @@
 import math
 import traceback
+from datetime import timedelta
 from enum import Enum
 from math import atan, degrees
 import random
+from string import Formatter
 from tkinter import messagebox
 
 import cv2
@@ -2191,7 +2193,7 @@ class EDAutopilot:
 
                 # update jump counters
                 self.total_dist_jumped += self.jn.ship_state()['dist_jumped']
-                self.total_jumps = self.jump_cnt+self.jn.ship_state()['jumps_remains']
+                self.total_jumps = self.jump_cnt + self.jn.ship_state()['jumps_remains']
                 
                 # reset, upon next Jump the Journal will be updated again, unless last jump,
                 # so we need to clear this out
@@ -2200,10 +2202,15 @@ class EDAutopilot:
 
                 self.update_overlay()
 
-                avg_time_jump = (time.time()-starttime)/self.jump_cnt
+                avg_time_jump = (time.time()-starttime) / self.jump_cnt
+
+                eta = (self.total_jumps - self.jump_cnt) * avg_time_jump
+                str_eta = strfdelta(tdelta=eta, inputtype='seconds')
+
                 self.ap_ckb('jumpcount', "Dist: {:,.1f}".format(self.total_dist_jumped)+"ly"+
                             "  Jumps: {}of{}".format(self.jump_cnt, self.total_jumps)+"  @{}s/j".format(int(avg_time_jump))+
-                            "  Fu#: "+str(self.refuel_cnt))
+                            "  Fu#: "+str(self.refuel_cnt) + " ETA: "+str_eta)
+                self.ap_ckb('log', ' ETA (to System): '+str_eta)
 
                 # Do the Discovery Scan (Honk)
                 self.honk_thread = threading.Thread(target=self.honk, daemon=True)
@@ -2814,6 +2821,58 @@ def main():
         sleep(8)
 
     ed_ap.overlay.overlay_quit()
+
+
+def strfdelta(tdelta, fmt='{H:02}h {M:02}m {S:02.0f}s', inputtype='timedelta'):
+    """Convert a datetime.timedelta object or a regular number to a custom
+    formatted string, just like the stftime() method does for datetime.datetime
+    objects.
+
+    The fmt argument allows custom formatting to be specified.  Fields can
+    include seconds, minutes, hours, days, and weeks.  Each field is optional.
+
+    Some examples:
+        '{D:02}d {H:02}h {M:02}m {S:02.0f}s' --> '05d 08h 04m 02s' (default)
+        '{W}w {D}d {H}:{M:02}:{S:02.0f}'     --> '4w 5d 8:04:02'
+        '{D:2}d {H:2}:{M:02}:{S:02.0f}'      --> ' 5d  8:04:02'
+        '{H}h {S:.0f}s'                       --> '72h 800s'
+
+    The inputtype argument allows tdelta to be a regular number instead of the
+    default, which is a datetime.timedelta object.  Valid inputtype strings:
+        's', 'seconds',
+        'm', 'minutes',
+        'h', 'hours',
+        'd', 'days',
+        'w', 'weeks'
+    """
+
+    # Convert tdelta to integer seconds.
+    if inputtype == 'timedelta':
+        remainder = tdelta.total_seconds()
+    elif inputtype in ['s', 'seconds']:
+        remainder = float(tdelta)
+    elif inputtype in ['m', 'minutes']:
+        remainder = float(tdelta)*60
+    elif inputtype in ['h', 'hours']:
+        remainder = float(tdelta)*3600
+    elif inputtype in ['d', 'days']:
+        remainder = float(tdelta)*86400
+    elif inputtype in ['w', 'weeks']:
+        remainder = float(tdelta)*604800
+    else:
+        remainder = 0.0
+
+    f = Formatter()
+    desired_fields = [field_tuple[1] for field_tuple in f.parse(fmt)]
+    possible_fields = ('Y','m','W', 'D', 'H', 'M', 'S', 'mS', 'µS')
+    constants = {'Y':86400*365.24,'m': 86400*30.44 ,'W': 604800, 'D': 86400, 'H': 3600, 'M': 60, 'S': 1, 'mS': 1/pow(10,3) , 'µS':1/pow(10,6)}
+    values = {}
+    for field in possible_fields:
+        if field in desired_fields and field in constants:
+            quotient, remainder = divmod(remainder, constants[field])
+            values[field] = int(quotient) if field != 'S' else quotient + remainder
+    return f.format(fmt, **values)
+
 
 if __name__ == "__main__":
     main()
