@@ -1035,18 +1035,18 @@ class WaypointEditorTab:
                         if resources_required:
                             for item in resources_required:
                                 name = item['Name_Localised']
-                                req_qty = item['RequiredAmount']
+                                need = item['RequiredAmount'] - item['ProvidedAmount']
 
-                                if req_qty > 0:
+                                if need > 0:
                                     found = False
                                     for comm in wp.buy_commodities:
                                         if comm.name.get() == name:
-                                            comm.quantity.set(comm.quantity.get() + req_qty)
+                                            comm.quantity.set(comm.quantity.get() + need)
                                             found = True
                                             break
 
                                     if not found:
-                                        wp.buy_commodities.append(ShoppingItem(name, req_qty))
+                                        wp.buy_commodities.append(ShoppingItem(name, need))
 
             self.update_commodity_list(wp.buy_commodities, self.gbl_buy_commodities_list)
 

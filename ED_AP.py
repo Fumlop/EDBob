@@ -1534,7 +1534,8 @@ class EDAutopilot:
                     break
 
             sleep(.1)
-            logger.debug(f"Compass position: yaw: {str(off['yaw'])} pit: {str(off['pit'])}")
+            if off is not None:
+                logger.debug(f"Compass position: yaw: {str(off['yaw'])} pit: {str(off['pit'])}")
 
         # Not aligned
         self.ap_ckb('log+vce', 'Compass Align failed - exhausted all retries')
