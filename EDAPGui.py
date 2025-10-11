@@ -1015,7 +1015,7 @@ class APGui:
         blk_overlay = ttk.LabelFrame(blk_settings, text="OVERLAY", padding=(10, 5))
         blk_overlay.grid(row=1, column=1, padx=2, pady=2, sticky="NSEW")
         self.checkboxvar['Enable Overlay'] = tk.BooleanVar()
-        cb_enable = ttk.Checkbutton(blk_overlay, text='Enable (requires restart)', variable=self.checkboxvar['Enable Overlay'], command=(lambda field='Enable Overlay': self.check_cb(field)))
+        cb_enable = ttk.Checkbutton(blk_overlay, text='Enable', variable=self.checkboxvar['Enable Overlay'], command=(lambda field='Enable Overlay': self.check_cb(field)))
         cb_enable.grid(row=0, column=0, columnspan=2, sticky=tk.W)
         self.entries['overlay'] = self.makeform(blk_overlay, FORM_TYPE_SPINBOX, overlay_entry_fields, 1, 1.0, 0.0, 3000.0)
 

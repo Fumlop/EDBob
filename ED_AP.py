@@ -217,14 +217,14 @@ class EDAutopilot:
         # appears to be the top of the screen. Looks like FDev made the FOV for 1920x1080 resolution height.
         if self.scr.aspect_ratio >= 1.7777:
             self.ver_fov = round(float(self.gfx_settings.fov), 4)
-            cb('log', f'Vertical FOV: {self.ver_fov} deg (-{self.ver_fov / 2} to {self.ver_fov / 2} deg).')
+            logger.debug(f'Vertical FOV: {self.ver_fov} deg (-{self.ver_fov / 2} to {self.ver_fov / 2} deg).')
             self.hor_fov = round(self.ver_fov * self.scr.aspect_ratio, 4)
-            cb('log', f'Horizontal FOV: {self.hor_fov} deg (-{self.hor_fov / 2} to {self.hor_fov / 2} deg).')
+            logger.debug(f'Horizontal FOV: {self.hor_fov} deg (-{self.hor_fov / 2} to {self.hor_fov / 2} deg).')
         else:
             self.ver_fov = round(float(self.gfx_settings.fov) * (1.7777 / self.scr.aspect_ratio), 4)
-            cb('log', f'Vertical FOV: {self.ver_fov} deg (-{self.ver_fov / 2} to {self.ver_fov / 2}).')
+            logger.debug(f'Vertical FOV: {self.ver_fov} deg (-{self.ver_fov / 2} to {self.ver_fov / 2}).')
             self.hor_fov = round(self.ver_fov * self.scr.aspect_ratio, 4)
-            cb('log', f'Horizontal FOV: {self.hor_fov} deg (-{self.hor_fov / 2} to {self.hor_fov / 2}).')
+            logger.debug(f'Horizontal FOV: {self.hor_fov} deg (-{self.hor_fov / 2} to {self.hor_fov / 2}).')
 
         self.templ = Image_Templates.Image_Templates(self.scr.scaleX, self.scr.scaleY, self.scr.scaleX)
         self.scrReg = Screen_Regions.Screen_Regions(self.scr, self.templ)
@@ -263,6 +263,8 @@ class EDAutopilot:
         self.sunpitchuptime = 0.0
 
         self.jump_cnt = 0
+        self._eta = 0
+        self._str_eta = ''
         self.total_dist_jumped = 0
         self.total_jumps = 0
         self.refuel_cnt = 0
@@ -448,8 +450,9 @@ class EDAutopilot:
             self.overlay.overlay_text('3', "SHIP STATUS: "+ship_state, 3, 1, (136, 53, 0), -1)
             self.overlay.overlay_text('4', "CURRENT SYSTEM: "+location+", "+sclass, 4, 1, (136, 53, 0), -1)
             self.overlay.overlay_text('5', "JUMPS: {} of {}".format(self.jump_cnt, self.total_jumps), 5, 1, (136, 53, 0), -1)
-            if self.config["ElwScannerEnable"] == True:
-                self.overlay.overlay_text('6', "ELW SCANNER: "+self.fss_detected, 6, 1, (136, 53, 0), -1)
+            self.overlay.overlay_text('6', "ETA (to System): "+self._str_eta, 6, 1, (136, 53, 0), -1)
+            if self.config["ElwScannerEnable"]:
+                self.overlay.overlay_text('7', "ELW SCANNER: "+self.fss_detected, 7, 1, (136, 53, 0), -1)
             self.overlay.overlay_paint()
 
     def update_ap_status(self, txt):
@@ -1653,6 +1656,7 @@ class EDAutopilot:
             close = inner_lim  # Keep aligning until we are within this lower range.
 
             # Calc pitch time based on nav point location
+            logger.debug(f"sc_target_align before: pit:{str(off['pit'])} yaw: {str(off['yaw'])} ")
             if abs(off['pit']) > close:
                 if off['pit'] < 0:
                     self.pitchDown(inertia_pitch_factor * abs(off['pit']))
@@ -1684,7 +1688,7 @@ class EDAutopilot:
             tar_off = self.get_target_offset(scr_reg)
             if tar_off:
                 off = tar_off
-                logger.debug(f"sc_target_align 2 pit:{str(off['pit'])} yaw: {str(off['yaw'])} ")
+                logger.debug(f"sc_target_align after: pit:{str(off['pit'])} yaw: {str(off['yaw'])} ")
                 # Apply offset to keep target above center
                 off['pit'] = off['pit'] - pit_off
             elif nav_off:
@@ -2220,17 +2224,17 @@ class EDAutopilot:
                 
                 self.jn.ship_state()['jumps_remains'] = 0
 
-                self.update_overlay()
-
                 avg_time_jump = (time.time()-starttime) / self.jump_cnt
 
-                eta = (self.total_jumps - self.jump_cnt) * avg_time_jump
-                str_eta = strfdelta(tdelta=eta, inputtype='seconds')
+                self._eta = (self.total_jumps - self.jump_cnt) * avg_time_jump
+                self._str_eta = strfdelta(tdelta=self._eta, inputtype='seconds')
+
+                self.update_overlay()
 
                 self.ap_ckb('jumpcount', "Dist: {:,.1f}".format(self.total_dist_jumped)+"ly"+
                             "  Jumps: {}of{}".format(self.jump_cnt, self.total_jumps)+"  @{}s/j".format(int(avg_time_jump))+
-                            "  Fu#: "+str(self.refuel_cnt) + " ETA: "+str_eta)
-                self.ap_ckb('log', ' ETA (to System): '+str_eta)
+                            "  Fu#: "+str(self.refuel_cnt) + " ETA: "+self._str_eta)
+                self.ap_ckb('log', 'ETA (to System): '+self._str_eta)
 
                 # Do the Discovery Scan (Honk)
                 self.honk_thread = threading.Thread(target=self.honk, daemon=True)
