@@ -268,6 +268,8 @@ class EDAutopilot:
         self.refuel_cnt = 0
         self.current_ship_type = None
         self.gui_loaded = False
+        self._nav_cor_x = 0.0  # Nav Point correction to pitch
+        self._nav_cor_y = 0.0  # Nav Point correction to yaw
 
         self.ap_ckb = cb
 
@@ -870,6 +872,9 @@ class EDAutopilot:
             self.keys.send('UseBoostJuice')
             sleep(1)
 
+        # Wait for supercruise
+        self.status.wait_for_flag_on(FlagsSupercruise, timeout=30)
+
         # Update journal flag.
         self.jn.ship_state()['interdicted'] = False  # reset flag
         return True
@@ -942,9 +947,11 @@ class EDAutopilot:
 
         # Continue calc
         final_x_pct = 2*(((n_pt[0]-compass_x_min)/(compass_x_max-compass_x_min))-0.5)  # X as percent (-1.0 to 1.0, 0.0 in the center)
+        final_x_pct = final_x_pct - self._nav_cor_x
         final_x_pct = max(min(final_x_pct, 1.0), -1.0)
 
         final_y_pct = -2*(((n_pt[1]-compass_y_min)/(compass_y_max-compass_y_min))-0.5)  # Y as percent (-1.0 to 1.0, 0.0 in the center)
+        final_y_pct = final_y_pct - self._nav_cor_y
         final_y_pct = max(min(final_y_pct, 1.0), -1.0)
 
         # Calc angle in degrees starting at 0 deg at 12 o'clock and increasing clockwise
@@ -983,7 +990,7 @@ class EDAutopilot:
             else:
                 final_yaw_deg = degrees(math.acos(yaw_pct)) - 270  # X in deg (-90.0 to 90.0, 0.0 in the center)
 
-        result = {'x': round(final_x_pct, 2), 'y': round(final_y_pct, 2), 'z': round(final_z_pct, 2),
+        result = {'x': round(final_x_pct, 4), 'y': round(final_y_pct, 4), 'z': round(final_z_pct, 2),
                   'roll': round(final_roll_deg, 2), 'pit': round(final_pit_deg, 2), 'yaw': round(final_yaw_deg, 2)}
 
         # Draw box around region
@@ -1581,11 +1588,12 @@ class EDAutopilot:
         """
         close = 2.0  # In deg. Anything outside of this range will cause alignment.
         inner_lim = 1.0  # In deg. Will stop alignment when in this range.
-        pit_off = 0.5  # In deg. To keep the target above the center line (prevent it going down out of view).
+        compass_mult = 5  # Multiplier to close and inner_lim when using compass for align.
+        pit_off = 0.25  # In deg. To keep the target above the center line (prevent it going down out of view).
         inertia_pitch_factor = 1.0  # As we are dealing with small increments, we need to up the gain to overcome the inertia.
         inertia_yaw_factor = 1.0  # As we are dealing with small increments, we need to up the gain to overcome the inertia.
 
-        new = None
+        tar_off = None
         off = None
         nav_off = None
 
@@ -1594,17 +1602,23 @@ class EDAutopilot:
         # Try to get the target 5 times before quiting
         for i in range(5):
             # Check Target and Compass
-            nav_off = self.get_nav_offset(scr_reg)  # For cv view only
-            new = self.get_target_offset(scr_reg)
-            if new:
-                off = new
-                #logger.debug(f"sc_target_align x: {str(off['x'])} y:{str(off['y'])}")
+            nav_off = self.get_nav_offset(scr_reg)
+            tar_off = self.get_target_offset(scr_reg)
+            if tar_off:
+                # Target detected
+                off = tar_off
+                # logger.debug(f"sc_target_align x: {str(off['x'])} y:{str(off['y'])}")
                 # Apply offset to keep target above center
                 off['pit'] = off['pit'] - pit_off
             elif nav_off:
                 # Try to use the compass data if the target is not visible.
                 off = nav_off
                 self.ap_ckb('log+vce', 'Using Compass for Target Align')
+
+                # We are using compass align, increase the values as compass is much less accurate
+                close = close * compass_mult
+                inner_lim = inner_lim * compass_mult
+
                 # Check if Target is now behind us
                 if nav_off['z'] < 0:
                     self.ap_ckb('log', 'Target is behind us')
@@ -1627,7 +1641,7 @@ class EDAutopilot:
                 break
 
         # Target could not be found, return
-        if off is None and nav_off is None:
+        if tar_off is None and nav_off is None:
             logger.debug("sc_target_align not finding target")
             self.ap_ckb('log', 'Target Align failed - target not found')
             return ScTargetAlignReturn.Lost
@@ -1667,9 +1681,9 @@ class EDAutopilot:
 
             # Check Target and Compass
             nav_off = self.get_nav_offset(scr_reg)  # For cv view only
-            new = self.get_target_offset(scr_reg)
-            if new:
-                off = new
+            tar_off = self.get_target_offset(scr_reg)
+            if tar_off:
+                off = tar_off
                 logger.debug(f"sc_target_align 2 pit:{str(off['pit'])} yaw: {str(off['yaw'])} ")
                 # Apply offset to keep target above center
                 off['pit'] = off['pit'] - pit_off
@@ -1683,10 +1697,16 @@ class EDAutopilot:
                     return ScTargetAlignReturn.Lost
 
             # Check if target is outside the target region (behind us) and break loop
-            if new is None and nav_off is None:
+            if tar_off is None and nav_off is None:
                 logger.debug("sc_target_align lost target")
                 self.ap_ckb('log', 'Target Align failed - lost target.')
                 return ScTargetAlignReturn.Lost
+
+        # We are aligned, so define the navigation correction as the current offset. This won't be 100% accurate, but
+        # will be within a few degrees.
+        if tar_off and nav_off:
+            self._nav_cor_x = self._nav_cor_x + nav_off['x']
+            self._nav_cor_y = self._nav_cor_y + nav_off['y']
 
         #self.ap_ckb('log', 'Target Align complete.')
         return ScTargetAlignReturn.Found
