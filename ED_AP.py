@@ -1656,7 +1656,7 @@ class EDAutopilot:
             close = inner_lim  # Keep aligning until we are within this lower range.
 
             # Calc pitch time based on nav point location
-            logger.debug(f"sc_target_align before: pit:{str(off['pit'])} yaw: {str(off['yaw'])} ")
+            logger.debug(f"sc_target_align before: pit: {off['pit']} yaw: {off['yaw']} ")
             if abs(off['pit']) > close:
                 if off['pit'] < 0:
                     self.pitchDown(inertia_pitch_factor * abs(off['pit']))
@@ -1683,12 +1683,15 @@ class EDAutopilot:
                     self.stop_sco_monitoring()
                     return ScTargetAlignReturn.Disengage
 
+            # Wait for ship to finish moving and picture to stabilize
+            sleep(0.25)
+
             # Check Target and Compass
             nav_off = self.get_nav_offset(scr_reg)  # For cv view only
             tar_off = self.get_target_offset(scr_reg)
             if tar_off:
                 off = tar_off
-                logger.debug(f"sc_target_align after: pit:{str(off['pit'])} yaw: {str(off['yaw'])} ")
+                logger.debug(f"sc_target_align after: pit:{off['pit']} yaw: {off['yaw']} ")
                 # Apply offset to keep target above center
                 off['pit'] = off['pit'] - pit_off
             elif nav_off:
