@@ -58,6 +58,12 @@ class ScTargetAlignReturn(Enum):
     Disengage = 3
 
 
+class FSDAssistReturn(Enum):
+    Failed = 0  # Failed to reach system
+    Partial = 1  # Reached final system, but there is a local destination
+    Complete = 2  # Reached final system and there is no local destination
+
+
 class EDAutopilot:
 
     def __init__(self, cb, doThread=True):
@@ -2181,8 +2187,8 @@ class EDAutopilot:
             self.sc_engage()
 
         # Route sent...  FSD Assist to that destination
-        reached_dest = self.fsd_assist(scr_reg)
-        if not reached_dest:
+        fin = self.fsd_assist(scr_reg)
+        if fin == FSDAssistReturn.Failed:
             return False
 
         return True
@@ -2216,8 +2222,10 @@ class EDAutopilot:
 
         return True
 
-    def fsd_assist(self, scr_reg):
-        """ FSD Route Assist. Jumps repeatedly to the destination system then returns."""
+    def fsd_assist(self, scr_reg) -> FSDAssistReturn:
+        """ FSD Route Assist. Jumps repeatedly to the destination system then returns.
+        @return: True when arrived in system and no in-system target exists. False when
+        arrived in system and an in-system target does exist."""
         # TODO - can we enable this? Seems like a better way
         # nav_route_parser = NavRouteParser()
         logger.debug('self.jn.ship_state='+str(self.jn.ship_state()))
@@ -2283,7 +2291,7 @@ class EDAutopilot:
                 if self.jn.ship_state()['fuel_percent'] < self.config['FuelThreasholdAbortAP']:
                     self.ap_ckb('log', "AP Aborting, low fuel")
                     self.vce.say("AP Aborting, low fuel")
-                    break
+                    return FSDAssistReturn.Failed
 
         sleep(2)  # wait until screen stabilizes from possible last positioning
 
@@ -2294,13 +2302,14 @@ class EDAutopilot:
             if self.config["AutomaticLogout"]:
                 sleep(5)
                 self.logout()
-            return True
+            return FSDAssistReturn.Complete
         # else there is a destination in System, so let jump over to SC Assist
         else:
             self.keys.send('SetSpeed100')
             self.ap_ckb('log+vce', f"System reached, preparing for supercruise")
             sleep(1)
-            return False
+            return FSDAssistReturn.Partial
+
 
     def sc_assist(self, scr_reg, do_docking=True):
         """ Supercruise Assist loop to travel to target in system and perform autodock.
@@ -2657,7 +2666,7 @@ class EDAutopilot:
                 # defined.  So lets enable Supercruise assist to get us there
                 # Note: this is tricky, in normal FSD jumps the target is pretty much on the other side of Sun
                 #  when we arrive, but not so when we are in the final system
-                if fin == False:
+                if fin == FSDAssistReturn.Partial:
                     self.ap_ckb("sc_start")
 
                 # drop all out debug windows
