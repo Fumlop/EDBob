@@ -2300,7 +2300,7 @@ class EDAutopilot:
             self.keys.send('SetSpeed100')
             self.ap_ckb('log+vce', f"System reached, preparing for supercruise")
             sleep(1)
-            return True
+            return False
 
     def sc_assist(self, scr_reg, do_docking=True):
         """ Supercruise Assist loop to travel to target in system and perform autodock.
