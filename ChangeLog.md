@@ -1,3 +1,16 @@
+# 10/12/2025 v1.8.0 b9
+ - Added 'ScreenScale' to config as the auto target calibration is now messing with the other template scaling.
+ - Moved occluded target code into the target code. This should make occluded state easier to check and test.
+ - Changed target regions back to default and increased occluded target filtering.
+ - Updated occluded target image to regular target size.
+ - Added delay after ship movement in SC assist to allow ship to finish moving. 
+ - Added FSD ETA to overlay.
+ - Added logging of target offset, before and after for test.
+ - Added SC check to interdiction logic. Thanks vasconet.
+ - Added nav point correction when target aligned, to zero out any nav point offset errors.
+ - When in sc assist and compass is in control, increased the threshold as the compass is less accurate.
+ - Added ETA to system to log.
+
 # 10/9/2025 v1.8.0 b8
  - Added Delete All global shopping button.
  - Added Load Construction Commodities button to add construction commodity requirements to global shopping list.
