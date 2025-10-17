@@ -441,9 +441,6 @@ class EDWayPoint:
                 # Get the waypoint details
                 dest_key, next_waypoint = self.get_waypoint()
 
-
-
-
                 # End loop if we are not skipping this waypoint, or we are at the end
                 if (not skip_waypoint) or (dest_key is None):
                     break
@@ -528,7 +525,7 @@ class EDWayPoint:
                 # So we need to check if the ID (ABC-123) is at the end of the target ('Fleety McFleet ABC-123').
                 if cur_station_type == 'FleetCarrier'.upper():
                     docked_at_stn = next_wp_station.endswith(cur_station)
-                elif next_wp_station == 'System Colonisation Ship'.upper():
+                elif 'System Colonisation Ship'.upper() in next_wp_station:
                     if (cur_station_type == 'SurfaceStation'.upper() and
                             'ColonisationShip'.upper() in cur_station.upper()):
                         docked_at_stn = True

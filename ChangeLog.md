@@ -1,3 +1,9 @@
+# 10/16/2025 v1.8.0 b10
+ - Reduced fallback for gal and sys map.
+ - Better detection of Col Ships.
+ - Improved sc disengaged image.
+ - Improved SC disengage operation.
+
 # 10/12/2025 v1.8.0 b9
  - Added 'ScreenScale' to config as the auto target calibration is now messing with the other template scaling.
  - Moved occluded target code into the target code. This should make occluded state easier to check and test.

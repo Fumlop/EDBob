@@ -133,6 +133,7 @@ class EDAutopilot:
         self.honk_thread = None
         self._tce_integration = None
         self._ocr = None
+        self._sc_disengage_active = False  # Is SC Disengage active
 
         # used this to write the self.config table to the json file
         # self.write_config(self.config)
@@ -1233,6 +1234,13 @@ class EDAutopilot:
         width = scr_reg.templates.template['disengage']['width']
         height = scr_reg.templates.template['disengage']['height']
 
+        # Draw box around region
+        if self.debug_overlay:
+            abs_rect = scr_reg.reg['disengage']['rect']
+            self.overlay.overlay_rect1('sc_disengage', abs_rect, (0, 255, 0), 2)
+            self.overlay.overlay_floating_text('sc_disengage', f'Dis: {maxVal:5.4f} > {scr_reg.disengage_thresh}', abs_rect[0], abs_rect[1] - 25, (0, 255, 0))
+            self.overlay.overlay_paint()
+
         if self.cv_view:
             self.draw_match_rect(dis_image, pt, (pt[0] + width, pt[1] + height), (0,255,0), 2)
             dis_image = cv2.rectangle(dis_image, (0, 0), (1000, 25), (0, 0, 0), -1)
@@ -1241,11 +1249,9 @@ class EDAutopilot:
             cv2.moveWindow('disengage', self.cv_view_x-460,self.cv_view_y+575)
             cv2.waitKey(1)
 
-        #logger.debug("Disenage = "+str(maxVal))
-
         if maxVal > scr_reg.disengage_thresh:
             logger.info("'PRESS [] TO DISENGAGE' detected. Disengaging Supercruise")
-            self.vce.say("Disengaging Supercruise")
+            self.ap_ckb('log+vce', "Disengaging Supercruise")
             return True
         else:
             return False
@@ -1301,6 +1307,7 @@ class EDAutopilot:
     def stop_sco_monitoring(self):
         """ Stop Supercruise Overcharge Monitoring. """
         self._sc_sco_active_loop_enable = False
+        self._sc_disengage_active = False
 
     def _sc_sco_active_loop(self):
         """ A loop to determine is Supercruise Overcharge is active.
@@ -1331,6 +1338,12 @@ class EDAutopilot:
                     logger.info("SCO Aborting, < users low fuel threshold")
                     self.ap_ckb('log+vce', "SCO Aborting, < users low fuel threshold")
                     self.keys.send('UseBoostJuice')
+
+            # Check SC Disengage, but only when not in SC Overcharge
+            if not self.sc_sco_is_active:
+                self._sc_disengage_active = self.sc_disengage(self.scrReg)
+            else:
+                self._sc_disengage_active = False
 
             # Check again in a bit
             sleep(1)
@@ -1664,12 +1677,13 @@ class EDAutopilot:
             #     self.ap_ckb('log+vce', 'Target Align')
 
             # check for SC Disengage
-            if self.sc_disengage_label_up(scr_reg):
-                if self.sc_disengage_active(scr_reg):
-                    self.ap_ckb('log+vce', 'Disengage Supercruise')
-                    self.keys.send('HyperSuperCombination')
-                    self.stop_sco_monitoring()
-                    return ScTargetAlignReturn.Disengage
+            # if self.sc_disengage_label_up(scr_reg):
+            #     if self.sc_disengage_active(scr_reg):
+            if self._sc_disengage_active:
+                self.ap_ckb('log+vce', 'Disengage Supercruise')
+                self.keys.send('HyperSuperCombination')
+                self.stop_sco_monitoring()
+                return ScTargetAlignReturn.Disengage
 
             # Quit loop if we found Target or Compass
             if off:
@@ -1732,12 +1746,13 @@ class EDAutopilot:
             #     self.ap_ckb('log+vce', 'Target Align')
 
             # check for SC Disengage
-            if self.sc_disengage_label_up(scr_reg):
-                if self.sc_disengage_active(scr_reg):
-                    self.ap_ckb('log+vce', 'Disengage Supercruise')
-                    self.keys.send('HyperSuperCombination')
-                    self.stop_sco_monitoring()
-                    return ScTargetAlignReturn.Disengage
+            # if self.sc_disengage_label_up(scr_reg):
+            #     if self.sc_disengage_active(scr_reg):
+            if self._sc_disengage_active:
+                self.ap_ckb('log+vce', 'Disengage Supercruise')
+                self.keys.send('HyperSuperCombination')
+                self.stop_sco_monitoring()
+                return ScTargetAlignReturn.Disengage
 
             # Check if target is outside the target region (behind us) and break loop
             if tar_off is None and nav_off is None:
@@ -2149,15 +2164,27 @@ class EDAutopilot:
             self.keys.send('UseBoostJuice')
             self.keys.send('SetSpeed50')
 
-    def sc_engage(self):
-        """ Engages supercruise, then returns us to 50% speed """
+    def sc_engage(self, boost: bool):
+        """ Engages supercruise, then returns us to 50% speed, unless we are in SC already. """
+        if self.status.get_flag(FlagsSupercruise):
+            return
+
         self.keys.send('SetSpeed100')
-        self.keys.send('Supercruise', hold=0.001)
+
+        self.keys.send('Supercruise')
+
         # Start SCO monitoring
         self.start_sco_monitoring()
-        # TODO - check if we actually go into supercruise
-        sleep(12)
 
+        # Wait for jump to supercruise, keep boosting.
+        while not self.status.get_flag(FlagsFsdJump):
+            self.keys.send('UseBoostJuice')
+            sleep(1)
+
+        # Wait for supercruise
+        self.status.wait_for_flag_on(FlagsSupercruise, timeout=30)
+
+        # Revert to 50%
         self.keys.send('SetSpeed50')
 
     def waypoint_assist(self, keys, scr_reg):
@@ -2184,7 +2211,7 @@ class EDAutopilot:
 
         # if we are in space but not in supercruise, get into supercruise
         if self.jn.ship_state()['status'] != 'in_supercruise':
-            self.sc_engage()
+            self.sc_engage(False)
 
         # Route sent...  FSD Assist to that destination
         fin = self.fsd_assist(scr_reg)
@@ -2208,7 +2235,7 @@ class EDAutopilot:
 
         # if we are in space but not in supercruise, get into supercruise
         if self.jn.ship_state()['status'] != 'in_supercruise':
-            self.sc_engage()
+            self.sc_engage(False)
 
         # Successful targeting of Station, lets go to it
         sleep(3)  # Wait for compass to stop flashing blue!
@@ -2310,7 +2337,6 @@ class EDAutopilot:
             sleep(1)
             return FSDAssistReturn.Partial
 
-
     def sc_assist(self, scr_reg, do_docking=True):
         """ Supercruise Assist loop to travel to target in system and perform autodock.
         """
@@ -2336,7 +2362,7 @@ class EDAutopilot:
 
         # if we are in space but not in supercruise, get into supercruise
         if self.jn.ship_state()['status'] != 'in_supercruise':
-            self.sc_engage()
+            self.sc_engage(False)
 
         # Ensure we are 50%, don't want the loop of shame
         # Align Nav to target
@@ -2391,12 +2417,13 @@ class EDAutopilot:
                 self.nav_align(scr_reg)  # realign with station
 
             # check for SC Disengage
-            if self.sc_disengage_label_up(scr_reg):
-                if self.sc_disengage_active(scr_reg):
-                    self.ap_ckb('log+vce', 'Disengage Supercruise')
-                    self.keys.send('HyperSuperCombination')
-                    self.stop_sco_monitoring()
-                    break
+            # if self.sc_disengage_label_up(scr_reg):
+            #     if self.sc_disengage_active(scr_reg):
+            if self._sc_disengage_active:
+                self.ap_ckb('log+vce', 'Disengage Supercruise')
+                self.keys.send('HyperSuperCombination')
+                self.stop_sco_monitoring()
+                break
 
         # if no error, we must have gotten disengage
         if not align_failed and do_docking:
@@ -2630,15 +2657,11 @@ class EDAutopilot:
     def engine_loop(self):
         while not self.terminate:
             # TODO - Remove these show compass/target all the time
-            #self.get_nav_offset(self.scrReg, True)
-            #self.get_destination_offset(self.scrReg, True)
+            # self.get_nav_offset(self.scrReg, True)
+            # self.get_target_offset(self.scrReg, True)
 
-            self._sc_sco_active_loop_enable = True
-
-            if self._sc_sco_active_loop_enable:
-                if self._sc_sco_active_loop_thread is None or not self._sc_sco_active_loop_thread.is_alive():
-                    self._sc_sco_active_loop_thread = threading.Thread(target=self._sc_sco_active_loop, daemon=True)
-                    self._sc_sco_active_loop_thread.start()
+            # TODO - Enable for test
+            # self.start_sco_monitoring()
 
             if self.fsd_assist_enabled == True:
                 logger.debug("Running fsd_assist")

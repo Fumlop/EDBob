@@ -125,7 +125,7 @@ class EDSystemMap:
                 self.ap.overlay.overlay_paint()
 
             # Wait for screen to appear. The text is the same, regardless of language.
-            res = self.ocr.wait_for_text(self.ap, ["CARTOGRAPHICS"], self.reg['cartographics'])
+            res = self.ocr.wait_for_text(self.ap, ["CARTOGRAPHICS"], self.reg['cartographics'], timeout=10)
 
             # sleep(3.5)
         else:
