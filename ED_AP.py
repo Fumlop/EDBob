@@ -471,7 +471,6 @@ class EDAutopilot:
         self.update_overlay()
         self.ap_ckb('statusline', txt)
 
-
     # draws the matching rectangle within the image
     #
     def draw_match_rect(self, img, pt1, pt2, color, thick):
@@ -878,19 +877,8 @@ class EDAutopilot:
         while not self.status.wait_for_flag_off(FlagsFsdCooldown, timeout=1):
             self.keys.send('UseBoostJuice')
 
-        # Cooldown over, get us out of here.
-        self.keys.send('Supercruise')
-
-        # Start SCO monitoring
-        self.start_sco_monitoring()
-
-        # Wait for jump to supercruise, keep boosting.
-        while not self.status.get_flag(FlagsFsdJump):
-            self.keys.send('UseBoostJuice')
-            sleep(1)
-
-        # Wait for supercruise
-        self.status.wait_for_flag_on(FlagsSupercruise, timeout=30)
+        # Ensure we are in supercruise
+        self.sc_engage(True)
 
         # Update journal flag.
         self.jn.ship_state()['interdicted'] = False  # reset flag
@@ -2068,25 +2056,13 @@ class EDAutopilot:
                     self.pitchUp(90 * 1.25)
 
                     self.update_ap_status("Undock Complete, accelerating")
-                    self.keys.send('SetSpeed100')
 
-                    # While Mass Locked, keep boosting.
-                    while not self.status.wait_for_flag_off(FlagsFsdMassLocked, timeout=2):
-                        self.keys.send('UseBoostJuice')
-
-                    # Enter supercruise to get away from the Fleet Carrier
-                    self.keys.send('Supercruise')
-
-                    # Start SCO monitoring
-                    self.start_sco_monitoring()
-
-                    # Wait for SC
-                    res = self.status.wait_for_flag_on(FlagsSupercruise, timeout=30)
+                    # Engage Supercruise
+                    self.sc_engage(True)
 
                     # Wait the configured time before continuing
                     self.ap_ckb('log', 'Flying for configured FC departure time.')
                     sleep(self.config['FCDepartureTime'])
-                    self.keys.send('SetSpeed50')
 
                 # If we are on an Orbital Construction Site we will need to pitch up 90 deg to avoid crashes
                 if on_orbital_construction_site:
@@ -2097,17 +2073,9 @@ class EDAutopilot:
                 if starport_outpost or on_orbital_construction_site:
                     # In space (launched from starport or outpost etc.) OR construction site
                     self.update_ap_status("Undock Complete, accelerating")
-                    self.keys.send('SetSpeed100')
 
-                    # While Mass Locked, keep boosting.
-                    while not self.status.wait_for_flag_off(FlagsFsdMassLocked, timeout=2):
-                        self.keys.send('UseBoostJuice')
-
-                    # Enter supercruise
-                    self.keys.send('Supercruise')
-                    # Wait for SC
-                    res = self.status.wait_for_flag_on(FlagsSupercruise, timeout=30)
-                    self.keys.send('SetSpeed50')
+                    # Engage Supercruise
+                    self.sc_engage(True)
 
         elif on_planet:
             # Check if we are on a landing pad (docked), or landed on the planet surface
@@ -2138,20 +2106,9 @@ class EDAutopilot:
             self.keys.send('SetSpeed50')
             # The pitch rates are defined in SC, not normal flights, so bump this up a bit
             self.pitchUp(90 * 1.25)
-            self.keys.send('SetSpeed100')
 
-            # While Mass Locked, keep boosting.
-            while not self.status.wait_for_flag_off(FlagsFsdMassLocked, timeout=2):
-                self.keys.send('UseBoostJuice')
-
-            # Enter supercruise
-            self.keys.send('Supercruise')
-
-            # Start SCO monitoring
-            self.start_sco_monitoring()
-
-            # Wait for SC
-            res = self.status.wait_for_flag_on(FlagsSupercruise, timeout=30)
+            # Engage Supercruise
+            self.sc_engage(True)
 
             # Enable SCO. If SCO not fitted, this will do nothing.
             self.keys.send('UseBoostJuice')
@@ -2162,15 +2119,25 @@ class EDAutopilot:
 
             # Disable SCO. If SCO not fitted, this will do nothing.
             self.keys.send('UseBoostJuice')
-            self.keys.send('SetSpeed50')
 
-    def sc_engage(self, boost: bool):
-        """ Engages supercruise, then returns us to 50% speed, unless we are in SC already. """
+    def sc_engage(self, boost: bool) -> bool:
+        """ Engages supercruise, then returns us to 50% speed, unless we are in SC already.
+        """
+        # Check if we are already in SC
         if self.status.get_flag(FlagsSupercruise):
-            return
+            # Start SCO monitoring
+            self.start_sco_monitoring()
+            return True
 
         self.keys.send('SetSpeed100')
 
+        # While Mass Locked, keep boosting.
+        while self.status.get_flag(FlagsFsdMassLocked):
+            if boost:
+                self.keys.send('UseBoostJuice')
+            sleep(1)
+
+        # Engage Supercruise
         self.keys.send('Supercruise')
 
         # Start SCO monitoring
@@ -2178,7 +2145,8 @@ class EDAutopilot:
 
         # Wait for jump to supercruise, keep boosting.
         while not self.status.get_flag(FlagsFsdJump):
-            self.keys.send('UseBoostJuice')
+            if boost:
+                self.keys.send('UseBoostJuice')
             sleep(1)
 
         # Wait for supercruise
@@ -2186,6 +2154,8 @@ class EDAutopilot:
 
         # Revert to 50%
         self.keys.send('SetSpeed50')
+
+        return True
 
     def waypoint_assist(self, keys, scr_reg):
         """ Processes the waypoints, performing jumps and sc assist if going to a station
@@ -2209,9 +2179,8 @@ class EDAutopilot:
         if self.status.get_flag(FlagsDocked) or self.status.get_flag(FlagsLanded):
             self.waypoint_undock_seq()
 
-        # if we are in space but not in supercruise, get into supercruise
-        if self.jn.ship_state()['status'] != 'in_supercruise':
-            self.sc_engage(False)
+        # Ensure we are in supercruise
+        self.sc_engage(False)
 
         # Route sent...  FSD Assist to that destination
         fin = self.fsd_assist(scr_reg)
@@ -2233,9 +2202,8 @@ class EDAutopilot:
         if self.status.get_flag(FlagsDocked) or self.status.get_flag(FlagsLanded):
             self.waypoint_undock_seq()
 
-        # if we are in space but not in supercruise, get into supercruise
-        if self.jn.ship_state()['status'] != 'in_supercruise':
-            self.sc_engage(False)
+        # Ensure we are in supercruise
+        self.sc_engage(False)
 
         # Successful targeting of Station, lets go to it
         sleep(3)  # Wait for compass to stop flashing blue!
@@ -2360,9 +2328,8 @@ class EDAutopilot:
             self.update_overlay()
             self.waypoint_undock_seq()
 
-        # if we are in space but not in supercruise, get into supercruise
-        if self.jn.ship_state()['status'] != 'in_supercruise':
-            self.sc_engage(False)
+        # Ensure we are in supercruise
+        self.sc_engage(False)
 
         # Ensure we are 50%, don't want the loop of shame
         # Align Nav to target
