@@ -57,17 +57,16 @@ class AFK_Combat:
         self.k.send('DeployHardpointToggle')
         self.k.send('IncreaseEnginesPower', repeat=4)
         self.k.send('UseBoostJuice')
-        sleep(2)
 
         # while the ship is not in supercruise: booster and attempt supercruise
         # could be mass locked for a bit
-        while self.jn.ship_state()['status'] == 'in_space':
-            if self.voice is not None:
-                self.voice.say("Boosting, commanding supercruise")
-            self.k.send('UseBoostJuice')
-            sleep(1)
-            self.k.send('HyperSuperCombination')
-            sleep(9)
+        if self.voice is not None:
+            self.voice.say("Boosting, commanding supercruise")
+
+        # Engage Supercruise
+        self.ap.sc_engage(True)
+
+        self.k.send('SetSpeed100')
 
         # in supercruise, wait a bit to get away, then throttle 0 and exit supercruise, full pips to system   
         if self.voice is not None:
