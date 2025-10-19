@@ -23,9 +23,9 @@ import pywinstyles
 import sys  # Do not delete - prevents a 'super' error from tktoolip.
 from tktooltip import ToolTip  # In requirements.txt as 'tkinter-tooltip'.
 
-from OCR import RegionCalibration
 from Voice import *
 from MousePt import MousePoint
+# from OCR import RegionCalibration
 
 from Image_Templates import *
 from Screen import *
