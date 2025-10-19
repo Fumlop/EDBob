@@ -69,6 +69,13 @@ FORM_TYPE_SPINBOX = 1
 FORM_TYPE_ENTRY = 2
 
 
+def str_to_float(input_str: str) -> float:
+    try:
+        return float(input_str)
+    except ValueError:
+        return 0.0  # Assign a default value on error
+
+
 class APGui:
 
     def __init__(self, root):
@@ -123,7 +130,7 @@ class APGui:
         self.load_ocr_calibration_data()
         self.ed_ap = EDAutopilot(cb=self.callback)
         self.ed_ap.robigo.set_single_loop(self.ed_ap.config['Robigo_Single_Loop'])
-        self.calibrator = RegionCalibration(root, self.ed_ap, cb=self.callback)
+        # self.calibrator = RegionCalibration(root, self.ed_ap, cb=self.callback)
 
         self.ocr_calibration_data = {}
 
@@ -798,11 +805,45 @@ class APGui:
             rect = self.ocr_calibration_data[selected_region]['rect']
             self.calibration_rect_label_var.set(f"[{rect[0]:.4f}, {rect[1]:.4f}, {rect[2]:.4f}, {rect[3]:.4f}]")
             self.calibration_rect_text_var.set(f"{self.ocr_calibration_data[selected_region].get('text','')}")
-            # self.calibration_rect_left_var.set(rect[0])
+            self.calibration_rect_left_var.set(rect[0])
+            self.calibration_rect_top_var.set(rect[1])
+            self.calibration_rect_right_var.set(rect[2])
+            self.calibration_rect_bottom_var.set(rect[3])
 
             reg_f = Quad.from_rect(rect)
-            self.ed_ap.overlay.overlay_quad_pct('region select', reg_f, (0, 255, 0), 2)
+            self.ed_ap.overlay.overlay_quad_pct('region select', reg_f, (0, 255, 0), 2, 15)
             self.ed_ap.overlay.overlay_paint()
+
+    def on_region_size_change(self):
+        # Check if variables are valid
+        l_str = self.calibration_rect_left_var.get()
+        t_str = self.calibration_rect_top_var.get()
+        r_str = self.calibration_rect_right_var.get()
+        b_str = self.calibration_rect_bottom_var.get()
+        # Check if any are empty
+        if l_str == '' or r_str == '' or t_str == '' or b_str == '':
+            return
+
+        selected_region = self.calibration_region_var.get()
+        if selected_region in self.ocr_calibration_data:
+            rect = self.ocr_calibration_data[selected_region]['rect']
+            rect[0] = str_to_float(l_str)
+            rect[1] = str_to_float(t_str)
+            rect[2] = str_to_float(r_str)
+            rect[3] = str_to_float(b_str)
+
+            self.calibration_rect_label_var.set(f"[{rect[0]:.4f}, {rect[1]:.4f}, {rect[2]:.4f}, {rect[3]:.4f}]")
+            self.calibration_rect_text_var.set(f"{self.ocr_calibration_data[selected_region].get('text','')}")
+
+            reg_f = Quad.from_rect(rect)
+            self.ed_ap.overlay.overlay_quad_pct('region select', reg_f, (0, 255, 0), 2, 15)
+            self.ed_ap.overlay.overlay_paint()
+
+    @staticmethod
+    def calibrate_region_help():
+        # TODO - delete first line and enable the second.
+        webbrowser.open_new("https://github.com/Stumpii/EDAPGui/blob/main/docs/Calibration.md")
+        # webbrowser.open_new("https://github.com/SumZer0-git/EDAPGui/blob/main/docs/Calibration.md")
 
     def create_calibration_tab(self, tab):
         self.load_ocr_calibration_data()
@@ -829,15 +870,34 @@ class APGui:
         self.calibration_rect_label_var = tk.StringVar()
         ttk.Label(blk_region_cal, textvariable=self.calibration_rect_label_var).grid(row=2, column=1, padx=5, pady=5, sticky=tk.W)
 
-        # # TODO - new
-        # self.calibration_rect_left_var = tk.StringVar()
-        # lbl_sun_pitch_up = ttk.Label(blk_region_cal, text='Left:')
-        # lbl_sun_pitch_up.grid(row=3, column=0, pady=3, sticky=tk.W)
-        # spn_sun_pitch_up = ttk.Spinbox(blk_region_cal, textvariable=self.calibration_rect_left_var, width=10, from_=0, to=1, increment=0.001, justify=tk.RIGHT, command=on_spinbox_change)
-        # spn_sun_pitch_up.grid(row=3, column=1, padx=2, pady=2, sticky=tk.E)
-        # #spn_sun_pitch_up.bind('<FocusOut>', self.entry_update)
+        ttk.Label(blk_region_cal, text="Manually change the region below and save.\nHint: You can also use your keyboard up and down arrow keys.").grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky=tk.W)
 
-        ttk.Button(blk_region_cal, text="Calibrate Region", command=self.calibrate_ocr_region).grid(row=4, column=0, padx=5, pady=5, sticky=tk.W)
+        self.calibration_rect_left_var = tk.StringVar()
+        lbl_calibration_rect_left = ttk.Label(blk_region_cal, text='Left:')
+        lbl_calibration_rect_left.grid(row=4, column=0, padx=5, pady=5, sticky=tk.W)
+        spn_calibration_rect_left = ttk.Spinbox(blk_region_cal, textvariable=self.calibration_rect_left_var, width=10, from_=0, to=1, increment=0.001, justify=tk.RIGHT, command=self.on_region_size_change)
+        spn_calibration_rect_left.grid(row=4, column=1, padx=5, pady=5, sticky=tk.W)
+
+        self.calibration_rect_top_var = tk.StringVar()
+        lbl_calibration_rect_top = ttk.Label(blk_region_cal, text='Top:')
+        lbl_calibration_rect_top.grid(row=5, column=0, padx=5, pady=5, sticky=tk.W)
+        spn_calibration_rect_top = ttk.Spinbox(blk_region_cal, textvariable=self.calibration_rect_top_var, width=10, from_=0, to=1, increment=0.001, justify=tk.RIGHT, command=self.on_region_size_change)
+        spn_calibration_rect_top.grid(row=5, column=1, padx=5, pady=5, sticky=tk.W)
+
+        self.calibration_rect_right_var = tk.StringVar()
+        lbl_calibration_rect_right = ttk.Label(blk_region_cal, text='Right:')
+        lbl_calibration_rect_right.grid(row=6, column=0, padx=5, pady=5, sticky=tk.W)
+        spn_calibration_rect_right = ttk.Spinbox(blk_region_cal, textvariable=self.calibration_rect_right_var, width=10, from_=0, to=1, increment=0.001, justify=tk.RIGHT, command=self.on_region_size_change)
+        spn_calibration_rect_right.grid(row=6, column=1, padx=5, pady=5, sticky=tk.W)
+
+        self.calibration_rect_bottom_var = tk.StringVar()
+        lbl_calibration_rect_bottom = ttk.Label(blk_region_cal, text='Bottom:')
+        lbl_calibration_rect_bottom.grid(row=7, column=0, padx=5, pady=5, sticky=tk.W)
+        spn_calibration_rect_bottom = ttk.Spinbox(blk_region_cal, textvariable=self.calibration_rect_bottom_var, width=10, from_=0, to=1, increment=0.001, justify=tk.RIGHT, command=self.on_region_size_change)
+        spn_calibration_rect_bottom.grid(row=7, column=1, padx=5, pady=5, sticky=tk.W)
+
+        # ttk.Button(blk_region_cal, text="Calibrate Region", command=self.calibrate_ocr_region).grid(row=8, column=0, padx=5, pady=10, sticky=tk.W)
+        ttk.Button(blk_region_cal, text="Calibrate Region help online", command=self.calibrate_region_help).grid(row=8, column=0, padx=5, pady=10, sticky=tk.W)
 
         # Compass and Target Calibrations
         blk_other_cal = ttk.LabelFrame(tab, text="Compass and Target Calibrations")
@@ -1160,12 +1220,9 @@ class APGui:
 
         return mylist
 
-    def calibrate_ocr_region(self):
-        selected_region = self.calibration_region_var.get()
-        self.calibrator.calibrate_ocr_region(self.ocr_calibration_data, selected_region)
-
-        # Update label
-        self.on_region_select(None)
+    # def calibrate_ocr_region(self):
+    #     selected_region = self.calibration_region_var.get()
+    #     self.calibrator.calibrate_ocr_region(self.ocr_calibration_data, selected_region)
 
     def load_ocr_calibration_data(self):
         self.ocr_calibration_data = {}

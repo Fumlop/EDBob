@@ -369,124 +369,124 @@ class OCR:
         return text_found
 
 
-class RegionCalibration:
-    def __init__(self, root, ed_ap, cb):
-        self.scr = ed_ap.scr
-        self.root = root
-        self.ap = ed_ap
-        self.ap_ckb = cb
-        self.calibration_overlay = None
-        self.ocr_calibration_data = None
-        self.selected_region = None
-        self.calibration_canvas = None
-        self.current_rect = None
-        self.start_y = None
-        self.start_x = None
-
-    def calibrate_ocr_region(self, ocr_calibration_data, selected_region: str):
-        # selected_region = self.calibration_region_var.get()
-        self.ocr_calibration_data = ocr_calibration_data
-        self.selected_region = selected_region
-        if not self.selected_region:
-            messagebox.showerror("Error", "Please select a region to calibrate.")
-            return
-
-        self.ap_ckb('log', f"Starting calibration for: {selected_region}")
-
-        self.calibration_overlay = tk.Toplevel(self.root)
-        self.calibration_overlay.overrideredirect(True)
-
-        screen_w = self.scr.screen_width
-        screen_h = self.scr.screen_height
-        screen_x = self.scr.screen_left
-        screen_y = self.scr.screen_top
-
-        # screen_w = self.root.winfo_screenwidth()
-        # screen_h = self.root.winfo_screenheight()
-        # screen_x = self.root.winfo_x()
-        # screen_y = self.root.winfo_y()
-        # self.calibration_overlay.geometry(f"{screen_w}x{screen_h}+0+0")
-        self.calibration_overlay.geometry(f"{screen_w}x{screen_h}+{screen_x}+{screen_y}")
-
-        self.calibration_overlay.attributes('-alpha', 0.3)
-
-        self.calibration_canvas = tk.Canvas(self.calibration_overlay, highlightthickness=0, bg='black')
-        self.calibration_canvas.pack(fill=tk.BOTH, expand=True)
-
-        # Draw current region
-        rect_pct = self.ocr_calibration_data[selected_region]['rect']
-
-        display_rect_pct = rect_pct
-
-        x1 = display_rect_pct[0] * screen_w
-        y1 = display_rect_pct[1] * screen_h
-        x2 = display_rect_pct[2] * screen_w
-        y2 = display_rect_pct[3] * screen_h
-        self.calibration_canvas.create_rectangle(x1, y1, x2, y2, outline='green1', width=5)
-
-        self.start_x = None
-        self.start_y = None
-        self.current_rect = None
-
-        self.calibration_canvas.bind("<ButtonPress-1>", self.on_calibration_press)
-        self.calibration_canvas.bind("<B1-Motion>", self.on_calibration_drag)
-        self.calibration_canvas.bind("<ButtonRelease-1>", self.on_calibration_release)
-        self.calibration_canvas.bind("<ButtonPress-3>", self.on_calibration_cancel)
-        self.calibration_overlay.bind("<Escape>", lambda e: self.calibration_overlay.destroy())
-
-    def on_calibration_cancel(self, event):
-        self.calibration_overlay.destroy()
-
-    def on_calibration_press(self, event):
-        self.start_x = event.x
-        self.start_y = event.y
-        self.current_rect = self.calibration_canvas.create_rectangle(self.start_x, self.start_y, self.start_x, self.start_y, outline='cyan', width=5)
-
-    def on_calibration_drag(self, event):
-        if self.current_rect:
-            self.calibration_canvas.coords(self.current_rect, self.start_x, self.start_y, event.x, event.y)
-
-    def on_calibration_release(self, event):
-        end_x = event.x
-        end_y = event.y
-
-        screen_w = self.root.winfo_screenwidth()
-        screen_h = self.root.winfo_screenheight()
-
-        # Ensure coordinates are ordered correctly
-        left = min(self.start_x, end_x)
-        top = min(self.start_y, end_y)
-        right = max(self.start_x, end_x)
-        bottom = max(self.start_y, end_y)
-
-        left_pct = left / screen_w
-        top_pct = top / screen_h
-        right_pct = right / screen_w
-        bottom_pct = bottom / screen_h
-
-        # selected_region = self.calibration_region_var.get()
-
-        # Regions that require special scaling normalization to a 1920x1080 reference resolution
-        station_scaled_regions = [
-            "EDGalaxyMap.cartographics",
-            "EDSystemMap.cartographics"
-        ]
-
-        # Get the raw percentages from the drawn box
-        raw_rect_pct = [left_pct, top_pct, right_pct, bottom_pct]
-        raw_rect_pct = [round(left_pct, 4), round(top_pct, 4), round(right_pct, 4), round(bottom_pct, 4)]
-
-        # if self.selected_region.startswith("EDStationServicesInShip.") or self.selected_region in station_scaled_regions:
-        #     new_rect_pct = self._normalize_for_station(raw_rect_pct, screen_w, screen_h)
-        #     if new_rect_pct != raw_rect_pct:
-        #         self.ap_ckb('log', f"Applying station-style normalization for {self.selected_region}.")
-        # else:
-        new_rect_pct = raw_rect_pct
-
-        self.ocr_calibration_data[self.selected_region]['rect'] = new_rect_pct
-        self.ap_ckb('log', f"New rect for {self.selected_region}: {new_rect_pct}")
-
-        # Update label
-        # self.on_region_select(None)
-
-        self.calibration_overlay.destroy()
+# class RegionCalibration:
+#     def __init__(self, root, ed_ap, cb):
+#         self.scr = ed_ap.scr
+#         self.root = root
+#         self.ap = ed_ap
+#         self.ap_ckb = cb
+#         self.calibration_overlay = None
+#         self.ocr_calibration_data = None
+#         self.selected_region = None
+#         self.calibration_canvas = None
+#         self.current_rect = None
+#         self.start_y = None
+#         self.start_x = None
+#
+#     def calibrate_ocr_region(self, ocr_calibration_data, selected_region: str):
+#         # selected_region = self.calibration_region_var.get()
+#         self.ocr_calibration_data = ocr_calibration_data
+#         self.selected_region = selected_region
+#         if not self.selected_region:
+#             messagebox.showerror("Error", "Please select a region to calibrate.")
+#             return
+#
+#         self.ap_ckb('log', f"Starting calibration for: {selected_region}")
+#
+#         self.calibration_overlay = tk.Toplevel(self.root)
+#         self.calibration_overlay.overrideredirect(True)
+#
+#         screen_w = self.scr.screen_width
+#         screen_h = self.scr.screen_height
+#         screen_x = self.scr.screen_left
+#         screen_y = self.scr.screen_top
+#
+#         # screen_w = self.root.winfo_screenwidth()
+#         # screen_h = self.root.winfo_screenheight()
+#         # screen_x = self.root.winfo_x()
+#         # screen_y = self.root.winfo_y()
+#         # self.calibration_overlay.geometry(f"{screen_w}x{screen_h}+0+0")
+#         self.calibration_overlay.geometry(f"{screen_w}x{screen_h}+{screen_x}+{screen_y}")
+#
+#         self.calibration_overlay.attributes('-alpha', 0.3)
+#
+#         self.calibration_canvas = tk.Canvas(self.calibration_overlay, highlightthickness=0, bg='black')
+#         self.calibration_canvas.pack(fill=tk.BOTH, expand=True)
+#
+#         # Draw current region
+#         rect_pct = self.ocr_calibration_data[selected_region]['rect']
+#
+#         display_rect_pct = rect_pct
+#
+#         x1 = display_rect_pct[0] * screen_w
+#         y1 = display_rect_pct[1] * screen_h
+#         x2 = display_rect_pct[2] * screen_w
+#         y2 = display_rect_pct[3] * screen_h
+#         self.calibration_canvas.create_rectangle(x1, y1, x2, y2, outline='green1', width=5)
+#
+#         self.start_x = None
+#         self.start_y = None
+#         self.current_rect = None
+#
+#         self.calibration_canvas.bind("<ButtonPress-1>", self.on_calibration_press)
+#         self.calibration_canvas.bind("<B1-Motion>", self.on_calibration_drag)
+#         self.calibration_canvas.bind("<ButtonRelease-1>", self.on_calibration_release)
+#         self.calibration_canvas.bind("<ButtonPress-3>", self.on_calibration_cancel)
+#         self.calibration_overlay.bind("<Escape>", lambda e: self.calibration_overlay.destroy())
+#
+#     def on_calibration_cancel(self, event):
+#         self.calibration_overlay.destroy()
+#
+#     def on_calibration_press(self, event):
+#         self.start_x = event.x
+#         self.start_y = event.y
+#         self.current_rect = self.calibration_canvas.create_rectangle(self.start_x, self.start_y, self.start_x, self.start_y, outline='cyan', width=5)
+#
+#     def on_calibration_drag(self, event):
+#         if self.current_rect:
+#             self.calibration_canvas.coords(self.current_rect, self.start_x, self.start_y, event.x, event.y)
+#
+#     def on_calibration_release(self, event):
+#         end_x = event.x
+#         end_y = event.y
+#
+#         screen_w = self.root.winfo_screenwidth()
+#         screen_h = self.root.winfo_screenheight()
+#
+#         # Ensure coordinates are ordered correctly
+#         left = min(self.start_x, end_x)
+#         top = min(self.start_y, end_y)
+#         right = max(self.start_x, end_x)
+#         bottom = max(self.start_y, end_y)
+#
+#         left_pct = left / screen_w
+#         top_pct = top / screen_h
+#         right_pct = right / screen_w
+#         bottom_pct = bottom / screen_h
+#
+#         # selected_region = self.calibration_region_var.get()
+#
+#         # Regions that require special scaling normalization to a 1920x1080 reference resolution
+#         station_scaled_regions = [
+#             "EDGalaxyMap.cartographics",
+#             "EDSystemMap.cartographics"
+#         ]
+#
+#         # Get the raw percentages from the drawn box
+#         raw_rect_pct = [left_pct, top_pct, right_pct, bottom_pct]
+#         raw_rect_pct = [round(left_pct, 4), round(top_pct, 4), round(right_pct, 4), round(bottom_pct, 4)]
+#
+#         # if self.selected_region.startswith("EDStationServicesInShip.") or self.selected_region in station_scaled_regions:
+#         #     new_rect_pct = self._normalize_for_station(raw_rect_pct, screen_w, screen_h)
+#         #     if new_rect_pct != raw_rect_pct:
+#         #         self.ap_ckb('log', f"Applying station-style normalization for {self.selected_region}.")
+#         # else:
+#         new_rect_pct = raw_rect_pct
+#
+#         self.ocr_calibration_data[self.selected_region]['rect'] = new_rect_pct
+#         self.ap_ckb('log', f"New rect for {self.selected_region}: {new_rect_pct}")
+#
+#         # Update label
+#         # self.on_region_select(None)
+#
+#         self.calibration_overlay.destroy()
