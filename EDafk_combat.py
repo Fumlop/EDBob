@@ -80,6 +80,7 @@ class AFK_Combat:
         if self.voice is not None:
             self.voice.say("Exiting supercruise, all power to system and weapons")
         self.k.send('HyperSuperCombination', repeat=2)
+        self.ap.stop_sco_monitoring()
         sleep(7)
         self.k.send('IncreaseSystemsPower', repeat=3)
         self.k.send('IncreaseWeaponsPower', repeat=3)

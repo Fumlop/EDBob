@@ -116,6 +116,7 @@ class EDAutopilot:
             "EDMesgEventsPort": 15571,
             "DebugOverlay": False,
             "AFKCombat_AttackAtWill": False,
+            "HotkeysEnable": False,        # Enable hotkeys
         }
         # NOTE!!! When adding a new config value above, add the same after read_config() to set
         # a default value or an error will occur reading the new value!
@@ -170,6 +171,8 @@ class EDAutopilot:
                 cnf['DebugOverlay'] = False
             if 'AFKCombat_AttackAtWill' not in cnf:
                 cnf['AFKCombat_AttackAtWill'] = False
+            if 'HotkeysEnable' not in cnf:
+                cnf['HotkeysEnable'] = False
             self.config = cnf
             logger.debug("read AP json:"+str(cnf))
         else:
@@ -221,6 +224,7 @@ class EDAutopilot:
         self.scr = Screen.Screen(cb)
         self.scr.scaleX = self.config['ScreenScale']
         self.scr.scaleY = self.config['ScreenScale']
+        self.target_scale = self.config['TargetScale']
 
         self.gfx_settings = EDGraphicsSettings()
         # Aspect ratio greater than 1920/1080 (1.7777) seems to be the magic cutoff. At > 1920/1080 (1.7777), the FOV
@@ -259,15 +263,8 @@ class EDAutopilot:
         if self.config['EnableEDMesg']:
             self.mesg_server.start_server()
 
-        # rate as ship dependent. Can be found on the outfitting page for the ship. However, it looks like supercruise
-        # has worse performance for these rates
-        # see:  https://forums.frontier.co.uk/threads/supercruise-handling-of-ships.396845/
-        #
-        # If you find that you are overshoot in pitch or roll, need to adjust these numbers.
-        # Algorithm will roll the vehicle for the nav point to be north or south and then pitch to get the nave point
-        # to center
+        # Set defaults for data read from ships config
         self.compass_scale = 1.0
-        self.target_scale = 1.0
         self.yawrate   = 8.0
         self.rollrate  = 80.0
         self.pitchrate = 33.0
@@ -309,6 +306,10 @@ class EDAutopilot:
         if doThread:
             self.ap_thread = kthread.KThread(target=self.engine_loop, name="EDAutopilot")
             self.ap_thread.start()
+
+        # Start thread to delete old log files.
+        del_log_files_thread = threading.Thread(target=delete_old_log_files, daemon=True)
+        del_log_files_thread.start()
 
     @property
     def tce_integration(self) -> TceIntegration:
@@ -683,7 +684,8 @@ class EDAutopilot:
 
         # loop through the test.
         threshold = 0.5  # Minimum match is constant. Result will always be the highest match.
-        scale_max, max_val = self.calibrate_region(range_low, range_high, range_step, threshold, 'target','target', True)
+        no_overlay = not self.debug_overlay
+        scale_max, max_val = self.calibrate_region(range_low, range_high, range_step, threshold, 'target','target', no_overlay)
         # if we found a scaling factor that meets our criteria, then save it to the resolution.json file
         if max_val != 0:
             self.ap_ckb('log', f'Target Cal: Best match: {max_val:5.4f}(%) at scale: {self.scr.scaleX:5.4f}')
@@ -756,7 +758,8 @@ class EDAutopilot:
 
         # loop through the test.
         threshold = 0.5  # Minimum match is constant. Result will always be the highest match.
-        scale_max, max_val = self.calibrate_region(range_low, range_high, range_step, threshold, 'compass','compass', True)
+        no_overlay = not self.debug_overlay
+        scale_max, max_val = self.calibrate_region(range_low, range_high, range_step, threshold, 'compass','compass', no_overlay)
         # if we found a scaling factor that meets our criteria, then save it to the resolution.json file
         if max_val != 0:
             c_scale_x = float(scale_max / 100)
@@ -893,6 +896,13 @@ class EDAutopilot:
             0deg (12 o'clock) to
             180deg (6 o'clock clockwise)
         """
+        # Clear the overlays before grabbing image
+        # if self.debug_overlay:
+        #     self.overlay.overlay_remove_rect('compass')
+        #     self.overlay.overlay_remove_floating_text('compass')
+        #     self.overlay.overlay_remove_floating_text('compass_rpy')
+        #     self.overlay.overlay_paint()
+
         full_compass_image = None
         maxLoc = 0
         maxVal = 0
@@ -1042,6 +1052,13 @@ class EDAutopilot:
              180deg (6 o'clock clockwise)
             'occ' is True if the target is occluded, else False
         """
+        # Clear the overlays before grabbing image
+        # if self.debug_overlay:
+        #     self.overlay.overlay_remove_rect('target')
+        #     self.overlay.overlay_remove_floating_text('target')
+        #     self.overlay.overlay_remove_floating_text('target_rpy')
+        #     self.overlay.overlay_paint()
+
         dst_image = None
         maxLoc = 0
         maxVal = 0
@@ -1238,13 +1255,13 @@ class EDAutopilot:
             cv2.waitKey(1)
 
         if maxVal > scr_reg.disengage_thresh:
-            logger.info("'PRESS [] TO DISENGAGE' detected. Disengaging Supercruise")
-            self.ap_ckb('log+vce', "Disengaging Supercruise")
+            # logger.info("'PRESS [] TO DISENGAGE' detected. Disengaging Supercruise")
+            # self.ap_ckb('log+vce', "Disengaging Supercruise")
             return True
         else:
             return False
 
-    def sc_disengage_active(self, scr_reg) -> bool:
+    def sc_disengage_ocr(self, scr_reg) -> bool:
         """ look for the "SUPERCRUISE OVERCHARGE ACTIVE" text using OCR, if in this region then return true. """
         image = self.scr.get_screen_region(scr_reg.reg['disengage']['rect'])
         # TODO delete this line when COLOR_RGB2BGR is removed from get_screen()
@@ -1252,6 +1269,10 @@ class EDAutopilot:
         mask = scr_reg.capture_region_filtered(self.scr, 'disengage')
         masked_image = cv2.bitwise_and(image, image, mask=mask)
         image = masked_image
+
+        start_time = None
+        if self.debug_overlay:
+            start_time = time.time()
 
         # OCR the selected item
         sim_match = 0.35  # Similarity match 0.0 - 1.0 for 0% - 100%)
@@ -1263,9 +1284,10 @@ class EDAutopilot:
 
         # Draw box around region
         if self.debug_overlay:
+            elapsed_time = time.time() - start_time
             abs_rect = scr_reg.reg['disengage']['rect']
             self.overlay.overlay_rect1('sc_disengage_active', abs_rect, (0, 255, 0), 2)
-            self.overlay.overlay_floating_text('sc_disengage_active', f'{str(ocr_textlist)}', abs_rect[0], abs_rect[1] - 25, (0, 255, 0))
+            self.overlay.overlay_floating_text('sc_disengage_active', f'{str(ocr_textlist)} ({round(elapsed_time, 4)} Secs)', abs_rect[0], abs_rect[1] - 25, (0, 255, 0))
             self.overlay.overlay_paint()
 
         if self.cv_view:
@@ -1277,8 +1299,8 @@ class EDAutopilot:
             cv2.waitKey(30)
 
         if sim > sim_match:
-            logger.info("'PRESS [] TO DISENGAGE' detected. Disengaging Supercruise")
-            #cv2.imwrite(f'test/disengage.png', image)
+            # logger.info("'PRESS [] TO DISENGAGE' detected. Disengaging Supercruise")
+            # cv2.imwrite(f'test/disengage.png', image)
             return True
 
         return False
@@ -1329,7 +1351,11 @@ class EDAutopilot:
 
             # Check SC Disengage, but only when not in SC Overcharge
             if not self.sc_sco_is_active:
-                self._sc_disengage_active = self.sc_disengage(self.scrReg)
+                # Enable one or the other!
+                # self._sc_disengage_active = self.sc_disengage(self.scrReg)
+
+                # if self.sc_disengage_label_up(scr_reg):
+                self._sc_disengage_active = self.sc_disengage_ocr(self.scrReg)
             else:
                 self._sc_disengage_active = False
 
@@ -1484,12 +1510,12 @@ class EDAutopilot:
             sleep(-1.0 * self.sunpitchuptime)
             self.keys.send('PitchDownButton', state=0)
 
-    def nav_align(self, scr_reg) -> bool:
-        """ Use the compass to find the nav point position.  Will then perform rotation and pitching
-        to put the nav point in the middle of the compass, i.e. target right in front of us.
+    def compass_align(self, scr_reg) -> bool:
+        """ Use the compass to find the nav point position when in SC or in space.  Will then perform rotation and
+        pitching to put the nav point in the middle of the compass, i.e. target right in front of us.
         @return: True if aligned, else False.
         """
-        close = 7.5  # in degrees
+        close = 5.0  # in degrees
         if not (self.jn.ship_state()['status'] == 'in_supercruise' or self.jn.ship_state()['status'] == 'in_space'):
             logger.error('align=err1, nav_align not in super or space')
             raise Exception('nav_align not in super or space')
@@ -1523,6 +1549,13 @@ class EDAutopilot:
                         self.ap_ckb('log', 'Unable to detect compass.')
                         continue
                     if abs(off['roll']) > close and (180 - abs(off['roll']) > close):
+                        # Clear the overlays before moving
+                        if self.debug_overlay:
+                            self.overlay.overlay_remove_rect('compass')
+                            self.overlay.overlay_remove_floating_text('compass')
+                            self.overlay.overlay_remove_floating_text('compass_rpy')
+                            self.overlay.overlay_paint()
+
                         # first roll to get the nav point at the vertical position
                         if off['yaw'] > 0 and off['pit'] > 0:
                             # top right quad, then roll right to get to 90 up
@@ -1547,6 +1580,13 @@ class EDAutopilot:
                     self.ap_ckb('log', 'Unable to detect compass.')
                     continue
                 if abs(off['pit']) > close:
+                    # Clear the overlays before moving
+                    if self.debug_overlay:
+                        self.overlay.overlay_remove_rect('compass')
+                        self.overlay.overlay_remove_floating_text('compass')
+                        self.overlay.overlay_remove_floating_text('compass_rpy')
+                        self.overlay.overlay_paint()
+
                     if off['pit'] < 0:
                         self.pitchDown(abs(off['pit']))
                     else:
@@ -1563,6 +1603,13 @@ class EDAutopilot:
                     self.ap_ckb('log', 'Unable to detect compass.')
                     continue
                 if abs(off['yaw']) > close:
+                    # Clear the overlays before moving
+                    if self.debug_overlay:
+                        self.overlay.overlay_remove_rect('compass')
+                        self.overlay.overlay_remove_floating_text('compass')
+                        self.overlay.overlay_remove_floating_text('compass_rpy')
+                        self.overlay.overlay_paint()
+
                     if off['yaw'] < 0:
                         self.yawLeft(abs(off['yaw']))
                     else:
@@ -1581,23 +1628,26 @@ class EDAutopilot:
         return False
 
     def mnvr_to_target(self, scr_reg):
-        logger.debug('align')
+        """ Maneuver to Target using compass then target before performing a jump."""
+        logger.debug('mnvr_to_target entered')
+
         if not (self.jn.ship_state()['status'] == 'in_supercruise' or self.jn.ship_state()['status'] == 'in_space'):
             logger.error('align() not in sc or space')
             raise Exception('align() not in sc or space')
 
         self.sun_avoid(scr_reg)
-        res = self.nav_align(scr_reg)
+
+        res = self.compass_align(scr_reg)
         # Quick calibrate the compass
         if res:
             self.quick_calibrate_compass()
         self.keys.send('SetSpeed100')
 
-        #self.fsd_target_align(scr_reg)
+        self.ap_ckb('log+vce', 'Target Align')
         for i in range(5):
             align_res = self.sc_target_align(scr_reg)
             if align_res == ScTargetAlignReturn.Lost:
-                self.nav_align(scr_reg)  # Compass Align
+                self.compass_align(scr_reg)  # Compass Align
 
             elif align_res == ScTargetAlignReturn.Found:
                 return
@@ -1626,8 +1676,6 @@ class EDAutopilot:
         tar_off = None
         off = None
         nav_off = None
-
-        # self.ap_ckb('log+vce', 'Target Align')
 
         # Try to get the target 5 times before quiting
         for i in range(5):
@@ -1666,7 +1714,7 @@ class EDAutopilot:
 
             # check for SC Disengage
             # if self.sc_disengage_label_up(scr_reg):
-            #     if self.sc_disengage_active(scr_reg):
+            #     if self.sc_disengage_ocr(scr_reg):
             if self._sc_disengage_active:
                 self.ap_ckb('log+vce', 'Disengage Supercruise')
                 self.keys.send('HyperSuperCombination')
@@ -1688,6 +1736,16 @@ class EDAutopilot:
                (abs(off['pit']) > outer_lim)):
 
             outer_lim = inner_lim  # Keep aligning until we are within this lower range.
+
+            # Clear the overlays before moving
+            if self.debug_overlay:
+                self.overlay.overlay_remove_rect('compass')
+                self.overlay.overlay_remove_floating_text('compass')
+                self.overlay.overlay_remove_floating_text('compass_rpy')
+                self.overlay.overlay_remove_rect('target')
+                self.overlay.overlay_remove_floating_text('target')
+                self.overlay.overlay_remove_floating_text('target_rpy')
+                self.overlay.overlay_paint()
 
             # Calc pitch time based on nav point location
             logger.debug(f"sc_target_align before: pit: {off['pit']} yaw: {off['yaw']} ")
@@ -1735,7 +1793,7 @@ class EDAutopilot:
 
             # check for SC Disengage
             # if self.sc_disengage_label_up(scr_reg):
-            #     if self.sc_disengage_active(scr_reg):
+            #     if self.sc_disengage_ocr(scr_reg):
             if self._sc_disengage_active:
                 self.ap_ckb('log+vce', 'Disengage Supercruise')
                 self.keys.send('HyperSuperCombination')
@@ -1775,7 +1833,7 @@ class EDAutopilot:
         self.keys.send('SetSpeed50')
         sleep(5)
         self.pitchUp(90)
-        self.nav_align(scr_reg)
+        self.compass_align(scr_reg)
         self.keys.send('SetSpeed50')
 
     def honk(self):
@@ -1856,6 +1914,9 @@ class EDAutopilot:
 
         self.vce.say("Frameshift Jump")
 
+        # Stop SCO monitoring
+        self.stop_sco_monitoring()
+
         jump_tries = self.config['JumpTries']
         for i in range(jump_tries):
 
@@ -1866,10 +1927,8 @@ class EDAutopilot:
             sleep(0.5)
             logger.debug('jump= start fsd')
 
-            self.keys.send('HyperSuperCombination', hold=1)
-
-            # Start SCO monitoring ready when we drop back to SC.
-            self.start_sco_monitoring()
+            # Initiate FSD Jump
+            self.keys.send('HyperSuperCombination')
 
             res = self.status.wait_for_flag_on(FlagsFsdCharging, 5)
             if not res:
@@ -1894,6 +1953,11 @@ class EDAutopilot:
             self.keys.send('SetSpeedZero', repeat=3)  # Let's be triply sure that we set speed to 0% :)
             sleep(1)  # wait 1 sec after jump to allow graphics to stablize and accept inputs
             logger.debug('jump=complete')
+
+            # Start SCO monitoring ready when we drop back to SC.
+            self.start_sco_monitoring()
+
+            # We completed the jump
             return True
 
         logger.error(f'FSD Jump failed {jump_tries} times. jump=err2')
@@ -2046,6 +2110,7 @@ class EDAutopilot:
                 self.undock()
 
                 # need to wait until undock complete, that is when we are back in_space
+                # TODO - This maybe an FDEV error. On leaving a FC, no music was played so the journal never logged that we went into space.
                 while self.jn.ship_state()['status'] != 'in_space':
                     sleep(1)
 
@@ -2164,14 +2229,22 @@ class EDAutopilot:
 
     def jump_to_system(self, scr_reg) -> bool:
         """ Jumps to the currently targeted system. Returns True if we successfully travel there, else False. """
-        # Current in game destination
-        status = self.status.get_cleaned_data()
-        destination_body = status['Destination_Body']  # The body number (0 for prim star)
-        destination_name = status['Destination_Name']  # The system/body/station/settlement name
+        # Disabled the below because when docking, after a system was selected, the status file did not update, so the
+        # current status was never updated.
+        # # Current in game destination
+        # status = self.status.get_cleaned_data()
+        # destination_body = status['Destination_Body']  # The body number (0 for prim star)
+        # destination_name = status['Destination_Name']  # The system/body/station/settlement name
+        #
+        # # Check we have a route and that we have a destination to a star (body 0).
+        # # We can have one without the other.
+        # if destination_body != 0 or destination_name == "":
+        #     self.ap_ckb('log', "A valid destination system is not selected.")
+        #     return False
 
-        # Check we have a route and that we have a destination to a star (body 0).
-        # We can have one without the other.
-        if destination_body != 0 or destination_name == "":
+        # Check if the current nav route is to the target system
+        last_nav_route_sys = self.nav_route.get_last_system().upper()
+        if last_nav_route_sys == '':
             self.ap_ckb('log', "A valid destination system is not selected.")
             return False
 
@@ -2330,23 +2403,22 @@ class EDAutopilot:
 
         # Ensure we are in supercruise
         self.sc_engage(False)
+        self.jn.ship_state()['interdicted'] = False
 
         # Ensure we are 50%, don't want the loop of shame
         # Align Nav to target
         self.keys.send('SetSpeed50')
-        res = self.nav_align(scr_reg)  # Compass Align
+        res = self.compass_align(scr_reg)  # Compass Align
         self.keys.send('SetSpeed50')
 
-        self.jn.ship_state()['interdicted'] = False
-
-        # Loop forever keeping tight align to target, until we get SC Disengage popup
+        # self.quick_calibrate_target()
         self.ap_ckb('log+vce', 'Target Align')
         align_res = self.sc_target_align(scr_reg)
         # Quick calibrate with the target in front
-        if align_res == ScTargetAlignReturn.Found:
-            self.quick_calibrate_target()
+        # if align_res == ScTargetAlignReturn.Found:
+        #     self.quick_calibrate_target()
 
-        # Keep aligning
+        # Loop forever keeping tight align to target, until we get SC Disengage popup
         while True:
             sleep(0.05)
             if self.jn.ship_state()['status'] == 'in_supercruise':
@@ -2357,7 +2429,7 @@ class EDAutopilot:
                     # self.keys.send('SetSpeed100')
                     sleep(10)
                     self.keys.send('SetSpeed50')
-                    self.nav_align(scr_reg)  # Compass Align
+                    self.compass_align(scr_reg)  # Compass Align
 
                 elif align_res == ScTargetAlignReturn.Found:
                     pass
@@ -2381,11 +2453,11 @@ class EDAutopilot:
             if interdicted:
                 # Continue journey after interdiction
                 self.keys.send('SetSpeed50')
-                self.nav_align(scr_reg)  # realign with station
+                self.compass_align(scr_reg)  # realign with station
 
             # check for SC Disengage
             # if self.sc_disengage_label_up(scr_reg):
-            #     if self.sc_disengage_active(scr_reg):
+            #     if self.sc_disengage_ocr(scr_reg):
             if self._sc_disengage_active:
                 self.ap_ckb('log+vce', 'Disengage Supercruise')
                 self.keys.send('HyperSuperCombination')
@@ -2484,11 +2556,14 @@ class EDAutopilot:
             if res is False:
                 return False
 
-        # Disabled until SC to station enabled.
-        # if self._single_waypoint_station != "":
-        #     res = self.supercruise_to_station(self.scrReg, self._single_waypoint_station)
-        #     if res is False:
-        #         return False
+        if self._single_waypoint_station != "":
+            res = self.nav_panel.lock_destination(self._single_waypoint_station)
+            if not res:
+               return False
+
+            res = self.supercruise_to_station(self.scrReg, self._single_waypoint_station)
+            if res is False:
+                return False
 
     # raising an exception to the engine loop thread, so we can terminate its execution
     #  if thread was in a sleep, the exception seems to not be delivered
@@ -2550,7 +2625,7 @@ class EDAutopilot:
         self.dss_assist_enabled = enable
 
     def set_single_waypoint_assist(self, system: str, station: str, enable=True):
-        if enable == False and self.single_waypoint_enabled == True:
+        if not enable and self.single_waypoint_enabled:
             self.ctype_async_raise(self.ap_thread, EDAP_Interrupt)
         self._single_waypoint_system = system
         self._single_waypoint_station = station
@@ -2645,6 +2720,7 @@ class EDAutopilot:
                 except EDAP_Interrupt:
                     logger.debug("Caught stop exception")
                 except Exception as e:
+                    logger.debug("FSD Assist trapped generic:"+str(e))
                     print("Trapped generic:"+str(e))
                     traceback.print_exc()
 
@@ -2674,6 +2750,7 @@ class EDAutopilot:
                     logger.debug("Caught stop exception")
                 except Exception as e:
                     print("Trapped generic:"+str(e))
+                    logger.debug("SC Assist trapped generic:"+str(e))
                     traceback.print_exc()
 
                 logger.debug("Completed sc_assist")
@@ -2696,6 +2773,7 @@ class EDAutopilot:
                     logger.debug("Caught stop exception")
                 except Exception as e:
                     print("Trapped generic:"+str(e))
+                    logger.debug("Waypoint Assist trapped generic:"+str(e))
                     traceback.print_exc()
 
                 self.waypoint_assist_enabled = False
@@ -2712,6 +2790,7 @@ class EDAutopilot:
                     logger.debug("Caught stop exception")
                 except Exception as e:
                     print("Trapped generic:"+str(e))
+                    logger.debug("Robigo Assist trapped generic:"+str(e))
                     traceback.print_exc()
 
                 self.robigo_assist_enabled = False
@@ -2724,6 +2803,11 @@ class EDAutopilot:
                     self.afk_combat_loop()
                 except EDAP_Interrupt:
                     logger.debug("Stopping afk_combat")
+                except Exception as e:
+                    print("Trapped generic:" + str(e))
+                    logger.debug("AFK Combat Assist trapped generic:" + str(e))
+                    traceback.print_exc()
+
                 self.afk_combat_assist_enabled = False
                 self.ap_ckb('afk_stop')
                 self.update_overlay()
@@ -2736,6 +2820,11 @@ class EDAutopilot:
                     self.dss_assist()
                 except EDAP_Interrupt:
                     logger.debug("Stopping DSS Assist")
+                except Exception as e:
+                    print("Trapped generic:" + str(e))
+                    logger.debug("DSS Assist trapped generic:" + str(e))
+                    traceback.print_exc()
+
                 self.dss_assist_enabled = False
                 self.ap_ckb('dss_stop')
                 self.update_overlay()
@@ -2746,6 +2835,11 @@ class EDAutopilot:
                     self.single_waypoint_assist()
                 except EDAP_Interrupt:
                     logger.debug("Stopping Single Waypoint Assist")
+                except Exception as e:
+                    print("Trapped generic:" + str(e))
+                    logger.debug("Single Waypoint Assist trapped generic:" + str(e))
+                    traceback.print_exc()
+
                 self.single_waypoint_enabled = False
                 self.ap_ckb('single_waypoint_stop')
                 self.update_overlay()
@@ -2848,6 +2942,24 @@ class EDAutopilot:
         self.yawLeft(angle)
 
 
+def delete_old_log_files():
+    """ Deleted old .log files from the main folder."""
+    folder = '.'
+    n = 5  # days
+
+    current_time = time.time()
+    day = 86400  # seconds in a day
+
+    for filename in os.listdir(folder):
+        file_path = os.path.join(folder, filename)
+        if os.path.isfile(file_path):
+            if filename.endswith('.log'):
+                file_time = os.path.getmtime(file_path)
+                if file_time < current_time - day * n:
+                    print(f"Deleting file: '{file_path}'")
+                    os.remove(file_path)
+
+
 def strfdelta(tdelta, fmt='{H:02}h {M:02}m {S:02.0f}s', inputtype='timedelta'):
     """Convert a datetime.timedelta object or a regular number to a custom
     formatted string, just like the stftime() method does for datetime.datetime
@@ -2910,6 +3022,8 @@ def main():
     #handle = win32gui.FindWindow(0, "Elite - Dangerous (CLIENT)")
     #if handle != None:
     #    win32gui.SetForegroundWindow(handle)  # put the window in foreground
+
+    delete_old_log_files()
 
     ed_ap = EDAutopilot(cb=dummy_cb, doThread=False)
 

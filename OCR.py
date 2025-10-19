@@ -44,6 +44,8 @@ class OCR:
         """
         s1_new = s1.replace("['",  "")
         s1_new = s1_new.replace("']",  "")
+        s1_new = s1_new.replace('["',  "")
+        s1_new = s1_new.replace('"]',  "")
         s1_new = s1_new.replace("', '",  "")
         s1_new = s1_new.replace("<",  "")
         s1_new = s1_new.replace(">",  "")
@@ -51,6 +53,8 @@ class OCR:
 
         s2_new = s2.replace("['",  "")
         s2_new = s2_new.replace("']",  "")
+        s2_new = s2_new.replace('["',  "")
+        s2_new = s2_new.replace('"]',  "")
         s2_new = s2_new.replace("', '",  "")
         s2_new = s2_new.replace("<",  "")
         s2_new = s2_new.replace(">",  "")
@@ -105,9 +109,14 @@ class OCR:
         if image is None:
             return None
 
+        # start_time = time.time()
+
         # Remove Alpha channel if it exists
         image2 = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
         ocr_data = self.paddleocr.predict(image2)
+
+        # elapsed_time = time.time() - start_time
+        # print(f"OCR took {elapsed_time} secs")
 
         if ocr_data is None:
             return None

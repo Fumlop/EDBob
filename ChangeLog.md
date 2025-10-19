@@ -1,3 +1,16 @@
+# 10/19/2025 v1.8.0 b11
+ - In English locale file, changed CONNECTED TO to CONNECTED.
+ - Added enable hotkey option (off by default) to help new players with bindings.
+ - Disabled target auto calibration (again).
+ - More improvements to SC.
+ - Enabled overlay for auto calibration.
+ - Added time indication for disengage overlay.
+ - Added OCR detection for disengage into sco thread.
+ - Fixed issue with target scale not being read from save file.
+ - Added auto deletion of old log files.
+ - Cleared target and compass overlays when moving the ship.
+ - Decreased margin for compass align and nav detect is more accurate.
+
 # 10/16/2025 v1.8.0 b10
  - Reduced fallback for gal and sys map.
  - Better detection of Col Ships.

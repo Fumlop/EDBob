@@ -555,7 +555,7 @@ class EDWayPoint:
                             _abort = True
                             break
 
-                    elif sys_bookmark:
+                    elif sys_bookmark and sys_bookmark_type != 'Nav Panel OCR':
                         # Set destination via system bookmark
                         res = self.ap.system_map.set_sys_map_dest_bookmark(self.ap, sys_bookmark_type, sys_bookmark_num)
                         if not res:
@@ -563,11 +563,16 @@ class EDWayPoint:
                             _abort = True
                             break
 
-                    elif next_wp_station != "":
-                        # Need OCR added in for this (WIP)
-                        need_ocr = True
-                        self.ap.ap_ckb('log+vce', f"No bookmark defined. Target by Station text not supported.")
-                        # res = self.nav_panel.lock_destination(station_name)
+                    elif sys_bookmark_type == 'Nav Panel OCR' and next_wp_station != "":
+                        # Set destination via system name
+                        res = self.ap.nav_panel.lock_destination(next_wp_station)
+                        if not res:
+                            self.ap.ap_ckb('log+vce', f"Unable to set Nav Panel OCR bookmark.")
+                            _abort = True
+                            break
+
+                    else:
+                        self.ap.ap_ckb('log+vce', f"No bookmark defined.")
                         _abort = True
                         break
 

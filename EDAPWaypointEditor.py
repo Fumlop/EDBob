@@ -256,7 +256,7 @@ class WaypointEditorTab:
 
         # Waypoint buttons
         waypoint_buttons_frame = ttk.Frame(top_frame)
-        waypoint_buttons_frame.pack(side="right", fill="y", padx=(5,0))
+        waypoint_buttons_frame.pack(side="right", fill="y", padx=(5, 0))
 
         ttk.Button(waypoint_buttons_frame, text="Up", command=self.move_waypoint_up).pack(padx=5, pady=2, fill="x")
         ttk.Button(waypoint_buttons_frame, text="Down", command=self.move_waypoint_down).pack(padx=5, pady=2, fill="x")
@@ -286,7 +286,7 @@ class WaypointEditorTab:
 
         # System Bookmark
         ttk.Label(station_options_frame, text="System Bookmark Type:").grid(row=1, column=0, padx=5, pady=2, sticky="w")
-        self.system_bookmark_type_combo = ttk.Combobox(station_options_frame, values=["", "Favorite", "Body", "Station", "Settlement", "Navigation Panel"])
+        self.system_bookmark_type_combo = ttk.Combobox(station_options_frame, values=["", "Favorite", "Body", "Station", "Settlement", "Navigation Panel", "Nav Panel OCR"])
         self.system_bookmark_type_combo.grid(row=1, column=1, padx=5, pady=2, sticky="ew")
         ttk.Label(station_options_frame, text="System Bookmark Number:").grid(row=1, column=2, padx=5, pady=2, sticky="w")
         self.system_bookmark_number_entry = ttk.Entry(station_options_frame)

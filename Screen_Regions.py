@@ -3,7 +3,7 @@ from copy import copy
 import numpy as np
 from numpy import array, sum
 import cv2
-
+from datetime import datetime
 
 """
 File:Screen_Regions.py    
@@ -87,7 +87,14 @@ class Screen_Regions:
         """ Attempt to match the given template in the given region which is filtered using the region filter.
         Returns the filtered image, detail of match and the match mask. """
         img_region = self.capture_region_filtered(self.screen, region_name, inv_col)    # which would call, reg.capture_region('compass') and apply defined filter
-        match = cv2.matchTemplate(img_region, self.templates.template[templ_name]['image'], cv2.TM_CCOEFF_NORMED)
+        img_templ = self.templates.template[templ_name]['image']
+
+        # now = datetime.now()
+        # x = now.strftime("%Y%m%d-%H%M%S-%f")[:-3]  # Date time with mS.
+        # cv2.imwrite(f'test/match/{templ_name} {x} region.png', img_region)
+        # cv2.imwrite(f'test/match/{templ_name} {x} templ.png', img_templ)
+
+        match = cv2.matchTemplate(img_region, img_templ, cv2.TM_CCOEFF_NORMED)
         (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(match)
         return img_region, (minVal, maxVal, minLoc, maxLoc), match
 

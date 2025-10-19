@@ -60,7 +60,7 @@ Author: sumzer0@yahoo.com
 # ---------------------------------------------------------------------------
 # must be updated with a new release so that the update check works properly!
 # contains the names of the release.
-EDAP_VERSION = "V1.8.0 beta 10"
+EDAP_VERSION = "V1.8.0 beta 11"
 # depending on how release versions are best marked you could also change it to the release tag, see function check_update.
 # ---------------------------------------------------------------------------
 
@@ -154,6 +154,7 @@ class APGui:
         self.checkboxvar['Automatic logout'].set(self.ed_ap.config['AutomaticLogout'])
         self.checkboxvar['Enable Overlay'].set(self.ed_ap.config['OverlayTextEnable'])
         self.checkboxvar['Enable Voice'].set(self.ed_ap.config['VoiceEnable'])
+        self.checkboxvar['Enable Hotkeys'].set(self.ed_ap.config['HotkeysEnable'])
 
         self.radiobuttonvar['dss_button'].set(self.ed_ap.config['DSSButton'])
 
@@ -215,11 +216,11 @@ class APGui:
 
         # global trap for these keys, the 'end' key will stop any current AP action
         # the 'home' key will start the FSD Assist.  May want another to start SC Assist
-
-        keyboard.add_hotkey(self.ed_ap.config['HotKey_StopAllAssists'], self.stop_all_assists)
-        keyboard.add_hotkey(self.ed_ap.config['HotKey_StartFSD'], self.callback, args=('fsd_start', None))
-        keyboard.add_hotkey(self.ed_ap.config['HotKey_StartSC'],  self.callback, args=('sc_start',  None))
-        keyboard.add_hotkey(self.ed_ap.config['HotKey_StartRobigo'],  self.callback, args=('robigo_start',  None))
+        if self.ed_ap.config['HotkeysEnable']:
+            keyboard.add_hotkey(self.ed_ap.config['HotKey_StopAllAssists'], self.stop_all_assists)
+            keyboard.add_hotkey(self.ed_ap.config['HotKey_StartFSD'], self.callback, args=('fsd_start', None))
+            keyboard.add_hotkey(self.ed_ap.config['HotKey_StartSC'],  self.callback, args=('sc_start',  None))
+            keyboard.add_hotkey(self.ed_ap.config['HotKey_StartRobigo'],  self.callback, args=('robigo_start',  None))
 
         # check for updates
         self.check_updates()
@@ -585,6 +586,7 @@ class APGui:
             self.ed_ap.config['VoiceEnable'] = self.checkboxvar['Enable Voice'].get()
             self.ed_ap.config['DebugOverlay'] = self.checkboxvar['Debug Overlay'].get()
             self.ed_ap.config['AFKCombat_AttackAtWill'] = self.checkboxvar['AFKCombat AttackAtWill'].get()
+            self.ed_ap.config['HotkeysEnable'] = self.checkboxvar['Enable Hotkeys'].get()
         except:
             messagebox.showinfo("Exception", "Invalid float entered")
 
@@ -760,6 +762,7 @@ class APGui:
                 self.ed_ap.debug_overlay = False
 
         self.ed_ap.config['AFKCombat_AttackAtWill'] = self.checkboxvar['AFKCombat AttackAtWill'].get()
+        self.ed_ap.config['HotkeysEnable'] = self.checkboxvar['Enable Hotkeys'].get()
 
     def makeform(self, win, ftype, fields, r: int = 0, inc: float = 1, r_from: float = 0, rto: float = 1000):
         entries = {}
@@ -872,11 +875,10 @@ class APGui:
         overlay_entry_fields = ('X Offset', 'Y Offset', 'Font Size')
 
         # notebook pages
-        nb = ttk.Notebook(win)
         btn_save = ttk.Button(win, text='Save All Settings', command=self.save_settings, style="Accent.TButton")
         btn_save.grid(row=0, padx=10, pady=5, sticky="W")
 
-        nb.grid()
+        nb = ttk.Notebook(win)
         nb.grid(row=1, padx=10, pady=5, sticky="NSEW")
         
         page0 = ttk.Frame(nb)
@@ -1004,7 +1006,10 @@ class APGui:
         rb_dss_primary.grid(row=0, column=1, sticky=tk.W)
         rb_dss_secandary = ttk.Radiobutton(blk_dss, text="Secondary", variable=self.radiobuttonvar['dss_button'], value="Secondary", command=(lambda field='dss_button': self.check_cb(field)))
         rb_dss_secandary.grid(row=1, column=1, sticky=tk.W)
-        self.entries['buttons'] = self.makeform(blk_buttons, FORM_TYPE_ENTRY, buttons_entry_fields, 2)
+        self.checkboxvar['Enable Hotkeys'] = tk.BooleanVar()
+        cb_enable = ttk.Checkbutton(blk_buttons, text='Enable Hotkeys (requires restart)', variable=self.checkboxvar['Enable Hotkeys'], command=(lambda field='Enable Hotkeys': self.check_cb(field)))
+        cb_enable.grid(row=2, column=0, columnspan=2, sticky=tk.W)
+        self.entries['buttons'] = self.makeform(blk_buttons, FORM_TYPE_ENTRY, buttons_entry_fields, 3)
 
         # refuel settings block
         blk_fuel = ttk.LabelFrame(blk_settings, text="FUEL", padding=(10, 5))

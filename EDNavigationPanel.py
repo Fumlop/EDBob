@@ -533,13 +533,14 @@ class EDNavigationPanel:
             sim_match = 0.8  # Similarity match 0.0 - 1.0 for 0% - 100%)
             ocr_textlist = self.ocr.image_simple_ocr(img_selected)
             if ocr_textlist is not None:
+                sim = self.ocr.string_similarity(f"['{dst_name.upper()}']", str(ocr_textlist))
+
                 if self.ap.debug_overlay:
                     # Overlay OCR result
-                    self.ap.overlay.overlay_floating_text('nav_panel_item_text', f'{str(ocr_textlist)}',
+                    self.ap.overlay.overlay_floating_text('nav_panel_item_text', f'{str(ocr_textlist)} {round(sim, 4)} > {sim_match}',
                                                           q_out.get_left(), q_out.get_top() - 25, (0, 255, 0))
                     self.ap.overlay.overlay_paint()
 
-                sim = self.ocr.string_similarity(f"['{dst_name.upper()}']", str(ocr_textlist))
                 #print(f"Similarity of ['{dst_name.upper()}'] and {str(ocr_textlist)} is {sim}")
                 if sim > sim_match:
                     logger.debug(f"Found '{dst_name}' in list.")
