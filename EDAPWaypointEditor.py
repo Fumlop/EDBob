@@ -407,7 +407,6 @@ class WaypointEditorTab:
         )
         if filepath:
             self.editor_load_waypoint_file(filepath)
-            self.save_button.config(state="normal")
 
     def save_file(self):
         if self.ed_waypoint.filename:
@@ -474,6 +473,7 @@ class WaypointEditorTab:
                 self.populate_internal_waypoints()
                 self.update_ui()
                 self.start_file_watcher(filepath)
+                self.save_button.config(state="normal")
         except json.JSONDecodeError:
             messagebox.showerror("Error", f"Invalid JSON file: {filepath}")
         except Exception as e:

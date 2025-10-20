@@ -1,3 +1,5 @@
+ - Added sell ALL and buy ALL to the waypoint trader for normal station and FC commodity markets.
+
 # 10/19/2025 v1.8.0 b11
  - In English locale file, changed CONNECTED TO to CONNECTED.
  - Added enable hotkey option (off by default) to help new players with bindings.

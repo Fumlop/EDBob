@@ -107,6 +107,9 @@ class CargoParser:
                     return good
         return None
 
+    def get_items(self) -> list[any]:
+        """ Get all items in the cargo in a list. """
+        return self.current_data['Inventory']
 
 # Usage Example
 if __name__ == "__main__":

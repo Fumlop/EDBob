@@ -76,27 +76,32 @@ class OCR:
         """
         # Remove Alpha channel if it exists
         image2 = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
-        ocr_data = self.paddleocr.predict(image2)
+        try:
+            ocr_data = self.paddleocr.predict(image2)
 
-        if ocr_data is None:
+            if ocr_data is None:
+                return None, None
+            else:
+                ocr_textlist = []
+                for res in ocr_data:
+                    if res is None:
+                        return None, None
+
+                    # Debug - places all detected data to 'output' folder
+                    if self.ap.debug_overlay:
+                        res.save_to_img("ocr_output")
+                        res.save_to_json("ocr_output")
+
+                    # Added detected text to list
+                    ocr_textlist.extend(res['rec_texts'])
+
+                # print(f"image_simple_ocr: {ocr_textlist}")
+                # logger.info(f"image_simple_ocr: {ocr_textlist}")
+                return ocr_data, ocr_textlist
+
+        except Exception as e:
+            logger.error(f"OCR failed: {e}")
             return None, None
-        else:
-            ocr_textlist = []
-            for res in ocr_data:
-                if res is None:
-                    return None, None
-
-                # Debug - places all detected data to 'output' folder
-                if self.ap.debug_overlay:
-                    res.save_to_img("ocr_output")
-                    res.save_to_json("ocr_output")
-
-                # Added detected text to list
-                ocr_textlist.extend(res['rec_texts'])
-
-            # print(f"image_simple_ocr: {ocr_textlist}")
-            # logger.info(f"image_simple_ocr: {ocr_textlist}")
-            return ocr_data, ocr_textlist
 
     def image_simple_ocr(self, image) -> list[str] | None:
         """ Perform OCR with no filtering. Returns a simplified list of strings with no positional data.
@@ -113,30 +118,35 @@ class OCR:
 
         # Remove Alpha channel if it exists
         image2 = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
-        ocr_data = self.paddleocr.predict(image2)
+        try:
+            ocr_data = self.paddleocr.predict(image2)
 
-        # elapsed_time = time.time() - start_time
-        # print(f"OCR took {elapsed_time} secs")
+            # elapsed_time = time.time() - start_time
+            # print(f"OCR took {elapsed_time} secs")
 
-        if ocr_data is None:
+            if ocr_data is None:
+                return None
+            else:
+                ocr_textlist = []
+                for res in ocr_data:
+                    if res is None:
+                        return None
+
+                    # Debug - places all detected data to 'output' folder
+                    if self.ap.debug_overlay:
+                        res.save_to_img("ocr_output")
+                        res.save_to_json("ocr_output")
+
+                    # Added detected text to list
+                    ocr_textlist.extend(res['rec_texts'])
+
+                # print(f"image_simple_ocr: {ocr_textlist}")
+                # logger.info(f"image_simple_ocr: {ocr_textlist}")
+                return ocr_textlist
+
+        except Exception as e:
+            logger.error(f"OCR failed: {e}")
             return None
-        else:
-            ocr_textlist = []
-            for res in ocr_data:
-                if res is None:
-                    return None
-
-                # Debug - places all detected data to 'output' folder
-                if self.ap.debug_overlay:
-                    res.save_to_img("ocr_output")
-                    res.save_to_json("ocr_output")
-
-                # Added detected text to list
-                ocr_textlist.extend(res['rec_texts'])
-
-            # print(f"image_simple_ocr: {ocr_textlist}")
-            # logger.info(f"image_simple_ocr: {ocr_textlist}")
-            return ocr_textlist
 
     def get_highlighted_item_data(self, image, min_w, min_h):
         """ Attempts to find a selected item in an image. The selected item is identified by being solid orange or blue

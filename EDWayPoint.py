@@ -319,17 +319,27 @@ class EDWayPoint:
                 for i, key in enumerate(sell_commodities):
                     # Check if we have any of the item to sell
                     self.cargo_parser.get_cargo_data()
-                    cargo_item = self.cargo_parser.get_item(key)
-                    if cargo_item is None:
-                        logger.info(f"Unable to sell {key}. None in cargo hold.")
-                        continue
 
-                    # Sell the commodity
-                    result, qty = self.ap.stn_svcs_in_ship.commodities_market.sell_commodity(ap.keys, key, sell_commodities[key], self.cargo_parser)
+                    # Check if we want to sell ALL commodities
+                    if key == "ALL":
+                        for cargo_item in self.cargo_parser.get_items():
+                            name = cargo_item.get('Name')
+                            name_loc = cargo_item.get('Name_Localised', name)
 
-                    # Update counts if necessary
-                    if qty > 0 and self.waypoints[dest_key]['UpdateCommodityCount']:
-                        sell_commodities[key] = sell_commodities[key] - qty
+                            # Sell all we have of the commodity
+                            result, qty = self.ap.stn_svcs_in_ship.commodities_market.sell_commodity(ap.keys, name_loc, sell_commodities[key], self.cargo_parser)
+                    else:
+                        cargo_item = self.cargo_parser.get_item(key)
+                        if cargo_item is None:
+                            logger.info(f"Unable to sell {key}. None in cargo hold.")
+                            continue
+
+                        # Sell the commodity
+                        result, qty = self.ap.stn_svcs_in_ship.commodities_market.sell_commodity(ap.keys, key, sell_commodities[key], self.cargo_parser)
+
+                        # Update counts if necessary
+                        if qty > 0 and self.waypoints[dest_key]['UpdateCommodityCount']:
+                            sell_commodities[key] = sell_commodities[key] - qty
 
                 # Save changes
                 self.write_waypoints(data=None, filename='./waypoints/' + Path(self.filename).name)
@@ -343,31 +353,64 @@ class EDWayPoint:
 
                 # Go through buy commodities list
                 for i, key in enumerate(buy_commodities):
-                    curr_cargo_qty = int(ap.status.get_cleaned_data()['Cargo'])
-                    cargo_timestamp = ap.status.current_data['timestamp']
+                    # Check if we want to buy ALL commodities. Makes sense for buying from FCs.
+                    if key == "ALL":
+                        # Go through all buyable items
+                        buyable_items = self.market_parser.get_buyable_items()
+                        if buyable_items is not None:
+                            for ii, value in enumerate(buyable_items):
+                                name = value['Name_Localised']
 
-                    free_cargo = cargo_capacity - curr_cargo_qty
-                    logger.info(f"Execute trade: Free cargo space: {free_cargo}")
+                                # Buy the commodity
+                                curr_cargo_qty = int(ap.status.get_cleaned_data()['Cargo'])
+                                cargo_timestamp = ap.status.current_data['timestamp']
 
-                    if free_cargo == 0:
-                        logger.info(f"Execute trade: No space for additional cargo")
-                        break
+                                free_cargo = cargo_capacity - curr_cargo_qty
+                                logger.info(f"Execute trade: Free cargo space: {free_cargo}")
 
-                    qty_to_buy = buy_commodities[key]
-                    logger.info(f"Execute trade: Shopping list requests {qty_to_buy} units of {key}")
+                                if free_cargo == 0:
+                                    logger.info(f"Execute trade: No space for additional cargo")
+                                    break
 
-                    # Attempt to buy the commodity
-                    result, qty = self.ap.stn_svcs_in_ship.commodities_market.buy_commodity(ap.keys, key, qty_to_buy, free_cargo)
-                    logger.info(f"Execute trade: Bought {qty} units of {key}")
+                                qty_to_buy = buy_commodities[key]
+                                logger.info(f"Execute trade: Shopping list requests {qty_to_buy} units of {key}")
 
-                    # If we bought any goods, wait for status file to update with
-                    # new cargo count for next commodity
-                    if qty > 0:
-                        ap.status.wait_for_file_change(cargo_timestamp, 5)
+                                # Attempt to buy the commodity
+                                result, qty = self.ap.stn_svcs_in_ship.commodities_market.buy_commodity(ap.keys, name, qty_to_buy, free_cargo)
+                                logger.info(f"Execute trade: Bought {qty} units of {name}")
 
-                    # Update counts if necessary
-                    if qty > 0 and self.waypoints[dest_key]['UpdateCommodityCount']:
-                        buy_commodities[key] = qty_to_buy - qty
+                                # If we bought any goods, wait for status file to update with
+                                # new cargo count for next commodity
+                                if qty > 0:
+                                    ap.status.wait_for_file_change(cargo_timestamp, 5)
+
+                    else:
+                        # Buy the commodity
+                        curr_cargo_qty = int(ap.status.get_cleaned_data()['Cargo'])
+                        cargo_timestamp = ap.status.current_data['timestamp']
+
+                        free_cargo = cargo_capacity - curr_cargo_qty
+                        logger.info(f"Execute trade: Free cargo space: {free_cargo}")
+
+                        if free_cargo == 0:
+                            logger.info(f"Execute trade: No space for additional cargo")
+                            break
+
+                        qty_to_buy = buy_commodities[key]
+                        logger.info(f"Execute trade: Shopping list requests {qty_to_buy} units of {key}")
+
+                        # Attempt to buy the commodity
+                        result, qty = self.ap.stn_svcs_in_ship.commodities_market.buy_commodity(ap.keys, key, qty_to_buy, free_cargo)
+                        logger.info(f"Execute trade: Bought {qty} units of {key}")
+
+                        # If we bought any goods, wait for status file to update with
+                        # new cargo count for next commodity
+                        if qty > 0:
+                            ap.status.wait_for_file_change(cargo_timestamp, 5)
+
+                        # Update counts if necessary
+                        if qty > 0 and self.waypoints[dest_key]['UpdateCommodityCount']:
+                            buy_commodities[key] = qty_to_buy - qty
 
                 # Go through global buy commodities list
                 for i, key in enumerate(global_buy_commodities):

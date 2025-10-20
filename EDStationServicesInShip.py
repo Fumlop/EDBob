@@ -275,8 +275,7 @@ class CommoditiesMarket:
             logger.debug(f"Item '{name}' is not sold or has no stock at {self.market_parser.get_market_name()}.")
             return False, 0
 
-        # Find commodity in mar
-        # ket and return the index
+        # Find commodity in market and return the index
         index = -1
         stock = 0
         buyable_items = self.market_parser.get_buyable_items()
@@ -405,7 +404,7 @@ class CommoditiesMarket:
             keys.send('UI_Select')  # Select that commodity
 
             if self.ap.debug_overlay:
-                q = Quad.from_rect(self.reg['buy_sell_qty_box']['rect'])
+                q = Quad.from_rect(self.parent.reg['buy_sell_qty_box']['rect'])
                 self.ap.overlay.overlay_quad_pct('buy_sell_qty_box', q, (0, 255, 0), 2, 5)
                 self.ap.overlay.overlay_paint()
 
