@@ -117,6 +117,7 @@ class EDAutopilot:
             "DebugOverlay": False,
             "AFKCombat_AttackAtWill": False,
             "HotkeysEnable": False,        # Enable hotkeys
+            "WaypointFilepath": ""         # The previous waypoint file path
         }
         # NOTE!!! When adding a new config value above, add the same after read_config() to set
         # a default value or an error will occur reading the new value!
@@ -173,6 +174,8 @@ class EDAutopilot:
                 cnf['AFKCombat_AttackAtWill'] = False
             if 'HotkeysEnable' not in cnf:
                 cnf['HotkeysEnable'] = False
+            if 'WaypointFilepath' not in cnf:
+                cnf['WaypointFilepath'] = ""
             self.config = cnf
             logger.debug("read AP json:"+str(cnf))
         else:

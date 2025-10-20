@@ -59,6 +59,7 @@ class EDWayPoint:
         if ss is not None:
             self.waypoints = ss
             self.filename = filename
+            self.ap.config['WaypointFilepath'] = filename
             self.ap.ap_ckb('log', f"Loaded Waypoint file: {filename}")
             logger.debug("EDWayPoint: read json:" + str(ss))
             return True
@@ -68,6 +69,7 @@ class EDWayPoint:
 
     def read_waypoints(self, filename='./waypoints/waypoints.json'):
         s = None
+        self.ap.config['WaypointFilepath'] = filename
         try:
             with open(filename, "r") as fp:
                 s = json.load(fp)
@@ -145,6 +147,7 @@ class EDWayPoint:
         if data is None:
             data = self.waypoints
         try:
+            self.ap.config['WaypointFilepath'] = filename
             with open(filename, "w") as fp:
                 json.dump(data, fp, indent=4)
         except Exception as e:
@@ -319,6 +322,7 @@ class EDWayPoint:
                 for i, key in enumerate(sell_commodities):
                     # Check if we have any of the item to sell
                     self.cargo_parser.get_cargo_data()
+                    cargo_parser_timestamp = self.cargo_parser.current_data['timestamp']
 
                     # Check if we want to sell ALL commodities
                     if key == "ALL":
@@ -328,6 +332,14 @@ class EDWayPoint:
 
                             # Sell all we have of the commodity
                             result, qty = self.ap.stn_svcs_in_ship.commodities_market.sell_commodity(ap.keys, name_loc, sell_commodities[key], self.cargo_parser)
+
+                            # If we sold any goods, wait for cargo parser file to update with cargo available to sell
+                            if qty > 0:
+                                self.cargo_parser.wait_for_file_change(cargo_parser_timestamp, 5)
+
+                                # Check if we have any of the item to sell
+                                self.cargo_parser.get_cargo_data()
+                                cargo_parser_timestamp = self.cargo_parser.current_data['timestamp']
                     else:
                         cargo_item = self.cargo_parser.get_item(key)
                         if cargo_item is None:

@@ -427,6 +427,8 @@ class CommoditiesMarket:
             sleep(0.5)
             # keys.send('UI_Back')  # Back to commodities list
 
+
+
         return True, act_qty
 
     def capture_goods_panel(self):
