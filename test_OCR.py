@@ -21,7 +21,7 @@ class OCRTestCase(unittest.TestCase):
         # Load image
         image_path = 'test/ocr/ocr-test1.png'
         orig_image = cv2.imread(image_path)
-        ocr_textlist = ocr.image_simple_ocr(orig_image)
+        ocr_textlist = ocr.image_simple_ocr(orig_image, 'test')
         actual = str(ocr_textlist)
         expected = "['DESTINATION', 'SIRIUS ATMOSPHERICS']"
 
@@ -34,7 +34,7 @@ class OCRTestCase(unittest.TestCase):
         # Load image
         image_path = 'test/ocr/6-selected_item.png'
         orig_image = cv2.imread(image_path)
-        ocr_data, ocr_textlist = ocr.image_ocr(orig_image)
+        ocr_data, ocr_textlist = ocr.image_ocr(orig_image, 'test')
         actual = str(ocr_textlist)
         expected = "['NAVIGATION']"
 
@@ -47,7 +47,7 @@ class OCRTestCase(unittest.TestCase):
         # Load image
         image_path = 'test/disengage/Screenshot 2024-08-13 21-32-58.png'
         orig_image = cv2.imread(image_path)
-        ocr_textlist = ocr.image_simple_ocr(orig_image)
+        ocr_textlist = ocr.image_simple_ocr(orig_image, 'test')
         s1 = str(ocr_textlist)
         s2 = "['PRESS TO DISENGAGE']"
         actual = ocr.string_similarity(s1, s2)

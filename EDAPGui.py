@@ -1,37 +1,37 @@
-import queue
-import sys
-import os
-import threading
-import kthread
-from datetime import datetime
-from time import sleep
-import cv2
-import json
-from pathlib import Path
+# import queue
+# import sys
+# import os
+# import threading
+# import kthread
+# from datetime import datetime
+# from time import sleep
+# import cv2
+# import json
+# from pathlib import Path
 import keyboard
 import webbrowser
-import requests
+# import requests
 
 
-from PIL import Image, ImageGrab, ImageTk
+# from PIL import Image, ImageGrab, ImageTk
 import tkinter as tk
 from tkinter import filedialog as fd
-from tkinter import messagebox
+# from tkinter import messagebox
 from tkinter import ttk
 import sv_ttk
 import pywinstyles
 import sys  # Do not delete - prevents a 'super' error from tktoolip.
 from tktooltip import ToolTip  # In requirements.txt as 'tkinter-tooltip'.
 
-from Voice import *
-from MousePt import MousePoint
 # from OCR import RegionCalibration
+# from Voice import *
+# from MousePt import MousePoint
 
-from Image_Templates import *
-from Screen import *
-from Screen_Regions import *
-from EDKeys import *
-from EDJournal import *
+# from Image_Templates import *
+# from Screen import *
+# from Screen_Regions import *
+# from EDKeys import *
+# from EDJournal import *
 from ED_AP import *
 from EDAPWaypointEditor import WaypointEditorTab
 
@@ -60,7 +60,7 @@ Author: sumzer0@yahoo.com
 # ---------------------------------------------------------------------------
 # must be updated with a new release so that the update check works properly!
 # contains the names of the release.
-EDAP_VERSION = "V1.8.0 beta 11"
+EDAP_VERSION = "V1.8.0 beta 12"
 # depending on how release versions are best marked you could also change it to the release tag, see function check_update.
 # ---------------------------------------------------------------------------
 
@@ -121,6 +121,8 @@ class APGui:
             'Cap Mouse XY': "This will provide the StationCoord value of the Station in the SystemMap. \nSelecting this button and then clicking on the Station in the SystemMap \nwill return the x,y value that can be pasted in the waypoints file",
             'Reset Waypoint List': "Reset your waypoint list, \nthe waypoint assist will start again at the first point in the list.",
             'Debug Overlay': "Enables debug data to be displayed over the \nElite Dangerous screen while playing the game.",
+            'Debug OCR': "Enables OCR debug output to be stored in the 'ocr_output' folder.",
+            'Debug Images': "Enables debug images to be stored in the 'debug_output' folder.",
         }
 
         self.gui_loaded = False
@@ -219,6 +221,8 @@ class APGui:
             self.radiobuttonvar['debug_mode'].set("Error")
 
         self.checkboxvar['Debug Overlay'].set(self.ed_ap.config['DebugOverlay'])
+        self.checkboxvar['Debug OCR'].set(self.ed_ap.config['DebugOCR'])
+        self.checkboxvar['Debug Images'].set(self.ed_ap.config['DebugImages'])
         self.checkboxvar['AFKCombat AttackAtWill'].set(self.ed_ap.config['AFKCombat_AttackAtWill'])
 
         # global trap for these keys, the 'end' key will stop any current AP action
@@ -594,6 +598,8 @@ class APGui:
             self.ed_ap.config['DebugOverlay'] = self.checkboxvar['Debug Overlay'].get()
             self.ed_ap.config['AFKCombat_AttackAtWill'] = self.checkboxvar['AFKCombat AttackAtWill'].get()
             self.ed_ap.config['HotkeysEnable'] = self.checkboxvar['Enable Hotkeys'].get()
+            self.ed_ap.config['DebugOCR'] = self.checkboxvar['Debug OCR'].get()
+            self.ed_ap.config['DebugImages'] = self.checkboxvar['Debug Images'].get()
         except:
             messagebox.showinfo("Exception", "Invalid float entered")
 
@@ -770,6 +776,12 @@ class APGui:
 
         self.ed_ap.config['AFKCombat_AttackAtWill'] = self.checkboxvar['AFKCombat AttackAtWill'].get()
         self.ed_ap.config['HotkeysEnable'] = self.checkboxvar['Enable Hotkeys'].get()
+
+        if field == 'Debug OCR':
+            self.ed_ap.debug_ocr = self.checkboxvar['Debug OCR'].get()
+
+        if field == 'Debug Images':
+            self.ed_ap.debug_images = self.checkboxvar['Debug Images'].get()
 
     def makeform(self, win, ftype, fields, r: int = 0, inc: float = 1, r_from: float = 0, rto: float = 1000):
         entries = {}
@@ -1182,11 +1194,21 @@ class APGui:
         cb_debug_overlay.grid(row=6, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
         tip = ToolTip(cb_debug_overlay, msg=self.tooltips['Debug Overlay'], delay=1.0, bg="#808080", fg="#FFFFFF")
 
+        self.checkboxvar['Debug OCR'] = tk.BooleanVar()
+        cb_debug_ocr = ttk.Checkbutton(blk_debug_buttons, text="Debug OCR - Writes OCR output to 'ocr-output' folder", variable=self.checkboxvar['Debug OCR'], command=(lambda field='Debug OCR': self.check_cb(field)))
+        cb_debug_ocr.grid(row=7, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
+        tip = ToolTip(cb_debug_ocr, msg=self.tooltips['Debug OCR'], delay=1.0, bg="#808080", fg="#FFFFFF")
+
+        self.checkboxvar['Debug Images'] = tk.BooleanVar()
+        cb_debug_images = ttk.Checkbutton(blk_debug_buttons, text="Debug Images - Writes debug images to 'debug-output' folder", variable=self.checkboxvar['Debug Images'], command=(lambda field='Debug Images': self.check_cb(field)))
+        cb_debug_images.grid(row=8, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
+        tip = ToolTip(cb_debug_images, msg=self.tooltips['Debug Images'], delay=1.0, bg="#808080", fg="#FFFFFF")
+
         btn_save = ttk.Button(blk_debug_buttons, text='Save All Settings', command=self.save_settings, style="Accent.TButton")
-        btn_save.grid(row=7, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
+        btn_save.grid(row=9, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
 
         blk_rpy = ttk.LabelFrame(page2, text="RPY Test", padding=(10, 5))
-        blk_rpy.grid(row=8, column=0, columnspan=2, padx=2, pady=2, sticky="NSEW")
+        blk_rpy.grid(row=10, column=0, columnspan=2, padx=2, pady=2, sticky="NSEW")
         blk_rpy.columnconfigure([0, 1, 2], weight=1, minsize=100)
 
         btn_tst_roll_30 = ttk.Button(blk_rpy, text='Test Roll Rate (30 deg)', command=self.ship_tst_roll_30)

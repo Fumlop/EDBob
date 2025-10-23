@@ -1,4 +1,5 @@
 import math
+import os
 import traceback
 from datetime import timedelta
 from enum import Enum
@@ -117,7 +118,9 @@ class EDAutopilot:
             "DebugOverlay": False,
             "AFKCombat_AttackAtWill": False,
             "HotkeysEnable": False,        # Enable hotkeys
-            "WaypointFilepath": ""         # The previous waypoint file path
+            "WaypointFilepath": "",        # The previous waypoint file path
+            "DebugOCR": False,             # For debug, write all OCR data to output folder
+            "DebugImages": False,          # For debug, write debug images to output folder
         }
         # NOTE!!! When adding a new config value above, add the same after read_config() to set
         # a default value or an error will occur reading the new value!
@@ -176,6 +179,10 @@ class EDAutopilot:
                 cnf['HotkeysEnable'] = False
             if 'WaypointFilepath' not in cnf:
                 cnf['WaypointFilepath'] = ""
+            if 'DebugOCR' not in cnf:
+                cnf['DebugOCR'] = False
+            if 'DebugImages' not in cnf:
+                cnf['DebugImages'] = False
             self.config = cnf
             logger.debug("read AP json:"+str(cnf))
         else:
@@ -298,6 +305,11 @@ class EDAutopilot:
         self.update_overlay()
 
         self.debug_overlay = self.config['DebugOverlay']
+        self.debug_ocr = self.config['DebugOCR']
+        self.debug_images = self.config['DebugImages']
+        self.debug_image_folder = './debug-output/images'
+        if not os.path.exists(self.debug_image_folder):
+            os.makedirs(self.debug_image_folder)
 
         # debug window
         self.cv_view = self.config['Enable_CV_View']
@@ -899,18 +911,11 @@ class EDAutopilot:
             0deg (12 o'clock) to
             180deg (6 o'clock clockwise)
         """
-        # Clear the overlays before grabbing image
-        # if self.debug_overlay:
-        #     self.overlay.overlay_remove_rect('compass')
-        #     self.overlay.overlay_remove_floating_text('compass')
-        #     self.overlay.overlay_remove_floating_text('compass_rpy')
-        #     self.overlay.overlay_paint()
-
         full_compass_image = None
         maxLoc = 0
         maxVal = 0
         # for i in range(2):
-        full_compass_image, (minVal, maxVal, minLoc, maxLoc), match = (scr_reg.match_template_in_region_x3('compass', 'compass'))
+        full_compass_image, (minVal, maxVal, minLoc, maxLoc), match = scr_reg.match_template_in_region_x3('compass', 'compass')
 
             # # need > x in the match to say we do have a destination
             # if maxVal < (scr_reg.compass_match_thresh / 2):
@@ -924,6 +929,9 @@ class EDAutopilot:
 
         # need > x in the match to say we do have a destination
         if maxVal < scr_reg.compass_match_thresh:
+            if self.debug_images:
+                f = get_timestamped_filename('[get_nav_offset] no_compass_match', '', '.png')
+                cv2.imwrite(f'{self.debug_image_folder}/{f}', full_compass_image)
             return None
 
         pt = maxLoc
@@ -940,11 +948,10 @@ class EDAutopilot:
         pad = 5
         compass_image = full_compass_image[abs(pt[1]-pad): pt[1]+c_hgt+pad, abs(pt[0]-pad): pt[0]+c_wid+pad].copy()
         #compass_image_gray = cv2.cvtColor(compass_image, cv2.COLOR_BGR2GRAY)
-        compass_image_gray =  self.scrReg.equalize(compass_image)
+        compass_image_gray = self.scrReg.equalize(compass_image)
 
         # find the nav point within the compass box
-        navpt_image, (n_minVal, n_maxVal, n_minLoc, n_maxLoc), match = (
-            scr_reg.match_template_in_image_x3(compass_image, 'navpoint'))
+        navpt_image, (n_minVal, n_maxVal, n_minLoc, n_maxLoc), match = scr_reg.match_template_in_image_x3(compass_image, 'navpoint')
         n_pt = n_maxLoc
 
         compass_x_min = pad
@@ -957,8 +964,7 @@ class EDAutopilot:
             final_z_pct = -1.0  # Behind
 
             # find the nav point within the compass box using the -behind template
-            navpt_image, (n_minVal, n_maxVal, n_minLoc, n_maxLoc), match = (
-                scr_reg.match_template_in_image_x3(compass_image, 'navpoint-behind'))
+            navpt_image, (n_minVal, n_maxVal, n_minLoc, n_maxLoc), match = scr_reg.match_template_in_image_x3(compass_image, 'navpoint-behind')
             n_pt = n_maxLoc
         else:
             final_z_pct = 1.0  # Ahead
@@ -1153,10 +1159,11 @@ class EDAutopilot:
 
         # must be > x to have solid hit, otherwise we are facing wrong way (empty circle)
         if maxVal < scr_reg.target_thresh and maxVal_occ < scr_reg.target_occluded_thresh:
-            #logger.debug(f"Target offset not found (x: {final_x_pct:5.2f} y: {final_y_pct:5.2f} at {maxVal:5.2f})")
+            if self.debug_images:
+                f = get_timestamped_filename('[get_target_offset] no_target_match', '', '.png')
+                cv2.imwrite(f'{self.debug_image_folder}/{f}', dst_image)
             result = None
         else:
-            #logger.debug(f"Target offset found (x: {final_x_pct:5.2f} y: {final_y_pct:5.2f} at {maxVal:5.2f}%)")
             result = {'roll': round(final_roll_deg, 2), 'pit': round(final_pit_deg, 2), 'yaw': round(final_yaw_deg, 2), 'occ': occluded}
 
         return result
@@ -1280,7 +1287,7 @@ class EDAutopilot:
         # OCR the selected item
         sim_match = 0.35  # Similarity match 0.0 - 1.0 for 0% - 100%)
         sim = 0.0
-        ocr_textlist = self.ocr.image_simple_ocr(image)
+        ocr_textlist = self.ocr.image_simple_ocr(image, 'disengage')
         if ocr_textlist is not None:
             sim = self.ocr.string_similarity(self.locale["PRESS_TO_DISENGAGE_MSG"], str(ocr_textlist))
             logger.info(f"Disengage similarity with {str(ocr_textlist)} is {sim}")
@@ -1326,6 +1333,8 @@ class EDAutopilot:
         """ A loop to determine is Supercruise Overcharge is active.
         This runs on a separate thread monitoring the status in the background. """
         while self._sc_sco_active_loop_enable:
+            start_time = time.time()
+
             # Try to determine if the disengage/sco text is there
             sc_sco_is_active_ls = self.sc_sco_is_active
 
@@ -1362,8 +1371,10 @@ class EDAutopilot:
             else:
                 self._sc_disengage_active = False
 
-            # Check again in a bit
-            sleep(1)
+            # Sleep upto 1 sec max. If OCR takes > 1 sec, there will be no delay
+            elapsed_time = time.time() - start_time
+            if elapsed_time < 1.0:
+                sleep(1.0 - elapsed_time)
 
     def undock(self):
         """ Performs menu action to undock from Station """
@@ -3012,6 +3023,20 @@ def strfdelta(tdelta, fmt='{H:02}h {M:02}m {S:02.0f}s', inputtype='timedelta'):
             quotient, remainder = divmod(remainder, constants[field])
             values[field] = int(quotient) if field != 'S' else quotient + remainder
     return f.format(fmt, **values)
+
+
+def get_timestamped_filename(prefix: str, suffix: str, extension: str):
+    """ Get timestamped filename with milliseconds.
+    @return: String in the format of 'prefix yyyy-mm-dd hh-mm-ss.xxx suffix.extension'
+    """
+    now = datetime.now()
+    x = now.strftime("%Y-%m-%d %H-%M-%S.%f")[:-3]  # Date time with mS.
+    if prefix != '':
+        x = prefix + ' ' + x
+    if suffix != '':
+        x = x + ' ' + suffix
+    x = x + "." + extension
+    return x
 
 
 def dummy_cb(msg, body=None):

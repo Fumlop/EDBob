@@ -90,7 +90,7 @@ class Screen_Regions:
         img_templ = self.templates.template[templ_name]['image']
 
         # now = datetime.now()
-        # x = now.strftime("%Y%m%d-%H%M%S-%f")[:-3]  # Date time with mS.
+        # x = now.strftime("%Y-%m-%d %H-%M-%S.%f")[:-3]  # Date time with mS.
         # cv2.imwrite(f'test/match/{templ_name} {x} region.png', img_region)
         # cv2.imwrite(f'test/match/{templ_name} {x} templ.png', img_templ)
 

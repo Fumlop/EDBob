@@ -216,7 +216,7 @@ class EDInternalStatusPanel:
             if tab_bar is None:
                 return False, ""
 
-            img_selected, _, ocr_textlist, quad = self.ocr.get_highlighted_item_data(tab_bar, self.sub_reg_size['sts_pnl_tab']['width'], self.sub_reg_size['sts_pnl_tab']['height'])
+            img_selected, _, ocr_textlist, quad = self.ocr.get_highlighted_item_data(tab_bar, self.sub_reg_size['sts_pnl_tab']['width'], self.sub_reg_size['sts_pnl_tab']['height'], 'status panel')
             if img_selected is not None:
                 if self.ap.debug_overlay:
                     tab_bar_quad = Quad.from_rect(self.sub_reg['tab_bar']['rect'])

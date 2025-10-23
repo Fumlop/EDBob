@@ -1,4 +1,7 @@
+# 10/22/2025 v1.8.0 b12
  - Added sell ALL and buy ALL to the waypoint trader for normal station and FC commodity markets.
+ - Added Debug OCR option to enable logging of OCR detection if there are OCR issues.
+ - Added Debug Images option to log some images for debug purposes.
 
 # 10/19/2025 v1.8.0 b11
  - In English locale file, changed CONNECTED TO to CONNECTED.

@@ -1,5 +1,7 @@
 from __future__ import annotations
 import time
+from datetime import datetime
+
 import cv2
 import numpy as np
 from cv2.typing import MatLike
@@ -64,9 +66,10 @@ class OCR:
         return self.normalized_levenshtein.similarity(s1_new, s2_new)
         # return self.sorensendice.similarity(s1_new, s2_new)
 
-    def image_ocr(self, image):
+    def image_ocr(self, image, name = ''):
         """ Perform OCR with no filtering. Returns the full OCR data and a simplified list of strings.
         This routine is slower than the simplified OCR.
+        @param name:
         @param image: The image to check.
 
         'ocr_data' is returned in the following format, or (None, None):
@@ -88,9 +91,10 @@ class OCR:
                         return None, None
 
                     # Debug - places all detected data to 'output' folder
-                    if self.ap.debug_overlay:
-                        res.save_to_img("ocr_output")
-                        res.save_to_json("ocr_output")
+                    if self.ap.debug_ocr:
+                        # x = datetime.now().strftime("%Y-%m-%d %H-%M-%S.%f")[:-3]  # Date time with mS.
+                        res.save_to_img(f"./ocr_output/{name}")
+                        res.save_to_json(f"./ocr_output/{name}")
 
                     # Added detected text to list
                     ocr_textlist.extend(res['rec_texts'])
@@ -103,10 +107,11 @@ class OCR:
             logger.error(f"OCR failed: {e}")
             return None, None
 
-    def image_simple_ocr(self, image) -> list[str] | None:
+    def image_simple_ocr(self, image, name='') -> list[str] | None:
         """ Perform OCR with no filtering. Returns a simplified list of strings with no positional data.
         This routine is faster than the function that returns the full data. Generally good when you
         expect to only return one or two lines of text.
+        @param name:
         @param image: The image to check.
         'ocr_textlist' is returned in the following format, or None:
         ['DESTINATION', 'SIRIUS ATMOSPHERICS']
@@ -133,9 +138,12 @@ class OCR:
                         return None
 
                     # Debug - places all detected data to 'output' folder
-                    if self.ap.debug_overlay:
-                        res.save_to_img("ocr_output")
-                        res.save_to_json("ocr_output")
+                    if self.ap.debug_ocr:
+                        # x = datetime.now().strftime("%Y-%m-%d %H-%M-%S.%f")[:-3]  # Date time with mS.
+                        res.save_to_img(f"./ocr_output/{name}")
+                        res.save_to_json(f"./ocr_output/{name}")
+                        # res.save_to_img("ocr_output")
+                        # res.save_to_json("ocr_output")
 
                     # Added detected text to list
                     ocr_textlist.extend(res['rec_texts'])
@@ -148,10 +156,11 @@ class OCR:
             logger.error(f"OCR failed: {e}")
             return None
 
-    def get_highlighted_item_data(self, image, min_w, min_h):
+    def get_highlighted_item_data(self, image, min_w, min_h, name=''):
         """ Attempts to find a selected item in an image. The selected item is identified by being solid orange or blue
             rectangle with dark text, instead of orange/blue text on a dark background.
             The OCR daya of the first item matching the criteria is returned, otherwise None.
+            @param name:
             @param image: The image to check.
             @param min_h: Minimum height in percent of the input image.
             @param min_w: Minimum width in percent of the input image.
@@ -161,7 +170,7 @@ class OCR:
         if img_selected is not None:
             # cv2.imshow("img", img_selected)
 
-            ocr_data, ocr_textlist = self.image_ocr(img_selected)
+            ocr_data, ocr_textlist = self.image_ocr(img_selected, name)
 
             if ocr_data is not None:
                 return img_selected, ocr_data, ocr_textlist, quad
@@ -250,10 +259,11 @@ class OCR:
         image = self.screen.get_screen_rect_pct(rect)
         return image
 
-    def is_text_in_selected_item_in_image(self, img, text, min_w, min_h):
+    def is_text_in_selected_item_in_image(self, img, text, min_w, min_h, name=''):
         """ Does the selected item in the region include the text being checked for.
         Checks if text exists in a region using OCR.
         Return True if found, False if not and None if no item was selected.
+        @param name:
         @param img: The image to check.
         @param text: The text to find.
         @param min_h: Minimum height in percent of the input image.
@@ -264,7 +274,7 @@ class OCR:
             logger.debug(f"Did not find a selected item in the region.")
             return None
 
-        found, results = self.is_text_in_image(text, img_selected)
+        found, results = self.is_text_in_image(text, img_selected, name)
         return found, results
 
     def is_text_in_region(self, text, region) -> (bool, str):
@@ -281,7 +291,7 @@ class OCR:
         found, results = self.is_text_in_image(text, img)
         return found, results
 
-    def is_text_in_image(self, text, image) -> (bool, str):
+    def is_text_in_image(self, text, image, name='') -> (bool, str):
         """ Does the image include the text being checked for. The image does not need
         to include highlighted areas.
         Checks if text exists in an image using OCR.
@@ -294,7 +304,7 @@ class OCR:
             logger.debug(f"is_text_in_image: No image supplied.")
             return None, ""
 
-        ocr_textlist = self.image_simple_ocr(image)
+        ocr_textlist = self.image_simple_ocr(image, name)
         # print(str(ocr_textlist))
 
         # PaddleOCR has difficulty detecting spaces, so strip out spaces for the compare
@@ -308,7 +318,7 @@ class OCR:
             logger.debug(f"Did not find '{text}' text in item text '{str(ocr_textlist)}'.")
             return False, str(ocr_textlist)
 
-    def select_item_in_list(self, text, region, keys, min_w, min_h) -> bool:
+    def select_item_in_list(self, text, region, keys, min_w, min_h, name='') -> bool:
         """ Attempt to find the item by text in a list defined by the region.
         If found, leaves it selected for further actions.
         @param keys:
@@ -324,7 +334,7 @@ class OCR:
             if img is None:
                 return False
 
-            found = self.is_text_in_selected_item_in_image(img, text, min_w, min_h)
+            found = self.is_text_in_selected_item_in_image(img, text, min_w, min_h, name)
 
             # Check if end of list.
             if found is None and in_list:
