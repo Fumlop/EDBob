@@ -53,7 +53,9 @@ class EDGalaxyMap:
         @return: True if bookmark could be selected, else False
         """
         if self.is_odyssey and bookmark_position > 0:
-            self.goto_galaxy_map()
+            res = self.goto_galaxy_map()
+            if not res:
+                return False
 
             ap.keys.send('UI_Left')  # Go to BOOKMARKS
             sleep(.5)
@@ -95,7 +97,9 @@ class EDGalaxyMap:
 
     def set_gal_map_destination_text_horizons(self, ap, target_name, target_select_cb=None) -> bool:
         """ This sequence for the Horizons. """
-        self.goto_galaxy_map()
+        res = self.goto_galaxy_map()
+        if not res:
+            return False
 
         ap.keys.send('CycleNextPanel')
         sleep(1)
@@ -128,7 +132,9 @@ class EDGalaxyMap:
 
     def set_gal_map_destination_text_odyssey(self, ap, target_name) -> bool:
         """ This sequence for the Odyssey. """
-        self.goto_galaxy_map()
+        res = self.goto_galaxy_map()
+        if not res:
+            return False
 
         target_name_uc = target_name.upper()
 
@@ -234,7 +240,7 @@ class EDGalaxyMap:
             logger.warning("Error setting waypoint, breaking")
             return False
 
-    def goto_galaxy_map(self):
+    def goto_galaxy_map(self) -> bool:
         """Open Galaxy Map if we are not there. Waits for map to load. Selects the search bar.
         """
         if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
@@ -251,9 +257,15 @@ class EDGalaxyMap:
 
             # Wait for screen to appear. The text is the same, regardless of language.
             res = self.ocr.wait_for_text(self.ap, ["CARTOGRAPHICS"], self.reg['cartographics'], timeout=15)
+            if not res:
+                if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
+                    logger.warning("Unable to open Galaxy Map")
+                    return False
 
             self.keys.send('UI_Up')  # Go up to search bar
+            return True
         else:
             logger.debug("Galaxy Map is already open")
             self.keys.send('UI_Left', repeat=2)
             self.keys.send('UI_Up', hold=2)  # Go up to search bar. Allows 1 left to bookmarks.
+            return True

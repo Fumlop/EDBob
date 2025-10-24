@@ -42,6 +42,7 @@ class EDSystemMap:
             # Scale the regions based on the sub-region.
             self.reg['cartographics']['rect'] = scale_region(self.reg['full_panel']['rect'],
                                                              self.sub_reg['cartographics']['rect'])
+
     def set_sys_map_dest_bookmark(self, ap, bookmark_type: str, bookmark_position: int) -> bool:
         """ Set the System Map destination using a bookmark.
         @param ap: ED_AP reference.
@@ -54,7 +55,9 @@ class EDSystemMap:
         if self.is_odyssey and bookmark_position != -1:
             # Check if this is a nav-panel bookmark
             if not bookmark_type.lower().startswith("nav"):
-                self.goto_system_map()
+                res = self.goto_system_map()
+                if not res:
+                    return False
 
                 ap.keys.send('UI_Left')  # Go to BOOKMARKS
                 sleep(.5)
@@ -109,7 +112,7 @@ class EDSystemMap:
 
         return False
 
-    def goto_system_map(self):
+    def goto_system_map(self) -> bool:
         """ Open System Map if we are not there.
         """
         if self.status_parser.get_gui_focus() != GuiFocusSystemMap:
@@ -126,10 +129,15 @@ class EDSystemMap:
 
             # Wait for screen to appear. The text is the same, regardless of language.
             res = self.ocr.wait_for_text(self.ap, ["CARTOGRAPHICS"], self.reg['cartographics'], timeout=15)
+            if not res:
+                if self.status_parser.get_gui_focus() != GuiFocusSystemMap:
+                    logger.warning("Unable to open System Map")
+                    return False
 
-            # sleep(3.5)
+            return True
         else:
             logger.debug("System Map is already open")
             self.keys.send('UI_Left')
             self.keys.send('UI_Up', hold=2)
             self.keys.send('UI_Left')
+            return True

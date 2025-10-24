@@ -355,6 +355,7 @@ class OCR:
         @param texts: List of text to check for. Success occurs if any in the list is found.
         @param region: The screen region to check in % (0.0 - 1.0) of the full screen.
         @param timeout: Time to wait for screen in seconds
+        @return: True if text found, else False
         """
         # Draw box around region
         abs_rect = self.screen.screen_rect_to_abs(region['rect'])
