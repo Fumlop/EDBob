@@ -8,6 +8,8 @@
 # import cv2
 # import json
 # from pathlib import Path
+import subprocess
+
 import keyboard
 import webbrowser
 # import requests
@@ -460,13 +462,58 @@ class APGui:
     def about(self):
         webbrowser.open_new("https://github.com/SumZer0-git/EDAPGui")
 
+    def check_for_updates(self, repo_path):
+        try:
+            # Fetch the latest changes from the remote repository
+            subprocess.run(["git", "fetch"], cwd=repo_path, check=True, capture_output=True)
+
+            # Get the current commit hash of the local repository
+            local_hash = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_path, capture_output=True, text=True,
+                                        check=True).stdout.strip()
+
+            # Get the commit hash of the remote repository
+            remote_hash = subprocess.run(["git", "rev-parse", "origin/HEAD"], cwd=repo_path, capture_output=True,
+                                         text=True, check=True).stdout.strip()
+
+            # Compare the commit hashes
+            if local_hash != remote_hash:
+                print("The repository has been updated. Please clone it again to get the latest version.")
+                return True
+            else:
+                print("The repository is up to date.")
+                return False
+
+        except subprocess.CalledProcessError as e:
+            print(f"Error checking for updates: {e}")
+            return False
+        except FileNotFoundError:
+            print("Git command not found. Please ensure Git is installed and in your system's PATH.")
+            return False
+
     def check_updates(self):
         # response = requests.get("https://api.github.com/repos/SumZer0-git/EDAPGui/releases/latest")
         # if EDAP_VERSION != response.json()["name"]:
         #     mb = messagebox.askokcancel("Update Check", "A new release version is available. Download now?")
         #     if mb == True:
         #         webbrowser.open_new("https://github.com/SumZer0-git/EDAPGui/releases/latest")
-        pass
+
+        # Example usage:
+        # repo_path = "/path/to/your/local/repo"
+        repo_path = "./"
+        updates_available = self.check_for_updates(repo_path)
+
+        if updates_available:
+            # Optionally, provide further instructions or automate the cloning process
+            self.log_msg("=====================================================")
+            self.log_msg("========== An update to EDAP is available ===========")
+            self.log_msg("==== Click 'Check for Updates' on the Debug tab, ====")
+            self.log_msg("====== or go directly to the EDAP Github page =======")
+            self.log_msg("=====================================================")
+
+            print("You can use the following command to clone the repository again:")
+            print("git clone <repository_url> <new_directory_name>")
+        else:
+            self.log_msg("You have the latest version of EDAP!")
 
     def open_changelog(self):
         webbrowser.open_new("https://github.com/SumZer0-git/EDAPGui/blob/main/ChangeLog.md")
