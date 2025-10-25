@@ -62,7 +62,7 @@ Author: sumzer0@yahoo.com
 # ---------------------------------------------------------------------------
 # must be updated with a new release so that the update check works properly!
 # contains the names of the release.
-EDAP_VERSION = "V1.8.0 beta 12"
+EDAP_VERSION = "V1.8.0 beta 13"
 # depending on how release versions are best marked you could also change it to the release tag, see function check_update.
 # ---------------------------------------------------------------------------
 
@@ -125,6 +125,9 @@ class APGui:
             'Debug Overlay': "Enables debug data to be displayed over the \nElite Dangerous screen while playing the game.",
             'Debug OCR': "Enables OCR debug output to be stored in the 'ocr_output' folder.",
             'Debug Images': "Enables debug images to be stored in the 'debug_output' folder.",
+            'Modifier Key Delay': "Delay for key modifiers to ensure modifier is detected before/after the key.",
+            'Default Hold Time': "Default hold time for a key press.",
+            'Repeat Key Delay': "Delay between key press repeats.",
         }
 
         self.gui_loaded = False
@@ -166,6 +169,10 @@ class APGui:
         self.checkboxvar['Enable Overlay'].set(self.ed_ap.config['OverlayTextEnable'])
         self.checkboxvar['Enable Voice'].set(self.ed_ap.config['VoiceEnable'])
         self.checkboxvar['Enable Hotkeys'].set(self.ed_ap.config['HotkeysEnable'])
+        self.checkboxvar['Debug Overlay'].set(self.ed_ap.config['DebugOverlay'])
+        self.checkboxvar['Debug OCR'].set(self.ed_ap.config['DebugOCR'])
+        self.checkboxvar['Debug Images'].set(self.ed_ap.config['DebugImages'])
+        self.checkboxvar['AFKCombat AttackAtWill'].set(self.ed_ap.config['AFKCombat_AttackAtWill'])
 
         self.radiobuttonvar['dss_button'].set(self.ed_ap.config['DSSButton'])
 
@@ -193,6 +200,10 @@ class APGui:
         self.entries['buttons']['Start Robigo'].delete(0, tk.END)
         self.entries['buttons']['Stop All'].delete(0, tk.END)
 
+        self.entries['keys']['Modifier Key Delay'].delete(0, tk.END)
+        self.entries['keys']['Default Hold Time'].delete(0, tk.END)
+        self.entries['keys']['Repeat Key Delay'].delete(0, tk.END)
+
         self.entries['ship']['PitchRate'].insert(0, float(self.ed_ap.pitchrate))
         self.entries['ship']['RollRate'].insert(0, float(self.ed_ap.rollrate))
         self.entries['ship']['YawRate'].insert(0, float(self.ed_ap.yawrate))
@@ -215,17 +226,16 @@ class APGui:
         self.entries['buttons']['Start Robigo'].insert(0, str(self.ed_ap.config['HotKey_StartRobigo']))
         self.entries['buttons']['Stop All'].insert(0, str(self.ed_ap.config['HotKey_StopAllAssists']))
 
+        self.entries['keys']['Modifier Key Delay'].insert(0, float(self.ed_ap.config['Key_ModDelay']))
+        self.entries['keys']['Default Hold Time'].insert(0, float(self.ed_ap.config['Key_DefHoldTime']))
+        self.entries['keys']['Repeat Key Delay'].insert(0, float(self.ed_ap.config['Key_RepeatDelay']))
+
         if self.ed_ap.config['LogDEBUG']:
             self.radiobuttonvar['debug_mode'].set("Debug")
         elif self.ed_ap.config['LogINFO']:
             self.radiobuttonvar['debug_mode'].set("Info")
         else:
             self.radiobuttonvar['debug_mode'].set("Error")
-
-        self.checkboxvar['Debug Overlay'].set(self.ed_ap.config['DebugOverlay'])
-        self.checkboxvar['Debug OCR'].set(self.ed_ap.config['DebugOCR'])
-        self.checkboxvar['Debug Images'].set(self.ed_ap.config['DebugImages'])
-        self.checkboxvar['AFKCombat AttackAtWill'].set(self.ed_ap.config['AFKCombat_AttackAtWill'])
 
         # global trap for these keys, the 'end' key will stop any current AP action
         # the 'home' key will start the FSD Assist.  May want another to start SC Assist
@@ -510,8 +520,8 @@ class APGui:
             self.log_msg("====== or go directly to the EDAP Github page =======")
             self.log_msg("=====================================================")
 
-            print("You can use the following command to clone the repository again:")
-            print("git clone <repository_url> <new_directory_name>")
+            # print("You can use the following command to clone the repository again:")
+            # print("git clone <repository_url> <new_directory_name>")
         else:
             self.log_msg("You have the latest version of EDAP!")
 
@@ -647,6 +657,12 @@ class APGui:
             self.ed_ap.config['HotkeysEnable'] = self.checkboxvar['Enable Hotkeys'].get()
             self.ed_ap.config['DebugOCR'] = self.checkboxvar['Debug OCR'].get()
             self.ed_ap.config['DebugImages'] = self.checkboxvar['Debug Images'].get()
+            self.ed_ap.config['Key_ModDelay'] = float(self.entries['keys']['Modifier Key Delay'].get())
+            self.ed_ap.config['Key_DefHoldTime'] = float(self.entries['keys']['Default Hold Time'].get())
+            self.ed_ap.config['Key_RepeatDelay'] = float(self.entries['keys']['Repeat Key Delay'].get())
+
+            # Process config[] settings to update classes as necessary
+            self.ed_ap.process_config_settings()
         except:
             messagebox.showinfo("Exception", "Invalid float entered")
 
@@ -992,6 +1008,7 @@ class APGui:
         buttons_entry_fields = ('Start FSD', 'Start SC', 'Start Robigo', 'Stop All')
         refuel_entry_fields = ('Refuel Threshold', 'Scoop Timeout', 'Fuel Threshold Abort')
         overlay_entry_fields = ('X Offset', 'Y Offset', 'Font Size')
+        keys_entry_fields = ('Modifier Key Delay', 'Default Hold Time', 'Repeat Key Delay')
 
         # notebook pages
         btn_save = ttk.Button(win, text='Save All Settings', command=self.save_settings, style="Accent.TButton")
@@ -1106,12 +1123,9 @@ class APGui:
         self.checkboxvar['Enable Randomness'] = tk.BooleanVar()
         cb_random = ttk.Checkbutton(blk_ap, text='Enable Randomness', variable=self.checkboxvar['Enable Randomness'], command=(lambda field='Enable Randomness': self.check_cb(field)))
         cb_random.grid(row=5, column=0, columnspan=2, sticky=tk.W)
-        self.checkboxvar['Activate Elite for each key'] = tk.BooleanVar()
-        cb_activate_elite = ttk.Checkbutton(blk_ap, text='Activate Elite for each key', variable=self.checkboxvar['Activate Elite for each key'], command=(lambda field='Activate Elite for each key': self.check_cb(field)))
-        cb_activate_elite.grid(row=6, column=0, columnspan=2, sticky=tk.W)
         self.checkboxvar['Automatic logout'] = tk.BooleanVar()
         cb_logout = ttk.Checkbutton(blk_ap, text='Automatic logout', variable=self.checkboxvar['Automatic logout'], command=(lambda field='Automatic logout': self.check_cb(field)))
-        cb_logout.grid(row=7, column=0, columnspan=2, sticky=tk.W)
+        cb_logout.grid(row=6, column=0, columnspan=2, sticky=tk.W)
 
         # buttons settings block
         blk_buttons = ttk.LabelFrame(blk_settings, text="BUTTONS", padding=(10, 5))
@@ -1143,30 +1157,38 @@ class APGui:
         cb_enable.grid(row=0, column=0, columnspan=2, sticky=tk.W)
         self.entries['overlay'] = self.makeform(blk_overlay, FORM_TYPE_SPINBOX, overlay_entry_fields, 1, 1.0, 0.0, 3000.0)
 
+        # Keys settings block
+        blk_keys = ttk.LabelFrame(blk_settings, text="KEYS", padding=(10, 5))
+        blk_keys.grid(row=2, column=0, padx=2, pady=2, sticky="NSEW")
+        self.checkboxvar['Activate Elite for each key'] = tk.BooleanVar()
+        cb_activate_elite = ttk.Checkbutton(blk_keys, text='Activate Elite for each key', variable=self.checkboxvar['Activate Elite for each key'], command=(lambda field='Activate Elite for each key': self.check_cb(field)))
+        cb_activate_elite.grid(row=0, column=0, columnspan=2, sticky=tk.W)
+        self.entries['keys'] = self.makeform(blk_keys, FORM_TYPE_SPINBOX, keys_entry_fields, 1, 0.01)
+
         # voice settings block
         blk_voice = ttk.LabelFrame(blk_settings, text="VOICE", padding=(10, 5))
-        blk_voice.grid(row=2, column=0, padx=2, pady=2, sticky="NSEW")
+        blk_voice.grid(row=3, column=0, padx=2, pady=2, sticky="NSEW")
         self.checkboxvar['Enable Voice'] = tk.BooleanVar()
         cb_enable = ttk.Checkbutton(blk_voice, text='Enable', variable=self.checkboxvar['Enable Voice'], command=(lambda field='Enable Voice': self.check_cb(field)))
         cb_enable.grid(row=0, column=0, columnspan=2, sticky=tk.W)
 
         # ELW Scanner settings block
         blk_voice = ttk.LabelFrame(blk_settings, text="ELW SCANNER", padding=(10, 5))
-        blk_voice.grid(row=2, column=1, padx=2, pady=2, sticky="NSEW")
+        blk_voice.grid(row=3, column=1, padx=2, pady=2, sticky="NSEW")
         self.checkboxvar['ELW Scanner'] = tk.BooleanVar()
         cb_enable = ttk.Checkbutton(blk_voice, text='Enable', variable=self.checkboxvar['ELW Scanner'], command=(lambda field='ELW Scanner': self.check_cb(field)))
         cb_enable.grid(row=0, column=0, columnspan=2, sticky=tk.W)
 
         # AFK Combat settings block
         blk_afk_combat = ttk.LabelFrame(blk_settings, text="AFK Combat", padding=(10, 5))
-        blk_afk_combat.grid(row=3, column=0, padx=2, pady=2, sticky="NSEW")
+        blk_afk_combat.grid(row=4, column=0, padx=2, pady=2, sticky="NSEW")
         self.checkboxvar['AFKCombat AttackAtWill'] = tk.BooleanVar()
         cb_enable = ttk.Checkbutton(blk_afk_combat, text='Command SLF to Attack At Will', variable=self.checkboxvar['AFKCombat AttackAtWill'], command=(lambda field='AFKCombat AttackAtWill': self.check_cb(field)))
         cb_enable.grid(row=0, column=0, columnspan=2, sticky=tk.W)
 
         # settings button block
         blk_settings_buttons = ttk.Frame(page1)
-        blk_settings_buttons.grid(row=4, column=0, padx=10, pady=5, sticky="NSEW")
+        blk_settings_buttons.grid(row=5, column=0, padx=10, pady=5, sticky="NSEW")
         blk_settings_buttons.columnconfigure([0, 1], weight=1, minsize=100)
         btn_save = ttk.Button(blk_settings_buttons, text='Save All Settings', command=self.save_settings, style="Accent.TButton")
         btn_save.grid(row=0, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")

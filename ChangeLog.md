@@ -1,3 +1,9 @@
+# 10/25/2025 v1.8.0 b13
+ - Updated screenshots for github main page.
+ - Added Key class default values to config file for users to tune. Added to Settings tab as well.
+ - Added target align tuning values to config file.
+ - Increased some delays to improve performance on older computers.
+
 # 10/22/2025 v1.8.0 b12
  - Added sell ALL and buy ALL to the waypoint trader for normal station and FC commodity markets.
  - Added Debug OCR option to enable logging of OCR detection if there are OCR issues.

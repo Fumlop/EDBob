@@ -121,6 +121,14 @@ class EDAutopilot:
             "WaypointFilepath": "",        # The previous waypoint file path
             "DebugOCR": False,             # For debug, write all OCR data to output folder
             "DebugImages": False,          # For debug, write debug images to output folder
+            "Key_ModDelay": 0.01,          # Delay for key modifiers to ensure modifier is detected before/after the key
+            "Key_DefHoldTime": 0.2,        # Default hold time for a key press
+            "Key_RepeatDelay": 0.1,        # Delay between key press repeats
+            "DisengageUseMatch": False,    # For 'Disengage' use old image match instead of OCR
+            "target_align_outer_lim": 1.0, # For test
+            "target_align_inner_lim": 0.5, # For test
+            "target_align_inertia_pitch_factor": 1.2, # For test
+            "target_align_inertia_yaw_factor": 1.2, # For test
         }
         # NOTE!!! When adding a new config value above, add the same after read_config() to set
         # a default value or an error will occur reading the new value!
@@ -183,6 +191,22 @@ class EDAutopilot:
                 cnf['DebugOCR'] = False
             if 'DebugImages' not in cnf:
                 cnf['DebugImages'] = False
+            if 'Key_ModDelay' not in cnf:
+                cnf['Key_ModDelay'] = 0.01
+            if 'Key_DefHoldTime' not in cnf:
+                cnf['Key_DefHoldTime'] = 0.2
+            if 'Key_RepeatDelay' not in cnf:
+                cnf['Key_RepeatDelay'] = 0.1
+            if 'DisengageUseMatch' not in cnf:
+                cnf['DisengageUseMatch'] = False
+            if 'target_align_outer_lim' not in cnf:
+                cnf['target_align_outer_lim'] = 1.0 # For test
+            if 'target_align_inner_lim' not in cnf:
+                cnf['target_align_inner_lim'] = 0.5 # For test
+            if 'target_align_inertia_pitch_factor' not in cnf:
+                cnf['target_align_inertia_pitch_factor'] = 1.2 # For test
+            if 'target_align_inertia_yaw_factor' not in cnf:
+                cnf['target_align_inertia_yaw_factor'] = 1.2 # For test
             self.config = cnf
             logger.debug("read AP json:"+str(cnf))
         else:
@@ -254,7 +278,6 @@ class EDAutopilot:
         self.scrReg = Screen_Regions.Screen_Regions(self.scr, self.templ)
         self.jn = EDJournal(cb)
         self.keys = EDKeys(cb)
-        self.keys.activate_window = self.config['ActivateEliteEachKey']
         self.afk_combat = AFK_Combat(self, self.keys, self.jn, self.vce)
         self.waypoint = EDWayPoint(self, self.jn.ship_state()['odyssey'])
         self.robigo = Robigo(self)
@@ -290,6 +313,10 @@ class EDAutopilot:
         self.gui_loaded = False
         self._nav_cor_x = 0.0  # Nav Point correction to pitch
         self._nav_cor_y = 0.0  # Nav Point correction to yaw
+        self.target_align_outer_lim = 1.0  # In deg. Anything outside of this range will cause alignment.
+        self.target_align_inner_lim = 0.5  # In deg. Will stop alignment when in this range.
+        self.target_align_inertia_pitch_factor = 1.2  # As we are dealing with small increments, we need to up the gain to overcome the inertia.
+        self.target_align_inertia_yaw_factor = 1.2  # As we are dealing with small increments, we need to up the gain to overcome the inertia.
 
         self.ap_ckb = cb
 
@@ -325,6 +352,9 @@ class EDAutopilot:
         # Start thread to delete old log files.
         del_log_files_thread = threading.Thread(target=delete_old_log_files, daemon=True)
         del_log_files_thread.start()
+
+        # Process config[] settings to update classes as necessary
+        self.process_config_settings()
 
     @property
     def tce_integration(self) -> TceIntegration:
@@ -486,6 +516,19 @@ class EDAutopilot:
         self.ap_state = txt
         self.update_overlay()
         self.ap_ckb('statusline', txt)
+
+    def process_config_settings(self):
+        """ Update subclasses as necessary with config setting changes. """
+        if self.keys:
+            self.keys.activate_window = self.config['ActivateEliteEachKey']
+            self.keys.key_mod_delay = self.config['Key_ModDelay']
+            self.keys.key_def_hold_time = self.config['Key_DefHoldTime']
+            self.keys.key_repeat_delay = self.config['Key_RepeatDelay']
+
+        self.target_align_outer_lim = self.config['target_align_outer_lim']
+        self.target_align_inner_lim = self.config['target_align_inner_lim']
+        self.target_align_inertia_pitch_factor = self.config['target_align_inertia_pitch_factor']
+        self.target_align_inertia_yaw_factor = self.config['target_align_inertia_yaw_factor']
 
     # draws the matching rectangle within the image
     #
@@ -1680,12 +1723,12 @@ class EDAutopilot:
             'found': Target found
             'disengage': Disengage text found
         """
-        outer_lim = 2.0  # In deg. Anything outside of this range will cause alignment.
-        inner_lim = 1.0  # In deg. Will stop alignment when in this range.
-        compass_mult = 5  # Multiplier to close and inner_lim when using compass for align.
-        pit_off = 0.25  # In deg. To keep the target above the center line (prevent it going down out of view).
-        inertia_pitch_factor = 1.2  # As we are dealing with small increments, we need to up the gain to overcome the inertia.
-        inertia_yaw_factor = 1.2  # As we are dealing with small increments, we need to up the gain to overcome the inertia.
+        target_align_compass_mult = 5  # Multiplier to close and target_align_inner_lim when using compass for align.
+        target_align_pit_off = 0.25  # In deg. To keep the target above the center line (prevent it going down out of view).
+
+        # Copy locally as we will change the values
+        target_align_outer_lim = self.target_align_outer_lim
+        target_align_inner_lim = self.target_align_inner_lim
 
         tar_off = None
         off = None
@@ -1701,16 +1744,16 @@ class EDAutopilot:
                 off = tar_off
                 # logger.debug(f"sc_target_align x: {str(off['x'])} y:{str(off['y'])}")
                 # Apply offset to keep target above center
-                off['pit'] = off['pit'] - pit_off
+                off['pit'] = off['pit'] - target_align_pit_off
             elif nav_off:
                 # Try to use the compass data if the target is not visible.
                 off = nav_off
                 self.ap_ckb('log+vce', 'Using Compass for Target Align')
 
                 # We are using compass align, increase the values as compass is much less accurate
-                outer_lim = outer_lim * compass_mult
-                inner_lim = inner_lim * compass_mult
-                pit_off = pit_off * compass_mult
+                target_align_outer_lim = target_align_outer_lim * target_align_compass_mult
+                target_align_inner_lim = target_align_inner_lim * target_align_compass_mult
+                target_align_pit_off = target_align_pit_off * target_align_compass_mult
 
                 # Check if Target is now behind us
                 if nav_off['z'] < 0:
@@ -1746,10 +1789,10 @@ class EDAutopilot:
             return ScTargetAlignReturn.Lost
 
         # We have Target or Compass. Are we close to Target?
-        while ((abs(off['yaw']) > outer_lim) or
-               (abs(off['pit']) > outer_lim)):
+        while ((abs(off['yaw']) > target_align_outer_lim) or
+               (abs(off['pit']) > target_align_outer_lim)):
 
-            outer_lim = inner_lim  # Keep aligning until we are within this lower range.
+            target_align_outer_lim = target_align_inner_lim  # Keep aligning until we are within this lower range.
 
             # Clear the overlays before moving
             if self.debug_overlay:
@@ -1763,18 +1806,18 @@ class EDAutopilot:
 
             # Calc pitch time based on nav point location
             logger.debug(f"sc_target_align before: pit: {off['pit']} yaw: {off['yaw']} ")
-            if abs(off['pit']) > outer_lim:
+            if abs(off['pit']) > target_align_outer_lim:
                 if off['pit'] < 0:
-                    self.pitchDown(inertia_pitch_factor * abs(off['pit']))
+                    self.pitchDown(self.target_align_inertia_pitch_factor * abs(off['pit']))
                 else:
-                    self.pitchUp(inertia_pitch_factor * abs(off['pit']))
+                    self.pitchUp(self.target_align_inertia_pitch_factor * abs(off['pit']))
 
             # Calc yaw time based on nav point location
-            if abs(off['yaw']) > outer_lim:
+            if abs(off['yaw']) > target_align_outer_lim:
                 if off['yaw'] < 0:
-                    self.yawLeft(inertia_yaw_factor * abs(off['yaw']))
+                    self.yawLeft(self.target_align_inertia_yaw_factor * abs(off['yaw']))
                 else:
-                    self.yawRight(inertia_yaw_factor * abs(off['yaw']))
+                    self.yawRight(self.target_align_inertia_yaw_factor * abs(off['yaw']))
 
             # Wait for ship to finish moving and picture to stabilize
             sleep(0.25)
@@ -1786,7 +1829,7 @@ class EDAutopilot:
                 off = tar_off
                 logger.debug(f"sc_target_align after: pit:{off['pit']} yaw: {off['yaw']} ")
                 # Apply offset to keep target above center
-                off['pit'] = off['pit'] - pit_off
+                off['pit'] = off['pit'] - target_align_pit_off
             elif nav_off:
                 # Try to use the compass data if the target is not visible.
                 off = nav_off
@@ -1989,11 +2032,11 @@ class EDAutopilot:
 
     def pitchDown(self, deg):
         htime = deg/self.pitchrate
-        self.keys.send('PitchDownButton', htime)
+        self.keys.send('PitchDownButton', hold=htime)
 
     def pitchUp(self, deg):
         htime = deg/self.pitchrate
-        self.keys.send('PitchUpButton', htime)
+        self.keys.send('PitchUpButton', hold=htime)
 
     def yawLeft(self, deg):
         htime = deg/self.yawrate
