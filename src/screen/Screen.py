@@ -10,7 +10,7 @@ import mss
 import json
 
 from src.core.EDlogger import logger
-from Screen_Regions import Quad
+from src.screen.Screen_Regions import Quad
 
 """
 File:Screen.py    

@@ -1,6 +1,6 @@
 import unittest
-from OCR import OCR
-from Screen import *
+from src.screen.OCR import OCR
+from src.screen import Screen
 
 
 def dummy_cb(msg, body=None):

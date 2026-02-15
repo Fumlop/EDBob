@@ -6,7 +6,7 @@ from tkinter import ttk, messagebox
 import json
 import os
 
-from Screen_Regions import Quad, scale_region, load_ocr_calibration_data, MyRegion
+from src.screen.Screen_Regions import Quad, scale_region, load_ocr_calibration_data, MyRegion
 
 
 def str_to_float(input_str: str) -> float:

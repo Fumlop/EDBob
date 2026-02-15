@@ -12,7 +12,7 @@ import cv2
 from ultralytics import YOLO
 
 from EDAPColonizeEditor import read_json_file, write_json_file
-from MachineLearning import MachLearn
+from src.screen.MachineLearning import MachLearn
 from simple_localization import LocalizationManager
 
 from EDAP_EDMesg_Server import EDMesgServer
@@ -22,18 +22,18 @@ from EDShipControl import EDShipControl
 from EDStationServicesInShip import EDStationServicesInShip
 from EDSystemMap import EDSystemMap
 from src.core.EDlogger import logging
-import Image_Templates
-import Screen
-import Screen_Regions
+from src.screen import Image_Templates
+from src.screen import Screen
+from src.screen import Screen_Regions
 from EDWayPoint import *
 from EDJournal import *
 from EDKeys import *
 from EDafk_combat import AFK_Combat
 from EDInternalStatusPanel import EDInternalStatusPanel
 from NavRouteParser import NavRouteParser
-from OCR import OCR
+from src.screen.OCR import OCR
 from EDNavigationPanel import EDNavigationPanel
-from Overlay import *
+from src.screen.Overlay import Overlay
 from StatusParser import StatusParser
 from src.core.Voice import Voice
 from Robigo import *

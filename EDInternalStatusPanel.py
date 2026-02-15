@@ -9,9 +9,9 @@ import cv2
 from src.core import EDAP_data
 # from EDKeys import EDKeys
 from EDNavigationPanel import rects_to_quadrilateral, image_perspective_transform, image_reverse_perspective_transform
-# from OCR import OCR
-from Screen import Screen, crop_image_by_pct
-from Screen_Regions import Quad, load_calibrated_regions
+# from src.screen.OCR import OCR
+from src.screen.Screen import Screen, crop_image_by_pct
+from src.screen.Screen_Regions import Quad, load_calibrated_regions
 from StatusParser import StatusParser
 from src.core.EDlogger import logger
 
@@ -372,7 +372,7 @@ if __name__ == "__main__":
     mykeys = ap.keys
     mykeys.activate_window = True  # Helps with single steps testing
 
-    from Screen import set_focus_elite_window
+    from src.screen.Screen import set_focus_elite_window
     set_focus_elite_window()
     nav_pnl = EDInternalStatusPanel(ap, scr, mykeys, dummy_cb)
     nav_pnl.show_inventory_tab()

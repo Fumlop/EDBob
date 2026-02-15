@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import cv2
 from ultralytics import YOLO
-from Screen_Regions import Quad
+from src.screen.Screen_Regions import Quad
 
 """
 File:Machine_Learning.py

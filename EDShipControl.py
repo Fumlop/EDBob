@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from src.core import EDAP_data
-# from OCR import OCR
+# from src.screen.OCR import OCR
 from StatusParser import StatusParser
 
 

@@ -32,9 +32,9 @@ from EDAPColonizeEditor import ColonizeEditorTab
 # from src.core.Voice import Voice
 # from src.core.MousePt import MousePoint
 
-# from Image_Templates import *
-# from Screen import *
-# from Screen_Regions import *
+# from src.screen import Image_Templates
+# from src.screen import Screen
+# from src.screen import Screen_Regions
 # from EDKeys import *
 # from EDJournal import *
 from ED_AP import *

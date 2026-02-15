@@ -5,7 +5,7 @@ import os
 
 from src.core.EDAP_data import GuiFocusSystemMap
 from src.core.EDlogger import logger
-from Screen_Regions import scale_region, Quad, load_calibrated_regions
+from src.screen.Screen_Regions import scale_region, Quad, load_calibrated_regions
 from StatusParser import StatusParser
 from time import sleep
 

@@ -11,9 +11,9 @@ import numpy as np
 
 from src.core.EDAP_data import GuiFocusExternalPanel
 from src.core.EDlogger import logger
-from Screen_Regions import Quad, Point, load_calibrated_regions
+from src.screen.Screen_Regions import Quad, Point, load_calibrated_regions
 from StatusParser import StatusParser
-from Screen import crop_image_by_pct
+from src.screen.Screen import crop_image_by_pct
 
 """
 File:navPanel.py    
@@ -560,7 +560,7 @@ if __name__ == "__main__":
     ap = EDAutopilot(cb=dummy_cb)
     ap.keys.activate_window = True  # Helps with single steps testing
 
-    from Screen import set_focus_elite_window, crop_image_by_pct
+    from src.screen.Screen import set_focus_elite_window, crop_image_by_pct
 
     set_focus_elite_window()
     nav_pnl = EDNavigationPanel(ap, ap.scr, ap.keys, dummy_cb)

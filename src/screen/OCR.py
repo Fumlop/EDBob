@@ -13,7 +13,7 @@ from src.core.EDlogger import logger
 from tkinter import messagebox
 import tkinter as tk
 
-from Screen_Regions import Quad
+from src.screen.Screen_Regions import Quad
 
 """
 File:OCR.py    

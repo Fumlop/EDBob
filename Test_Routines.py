@@ -3,10 +3,10 @@ import cv2
 import os
 
 from ED_AP import EDAutopilot
-from Screen_Regions import *
-from Overlay import *
-from Screen import *
-from Image_Templates import *
+from src.screen.Screen_Regions import Screen_Regions
+from src.screen.Overlay import Overlay
+from src.screen.Screen import Screen
+from src.screen.Image_Templates import Image_Templates
 from time import sleep
 import numpy as np
 

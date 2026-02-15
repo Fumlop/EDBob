@@ -8,7 +8,7 @@ import win32api
 import win32con
 import win32gui
 import win32ui
-from Screen_Regions import Quad, Point
+from src.screen.Screen_Regions import Quad, Point
 
 """
 File:Overlay.py    

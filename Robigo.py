@@ -7,14 +7,14 @@ import time
 import keyboard
 import win32gui
 
-import Screen_Regions
+from src.screen import Screen_Regions
 from ED_AP import *
 from EDJournal import *
 from EDKeys import *
 from src.core.EDlogger import logger
-from Image_Templates import *
-from Overlay import *
-from Screen import *
+from src.screen import Image_Templates
+from src.screen import Overlay
+from src.screen import Screen
 from src.core.Voice import Voice
 '''
 
