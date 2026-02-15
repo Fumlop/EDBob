@@ -6,7 +6,7 @@ from src.core.EDAP_data import FlagsDocked
 from src.ed.EDKeys import EDKeys
 from src.core.EDlogger import logger
 from src.ed.EDNavigationPanel import EDNavigationPanel
-from src.screen.Screen from src.screen import Screen
+from src.screen.Screen import Screen
 from src.ed.StatusParser import StatusParser
 
 
