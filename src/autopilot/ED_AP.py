@@ -1334,37 +1334,16 @@ class EDAutopilot:
     #         return False
 
     def sc_disengage_label_up(self, scr_reg) -> bool:
-        """ look for messages like "PRESS [J] TO DISENGAGE" or "SUPERCRUISE OVERCHARGE ACTIVE",
-         if in this region then return true.
-        The aim of this function is to return that a message is there, and then use OCR to determine
-        what the message is. This will only use the high CPU usage OCR when necessary."""
-        dis_image, (minVal, maxVal, minLoc, maxLoc), match = scr_reg.match_template_in_region('disengage', 'disengage')
-
-        pt = maxLoc
-
-        width = scr_reg.templates.template['disengage']['width']
-        height = scr_reg.templates.template['disengage']['height']
-
-        # # Draw box around region
-        # reg_rect = scr_reg.reg['disengage']['rect']
-        # if self.debug_overlay:
-        #     abs_rect = [pt[0] + reg_rect[0], pt[1] + reg_rect[1], pt[0] + reg_rect[0] + width, pt[1] + reg_rect[1] + height]
-        #     self.overlay.overlay_rect1('sc_disengage_label_up', abs_rect, (0, 255, 0), 2)
-        #     self.overlay.overlay_floating_text('sc_disengage_label_up', f'Match: {maxVal:5.4f} > {scr_reg.disengage_thresh}', abs_rect[0], abs_rect[1] - 25, (0, 255, 0))
-        #     self.overlay.overlay_paint()
-
-        if self.cv_view:
-            self.draw_match_rect(dis_image, pt, (pt[0] + width, pt[1] + height), (0,255,0), 2)
-            dis_image = cv2.rectangle(dis_image, (0, 0), (1000, 25), (0, 0, 0), -1)
-            cv2.putText(dis_image, f'{maxVal:5.4f} > {scr_reg.disengage_thresh}', (1, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
-            cv2.imshow('sc_disengage_label_up', dis_image)
-            cv2.moveWindow('sc_disengage_label_up', self.cv_view_x-460,self.cv_view_y+575)
-            cv2.waitKey(1)
-
-        if maxVal > scr_reg.disengage_thresh:
+        """ Check if SC disengage happened by checking journal status.
+        SC Assist auto-drops from supercruise, so we detect via status change
+        instead of screen template matching. """
+        # Check if we left supercruise (SC Assist dropped us)
+        if not self.status.get_flag(FlagsSupercruise):
             return True
-        else:
-            return False
+        # Also check journal for destination drop event
+        if self.jn.ship_state()['status'] == 'in_space':
+            return True
+        return False
 
     def sc_disengage(self, scr_reg) -> bool:
         """ DEPRECATED - Replaced with 'sc_disengage_label_up' and 'sc_disengage_active' using OCR.
@@ -1450,16 +1429,16 @@ class EDAutopilot:
                     self.ap_ckb('log+vce', "SCO Aborting, < users low fuel threshold")
                     self.keys.send('UseBoostJuice')
 
-            # Check SC Disengage, but only when not in SC Overcharge
+            # Check SC Disengage via journal/status (no screen detection needed)
             if not self.sc_sco_is_active:
                 self._sc_disengage_active = self.sc_disengage_label_up(self.scrReg)
             else:
                 self._sc_disengage_active = False
 
-            # Sleep upto 1 sec max. If OCR takes > 1 sec, there will be no delay
+            # Status checks are fast, poll every 0.5s
             elapsed_time = time.time() - start_time
-            if elapsed_time < 1.0:
-                sleep(1.0 - elapsed_time)
+            if elapsed_time < 0.5:
+                sleep(0.5 - elapsed_time)
 
     def undock(self):
         """ Performs menu action to undock from Station """
@@ -1881,7 +1860,6 @@ class EDAutopilot:
             # check for SC Disengage
             if self._sc_disengage_active:
                 self.ap_ckb('log+vce', 'Disengage Supercruise')
-                self.keys.send('HyperSuperCombination')
                 self.stop_sco_monitoring()
                 return ScTargetAlignReturn.Disengage
 
@@ -1994,7 +1972,6 @@ class EDAutopilot:
             # check for SC Disengage
             if self._sc_disengage_active:
                 self.ap_ckb('log+vce', 'Disengage Supercruise')
-                self.keys.send('HyperSuperCombination')
                 self.stop_sco_monitoring()
                 return ScTargetAlignReturn.Disengage
 
@@ -2837,7 +2814,6 @@ class EDAutopilot:
             # check for SC Disengage
             if self._sc_disengage_active:
                 self.ap_ckb('log+vce', 'Disengage Supercruise')
-                self.keys.send('HyperSuperCombination')
                 self.stop_sco_monitoring()
                 break
 
