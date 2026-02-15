@@ -276,53 +276,33 @@ class EDNavigationPanel:
 
     def is_panel_active(self) -> (bool, str):
         """ Determine if the Nav Panel is open and if so, which tab is active.
+            Uses pixel color detection to find the highlighted tab position.
             Returns True if active, False if not and also the string of the tab name.
         """
+        # Tab order: NAVIGATION, TRANSACTIONS, CONTACTS, TARGET
+        tab_names = [
+            self.navigation_tab_text,
+            self.transactions_tab_text,
+            self.contacts_tab_text,
+            self.target_tab_text,
+        ]
+
         # Check if nav panel is open
         if not self.status_parser.wait_for_gui_focus(GuiFocusExternalPanel, 3):
             logger.debug("is_nav_panel_active: right panel not focused")
             return False, ""
 
         # Try this 'n' times before giving up
-        tab_text = ""
         for i in range(10):
-            # Is open, so proceed
             tab_bar = self.capture_tab_bar()
             if tab_bar is None:
                 return False, ""
 
-            item = Quad.from_rect(self.sub_reg['nav_pnl_tab']['rect'])
-            img_selected, _, ocr_textlist, quad = self.ocr.get_highlighted_item_data(tab_bar, item, 'nav panel')
-            if img_selected is not None:
-                if self.ap.debug_overlay:
-                    tab_bar_quad = Quad.from_rect(self.sub_reg['tab_bar']['rect'])
-                    # Convert to a percentage of the nav panel
-                    quad.scale_from_origin(tab_bar_quad.get_width(), tab_bar_quad.get_height())
-                    # quad.offset(tab_bar_quad.get_left(), tab_bar_quad.get_top())
-
-                    # Transform the array of coordinates to the skew of the nav panel
-                    q_out = image_reverse_perspective_transform(self.panel, quad, self._rev_transform)
-                    # Offset to match the nav panel offset
-                    q_out.offset(self.panel_quad_pix.get_left(), self.panel_quad_pix.get_top())
-
-                    # Overlay OCR result
-                    self.ap.overlay.overlay_floating_text('nav_panel_item_text', f'{str(ocr_textlist)}', q_out.get_left(), q_out.get_top() - 25,                                                         (0, 255, 0))
-                    self.ap.overlay.overlay_quad_pix('nav_panel_item', q_out, (0, 255, 0), 2)
-                    self.ap.overlay.overlay_paint()
-
-                # Test OCR string
-                if self.navigation_tab_text in str(ocr_textlist):
-                    tab_text = self.navigation_tab_text
-                    break
-                if self.transactions_tab_text in str(ocr_textlist):
-                    tab_text = self.transactions_tab_text
-                    break
-                if self.contacts_tab_text in str(ocr_textlist):
-                    tab_text = self.contacts_tab_text
-                    break
-                if self.target_tab_text in str(ocr_textlist):
-                    tab_text = self.target_tab_text
-                    break
+            tab_index = self.ocr.detect_highlighted_tab_index(tab_bar, len(tab_names))
+            if tab_index >= 0:
+                tab_text = tab_names[tab_index]
+                logger.debug(f"is_panel_active: detected tab index {tab_index} -> {tab_text}")
+                return True, tab_text
 
             # Wait and retry
             sleep(1)
@@ -330,11 +310,7 @@ class EDNavigationPanel:
             # In case we are on a picture tab, cycle to the next tab
             self.keys.send('CycleNextPanel')
 
-        # Return Tab text or nothing
-        if tab_text != "":
-            return True, tab_text
-        else:
-            return False, ""
+        return False, ""
 
     def show_navigation_tab(self) -> bool | None:
         """ Shows the NAVIGATION tab of the Nav Panel. Opens the Nav Panel if not already open.
@@ -384,32 +360,6 @@ class EDNavigationPanel:
             self.keys.send('CycleNextPanel', repeat=3)
             return True
 
-    def lock_destination(self, dst_name) -> bool:
-        """ Checks if destination is already locked and if not, Opens Nav Panel, Navigation Tab,
-        scrolls locations and if the requested location is found, lock onto destination. Close Nav Panel.
-        Returns True if the destination is already locked, or if it is successfully locked.
-        """
-        # Checks if the desired destination is already locked
-        status = self.status_parser.get_cleaned_data()
-        if status['Destination_Name']:
-            cur_dest = status['Destination_Name']
-            # print(f"wanted dest: {dst_name}. Current dest: {cur_dest}")
-            if cur_dest.upper() == dst_name.upper():
-                return True
-
-        res = self.show_navigation_tab()
-        if not res:
-            print("Nav Panel could not be opened")
-            return False
-
-        found = self.find_destination_in_list(dst_name)
-        if found:
-            self.keys.send("UI_Select", repeat=2)  # Select it and lock target
-        else:
-            return False
-
-        self.hide_panel()
-        return found
 
     def request_docking(self) -> bool:
         """ Try to request docking with OCR.
@@ -432,120 +382,13 @@ class EDNavigationPanel:
         self.hide_panel()
         return True
 
-    def scroll_to_top_of_list(self) -> bool | None:
-        """ Attempts to scroll to the top of the list by holding 'up' and waiting until the resulting OCR
-        stops changing. This should be at the top of the list.
+    def lock_destination(self, dst_name) -> bool:
+        """ DEPRECATED: PaddleOCR-based nav panel text reading has been removed.
+        Use galaxy map favorites navigation instead.
         """
-        self.keys.send("UI_Down")  # go down in case we are at the top and don't want to go to the bottom
-        self.keys.send("UI_Up", state=1)  # got to top row
-
-        ocr_textlist_last = ""
-        tries = 0
-        in_list = False  # Have we seen one item yet? Prevents quiting if we have not selected the first item.
-        while 1:
-            # Get the location panel image
-            loc_panel = self.capture_location_panel()
-            if loc_panel is None:
-                return None
-
-            # Find the selected item/menu (solid orange)
-            item = Quad.from_rect(self.sub_reg['nav_pnl_location']['rect'])
-            img_selected, q = self.ocr.get_highlighted_item_in_image(loc_panel, item)
-
-            # Check if end of list.
-            if img_selected is None and in_list:
-                #logger.debug(f"Off end of list. Did not find '{dst_name}' in list.")
-                self.keys.send("UI_Up", state=0)  # got to top row
-                return False
-
-            # OCR the selected item
-            ocr_textlist = self.ocr.image_simple_ocr(img_selected)
-            if ocr_textlist is not None:
-                # Check if list has not changed (we are at the top)
-                if ocr_textlist == ocr_textlist_last:
-                    tries = tries + 1
-                else:
-                    tries = 0
-                    ocr_textlist_last = ocr_textlist
-
-                # Require some counts in case we hit multiple 'UNIDENTIFIED SIGNAL SOURCE',
-                # 'CONFLICT ZONE' or other repetitive text
-                if tries >= 3:
-                    self.keys.send("UI_Up", state=0)  # got to top row
-                    return True
-
-    def find_destination_in_list(self, dst_name) -> bool:
-        # tries is the number of rows to go through to find the item looking for
-        # the Nav Panel should be filtered to reduce the number of rows in the list
-        q_out = None
-
-        # Scroll to top of list
-        res = self.scroll_to_top_of_list()
-        if not res:
-            logger.debug(f"Unable to scroll to top of list.")
-            return False
-
-        y_last = -1
-        in_list = False  # Have we seen one item yet? Prevents quiting if we have not selected the first item.
-        while 1:
-            # Get the location panel image
-            loc_panel = self.capture_location_panel()
-            if loc_panel is None:
-                return False
-
-            # Find the selected item/menu (solid orange)
-            item = Quad.from_rect(self.sub_reg['nav_pnl_location']['rect'])
-            img_selected, quad = self.ocr.get_highlighted_item_in_image(loc_panel, item)
-
-            # Check if end of list.
-            if img_selected is None and in_list:
-                logger.debug(f"Off end of list. Did not find '{dst_name}' in list.")
-                return False
-
-            if self.ap.debug_overlay:
-                # Scale the selected item down to the scale of the tab bar
-                loc_pnl_quad = Quad.from_rect(self.sub_reg['location_panel']['rect'])
-                q = copy(quad)
-                # Convert to a percentage of the nav panel
-                q.scale_from_origin(loc_pnl_quad.get_width(), loc_pnl_quad.get_height())
-                q.offset(loc_pnl_quad.get_left(), loc_pnl_quad.get_top())
-
-                # Transform the array of coordinates to the skew of the nav panel
-                q_out = image_reverse_perspective_transform(self.panel, q, self._rev_transform)
-                # Offset to match the nav panel offset
-                q_out.offset(self.panel_quad_pix.get_left(), self.panel_quad_pix.get_top())
-
-                # Overlay OCR result
-                # self.ap.overlay.overlay_floating_text('nav_panel_item_text', f'{str(ocr_textlist)}', q_out.get_left(), q_out.get_top() - 25, (0, 255, 0))
-                self.ap.overlay.overlay_quad_pix('nav_panel_item', q_out, (0, 255, 0), 2)
-                self.ap.overlay.overlay_paint()
-
-            # Check if this item is above the last item (we cycled to top). The quad is a percent decimal (0.0 - 1.0).
-            if quad.get_top() < y_last - 0.1:
-                logger.debug(f"Cycled back to top. Did not find '{dst_name}' in list.")
-                return False
-            else:
-                y_last = quad.get_top()
-
-            # OCR the selected item
-            sim_match = 0.8  # Similarity match 0.0 - 1.0 for 0% - 100%)
-            ocr_textlist = self.ocr.image_simple_ocr(img_selected)
-            if ocr_textlist is not None:
-                sim = self.ocr.string_similarity(f"['{dst_name.upper()}']", str(ocr_textlist))
-
-                if self.ap.debug_overlay:
-                    # Overlay OCR result
-                    self.ap.overlay.overlay_floating_text('nav_panel_item_text', f'{str(ocr_textlist)} {round(sim, 4)} > {sim_match}',
-                                                          q_out.get_left(), q_out.get_top() - 25, (0, 255, 0))
-                    self.ap.overlay.overlay_paint()
-
-                #print(f"Similarity of ['{dst_name.upper()}'] and {str(ocr_textlist)} is {sim}")
-                if sim > sim_match:
-                    logger.debug(f"Found '{dst_name}' in list.")
-                    return True
-                else:
-                    in_list = True
-                    self.keys.send("UI_Down")  # up to next item
+        logger.warning(f"lock_destination('{dst_name}') called but OCR nav panel reading was removed. "
+                       f"Use galaxy map favorites instead.")
+        return False
 
 
 def dummy_cb(msg, body=None):

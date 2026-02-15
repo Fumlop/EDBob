@@ -1,7 +1,9 @@
 import math
 import os
+import time
 import traceback
 from datetime import timedelta
+from time import sleep
 from enum import Enum
 from math import atan, degrees
 import random
@@ -28,16 +30,12 @@ from src.screen import Screen_Regions
 from src.autopilot import EDWayPoint
 from src.ed import EDJournal
 from src.ed import EDKeys
-from src.autopilot.EDafk_combat import AFK_Combat
 from src.ed.EDInternalStatusPanel import EDInternalStatusPanel
 from src.ed.NavRouteParser import NavRouteParser
 from src.screen.OCR import OCR
 from src.ed.EDNavigationPanel import EDNavigationPanel
 from src.screen.Overlay import Overlay
 from src.ed.StatusParser import StatusParser
-from src.core.Voice import Voice
-from src.autopilot import Robigo
-from src.autopilot.TCE_Integration import TceIntegration
 
 """
 File:EDAP.py    EDAutopilot
@@ -89,7 +87,6 @@ class EDAutopilot:
         self._prev_star_system = None
         self.honk_thread = None
         self.speed_demand = None
-        self._tce_integration = None
         self._ocr = None
         self._mach_learn = None
         self._sc_disengage_active = False  # Is SC Disengage active
@@ -103,12 +100,6 @@ class EDAutopilot:
         # Load selected language
         self.locale = LocalizationManager('locales', self.config['Language'])
 
-        # config the voice interface
-        self.vce = Voice()
-        self.vce.v_enabled = self.config['VoiceEnable']
-        self.vce.set_voice_id(self.config['VoiceID'])
-        self.vce.say("Welcome to Autopilot")
-
         # set log level based on config input, defaulting to warning
         logger.setLevel(logging.WARNING)
         if self.config['LogINFO']:
@@ -119,11 +110,11 @@ class EDAutopilot:
         # initialize all to false
         self.fsd_assist_enabled = False
         self.sc_assist_enabled = False
-        self.afk_combat_assist_enabled = False
         self.waypoint_assist_enabled = False
-        self.robigo_assist_enabled = False
         self.dss_assist_enabled = False
         self.single_waypoint_enabled = False
+        self.favorites_assist_enabled = False
+        self._favorites_current_number = 1
 
         # Create instance of each of the needed Classes
         self.scr = Screen.Screen(cb)
@@ -148,9 +139,7 @@ class EDAutopilot:
         self.scrReg = Screen_Regions.Screen_Regions(self.scr, self.templ)
         self.jn = EDJournal.EDJournal(cb)
         self.keys = EDKeys.EDKeys(cb)
-        self.afk_combat = AFK_Combat(self, self.keys, self.jn, self.vce)
         self.waypoint = EDWayPoint.EDWayPoint(self, self.jn.ship_state()['odyssey'])
-        self.robigo = Robigo.Robigo(self)
         self.status = StatusParser()
         self.nav_route = NavRouteParser()
         self.ship_control = EDShipControl(self, self.scr, self.keys, cb)
@@ -233,13 +222,6 @@ class EDAutopilot:
         self.process_config_settings()
 
     @property
-    def tce_integration(self) -> TceIntegration:
-        """ Load TCE Integration class when needed. """
-        if not self._tce_integration:
-            self._tce_integration = TceIntegration(self, self.ap_ckb)
-        return self._tce_integration
-
-    @property
     def mach_learn(self) -> MachLearn:
         """ Load Machine Learning class when needed. """
         if not self._mach_learn:
@@ -286,9 +268,7 @@ class EDAutopilot:
             "DockingRetries": 30,  # number of time to attempt docking
             "HotKey_StartFSD": "home",  # if going to use other keys, need to look at the python keyboard package
             "HotKey_StartSC": "ins",  # to determine other keynames, make sure these keys are not used in ED bindings
-            "HotKey_StartRobigo": "pgup",  #
             "HotKey_StopAllAssists": "end",
-            "Robigo_Single_Loop": False,  # True means only 1 loop will executed and then terminate the Robigo, will not perform mission processing
             "EnableRandomness": False,  # add some additional random sleep times to avoid AP detection (0-3sec at specific locations)
             "ActivateEliteEachKey": False,  # Activate Elite window before each key or group of keys
             "OverlayTextEnable": False,  # Experimental at this stage
@@ -300,8 +280,6 @@ class EDAutopilot:
             "DiscordWebhook": False,  # discord not implemented yet
             "DiscordWebhookURL": "",
             "DiscordUserID": "",
-            "VoiceEnable": False,
-            "VoiceID": 1,  # my Windows only have 3 defined (0-2)
             "ElwScannerEnable": False,
             "LogDEBUG": False,  # enable for debug messages
             "LogINFO": True,
@@ -309,8 +287,6 @@ class EDAutopilot:
             "ShipConfigFile": None,  # Ship config to load on start - deprecated
             "TargetScale": 1.0,  # Scaling of the target when a system is selected
             "ScreenScale": 1.0,  # Scaling of the target when a system is selected
-            "TCEDestinationFilepath": "C:\\TCE\\DUMP\\Destination.json",  # Destination file for TCE
-            "TCEInstallationPath": "C:\\TCE",
             "AutomaticLogout": False,  # Logout when we are done with the mission
             "FCDepartureTime": 5.0,  # Extra time to fly away from a Fleet Carrier
             "FCDepartureAngle": 90.0,  # Angle to pitch up when leaving a Fleet Carrier
@@ -321,7 +297,6 @@ class EDAutopilot:
             "EDMesgActionsPort": 15570,
             "EDMesgEventsPort": 15571,
             "DebugOverlay": False,
-            "AFKCombat_AttackAtWill": False,
             "HotkeysEnable": False,  # Enable hotkeys
             "WaypointFilepath": "",  # The previous waypoint file path
             "DebugOCR": False,  # For debug, write all OCR data to output folder
@@ -351,10 +326,6 @@ class EDAutopilot:
                 cnf['TargetScale'] = 1.0
             if 'ScreenScale' not in cnf:
                 cnf['ScreenScale'] = 1.0
-            if 'TCEDestinationFilepath' not in cnf:
-                cnf['TCEDestinationFilepath'] = "C:\\TCE\\DUMP\\Destination.json"
-            if 'TCEInstallationPath' not in cnf:
-                cnf['TCEInstallationPath'] = "C:\\TCE"
             if 'AutomaticLogout' not in cnf:
                 cnf['AutomaticLogout'] = False
             if 'FCDepartureTime' not in cnf:
@@ -371,8 +342,6 @@ class EDAutopilot:
                 cnf['EDMesgEventsPort'] = 15571
             if 'DebugOverlay' not in cnf:
                 cnf['DebugOverlay'] = False
-            if 'AFKCombat_AttackAtWill' not in cnf:
-                cnf['AFKCombat_AttackAtWill'] = False
             if 'HotkeysEnable' not in cnf:
                 cnf['HotkeysEnable'] = False
             if 'WaypointFilepath' not in cnf:
@@ -539,14 +508,10 @@ class EDAutopilot:
             ap_mode = "Offline"
             if self.fsd_assist_enabled:
                 ap_mode = "FSD Route Assist"
-            elif self.robigo_assist_enabled:
-                ap_mode = "Robigo Assist"
             elif self.sc_assist_enabled:
                 ap_mode = "SC Assist"
             elif self.waypoint_assist_enabled:
                 ap_mode = "Waypoint Assist"
-            elif self.afk_combat_assist_enabled:
-                ap_mode = "AFK Combat Assist"
             elif self.dss_assist_enabled:
                 ap_mode = "DSS Assist"
 
@@ -695,7 +660,6 @@ class EDAutopilot:
     def calibrate_target(self):
         """ Routine to find the optimal scaling values for the template images. """
         msg = 'Select OK to begin Calibration. You must be in space and have a star system targeted in center screen.'
-        self.vce.say(msg)
         ans = messagebox.askokcancel('Calibration', msg)
         if not ans:
             return
@@ -724,7 +688,6 @@ class EDAutopilot:
     def calibrate_compass(self):
         """ Routine to find the optimal scaling values for the template images. """
         msg = 'Select OK to begin Calibration. You must be in space and have the compass visible.'
-        self.vce.say(msg)
         ans = messagebox.askokcancel('Calibration', msg)
         if not ans:
             return
@@ -953,7 +916,6 @@ class EDAutopilot:
                     ", Probabilty: {0:3.0f}% ".format((maxVal1*100))+
                     ", Date: "+str(datetime.now())+str("\n"))
             f.close()
-            self.vce.say(sstr+" like world detected ")
             self.fss_detected = sstr+" like world detected "
             logger.info(sstr+" world at: "+str(self.jn.ship_state()["location"]))
         else:
@@ -990,7 +952,7 @@ class EDAutopilot:
             return False
 
         # Interdiction detected.
-        self.vce.say("Danger. Interdiction detected.")
+        logger.info("Danger. Interdiction detected.")
         self.ap_ckb('log', 'Interdiction detected.')
 
         # Keep setting speed to zero to submit while in supercruise or system jump.
@@ -1394,54 +1356,6 @@ class EDAutopilot:
         else:
             return False
 
-    def sc_disengage_ocr(self, scr_reg) -> bool:
-        """ look for the "SUPERCRUISE OVERCHARGE ACTIVE" text using OCR, if in this region then return true. """
-        # Do we have cockpit view? If not, return
-        if self.status.get_gui_focus() != GuiFocusNoFocus:
-            return False
-
-        image = self.scr.get_screen_region(scr_reg.reg['disengage']['rect'])
-        # TODO delete this line when COLOR_RGB2BGR is removed from get_screen()
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        mask = scr_reg.capture_region_filtered(self.scr, 'disengage')
-        masked_image = cv2.bitwise_and(image, image, mask=mask)
-        image = masked_image
-
-        start_time = None
-        if self.debug_overlay:
-            start_time = time.time()
-
-        # OCR the selected item
-        sim_match = 0.35  # Similarity match 0.0 - 1.0 for 0% - 100%)
-        sim = 0.0
-        ocr_textlist = self.ocr.image_simple_ocr(image, 'disengage')
-        if ocr_textlist is not None:
-            sim = self.ocr.string_similarity(self.locale["PRESS_TO_DISENGAGE_MSG"], str(ocr_textlist))
-            logger.info(f"Disengage similarity with {str(ocr_textlist)} is {sim}")
-
-        # Draw box around region
-        if self.debug_overlay:
-            elapsed_time = time.time() - start_time
-            abs_rect = scr_reg.reg['disengage']['rect']
-            self.overlay.overlay_rect1('sc_disengage_active', abs_rect, (0, 255, 0), 2)
-            self.overlay.overlay_floating_text('sc_disengage_active', f'Diseng: {str(ocr_textlist)} ({round(elapsed_time, 4)} Secs)', abs_rect[0], abs_rect[1] - 25, (0, 255, 0))
-            self.overlay.overlay_paint()
-
-        if self.cv_view:
-            image = cv2.rectangle(image, (0, 0), (1000, 30), (0, 0, 0), -1)
-            cv2.putText(image, f'Text: {str(ocr_textlist)}', (1, 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
-            cv2.putText(image, f'Similarity: {sim:5.4f} > {sim_match}', (1, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
-            cv2.imshow('disengage2', image)
-            cv2.moveWindow('disengage2', self.cv_view_x - 460, self.cv_view_y + 650)
-            cv2.waitKey(30)
-
-        if sim > sim_match:
-            # logger.info("'PRESS [] TO DISENGAGE' detected. Disengaging Supercruise")
-            # cv2.imwrite(f'test/disengage.png', image)
-            return True
-
-        return False
-
     def start_sco_monitoring(self):
         """ Start Supercruise Overcharge Monitoring. This starts a parallel thread used to detect SCO
         until stop_sco_monitoring if called. """
@@ -1495,11 +1409,7 @@ class EDAutopilot:
 
             # Check SC Disengage, but only when not in SC Overcharge
             if not self.sc_sco_is_active:
-                # Enable one or the other!
-                # self._sc_disengage_active = self.sc_disengage(self.scrReg)
-
-                # if self.sc_disengage_label_up(scr_reg):
-                self._sc_disengage_active = self.sc_disengage_ocr(self.scrReg)
+                self._sc_disengage_active = self.sc_disengage_label_up(self.scrReg)
             else:
                 self._sc_disengage_active = False
 
@@ -1854,8 +1764,6 @@ class EDAutopilot:
             #     self.ap_ckb('log+vce', 'Target Align')
 
             # check for SC Disengage
-            # if self.sc_disengage_label_up(scr_reg):
-            #     if self.sc_disengage_ocr(scr_reg):
             if self._sc_disengage_active:
                 self.ap_ckb('log+vce', 'Disengage Supercruise')
                 self.keys.send('HyperSuperCombination')
@@ -1960,8 +1868,6 @@ class EDAutopilot:
             #     self.ap_ckb('log+vce', 'Target Align')
 
             # check for SC Disengage
-            # if self.sc_disengage_label_up(scr_reg):
-            #     if self.sc_disengage_ocr(scr_reg):
             if self._sc_disengage_active:
                 self.ap_ckb('log+vce', 'Disengage Supercruise')
                 self.keys.send('HyperSuperCombination')
@@ -2053,7 +1959,7 @@ class EDAutopilot:
 
         self.set_speed_100()
 
-        self.vce.say("Passing star")
+        logger.info("Passing star")
 
         # Need time to move past Sun, account for slowed ship if refueled
         pause_time = add_time
@@ -2070,7 +1976,7 @@ class EDAutopilot:
         else:
             sleep(5)  # since not doing FSS, need to give a little more time to get away from Sun, for heat
 
-        self.vce.say("Maneuvering")
+        logger.info("Maneuvering")
 
         logger.debug('position=complete')
         return True
@@ -2081,7 +1987,7 @@ class EDAutopilot:
     def jump(self, scr_reg):
         logger.debug('jump')
 
-        self.vce.say("Frameshift Jump")
+        logger.info("Frameshift Jump")
 
         # Stop SCO monitoring
         self.stop_sco_monitoring()
@@ -2302,14 +2208,14 @@ class EDAutopilot:
             scr_reg.set_sun_threshold(self.config['SunBrightThreshold'])
 
         # Lets avoid the sun, shall we
-        self.vce.say("Avoiding star")
+        logger.info("Avoiding star")
         self.update_ap_status("Avoiding star")
         self.ap_ckb('log', 'Avoiding star')
         self.sun_avoid(scr_reg)
 
         if self.jn.ship_state()['fuel_percent'] < self.config['RefuelThreshold'] and is_star_scoopable and has_fuel_scoop:
             logger.debug('refuel= start refuel')
-            self.vce.say("Refueling")
+            logger.info("Refueling")
             self.ap_ckb('log', 'Refueling')
             self.update_ap_status("Refueling")
 
@@ -2333,7 +2239,7 @@ class EDAutopilot:
                     self.set_speed_0()
 
                 if ((time.time()-startime) > int(self.config['FuelScoopTimeOut'])):
-                    self.vce.say("Refueling abort, insufficient scooping")
+                    logger.info("Refueling abort, insufficient scooping")
                     return False
 
             logger.debug('refuel= wait for refuel')
@@ -2348,7 +2254,7 @@ class EDAutopilot:
                     self.set_speed_0()
 
                 if ((time.time()-startime) > int(self.config['FuelScoopTimeOut'])):
-                    self.vce.say("Refueling abort, insufficient scooping")
+                    logger.info("Refueling abort, insufficient scooping")
                     return True
                 sleep(1)
 
@@ -2517,6 +2423,59 @@ class EDAutopilot:
         also can then perform trades if specific in the waypoints file."""
         self.waypoint.waypoint_assist(keys, scr_reg)
 
+    def favorites_loop(self):
+        """Cycle through galaxy map favorites numbered -1-, -2-, etc.
+        Plots route to each favorite via galmap OCR, runs fsd_assist to fly there,
+        then advances to the next number. If the next number is not found, wraps back to -1-.
+        """
+        self._favorites_current_number = 1
+
+        while self.favorites_assist_enabled:
+            target = self._favorites_current_number
+            self.ap_ckb('log', f"Favorites: selecting waypoint #{target}")
+            self.update_ap_status(f"Favorites #{target}")
+
+            # Open galmap and select the favorite
+            if not self.galaxy_map.select_favorite_by_number(target):
+                if target == 1:
+                    self.ap_ckb('log', "Favorites: waypoint #1 not found, aborting")
+                    return
+                # Next number not found, wrap to #1
+                self.ap_ckb('log', f"Favorites: #{target} not found, wrapping to #1")
+                self._favorites_current_number = 1
+                continue
+
+            # Wait for route to be plotted
+            sleep(1)
+
+            # Run FSD assist to fly to the selected favorite
+            self.jump_cnt = 0
+            self.refuel_cnt = 0
+            self.total_dist_jumped = 0
+            self.total_jumps = 0
+            result = self.fsd_assist(self.scrReg)
+
+            if not self.favorites_assist_enabled:
+                return
+
+            if result == FSDAssistReturn.Failed:
+                self.ap_ckb('log', f"Favorites: FSD assist failed on #{target}")
+                return
+
+            # If partial (in-system target exists), run SC assist
+            if result == FSDAssistReturn.Partial:
+                self.update_ap_status(f"SC to #{target}")
+                self.sc_assist(self.scrReg)
+
+            if not self.favorites_assist_enabled:
+                return
+
+            self.ap_ckb('log', f"Favorites: arrived at #{target}")
+
+            # Advance to next waypoint
+            self._favorites_current_number = target + 1
+            sleep(2)
+
     def jump_to_system(self, scr_reg) -> bool:
         """ Jumps to the currently targeted system. Returns True if we successfully travel there, else False. """
         # Disabled the below because when docking, after a system was selected, the status file did not update, so the
@@ -2648,7 +2607,7 @@ class EDAutopilot:
 
                 if self.jn.ship_state()['fuel_percent'] < self.config['FuelThreasholdAbortAP']:
                     self.ap_ckb('log', "AP Aborting, low fuel")
-                    self.vce.say("AP Aborting, low fuel")
+                    logger.info("AP Aborting, low fuel")
                     return FSDAssistReturn.Failed
 
         sleep(2)  # wait until screen stabilizes from possible last positioning
@@ -2747,8 +2706,6 @@ class EDAutopilot:
                 self.compass_align(scr_reg)  # realign with station
 
             # check for SC Disengage
-            # if self.sc_disengage_label_up(scr_reg):
-            #     if self.sc_disengage_ocr(scr_reg):
             if self._sc_disengage_active:
                 self.ap_ckb('log+vce', 'Disengage Supercruise')
                 self.keys.send('HyperSuperCombination')
@@ -2786,33 +2743,11 @@ class EDAutopilot:
             else:
                 self.set_speed_0()
         else:
-            self.vce.say("Exiting Supercruise, setting throttle to zero")
+            logger.info("Exiting Supercruise, setting throttle to zero")
             self.set_speed_0()  # make sure we don't continue to land
             self.ap_ckb('log', "Supercruise dropped, terminating SC Assist")
 
         self.ap_ckb('log+vce', "Supercruise Assist complete")
-
-    def robigo_assist(self):
-        self.robigo.loop(self)
-
-    # Simply monitor for Shields down so we can boost away or our fighter got destroyed
-    # and thus redeploy another one
-    def afk_combat_loop(self):
-        while True:
-            if self.afk_combat.check_shields_up() == False:
-                set_focus_elite_window()
-                self.vce.say("Shields down, evading")
-                self.afk_combat.evade()
-                # after supercruise the menu is reset to top
-                self.afk_combat.launch_fighter()  # at new location launch fighter
-                break
-
-            if self.afk_combat.check_fighter_destroyed() == True:
-                set_focus_elite_window()
-                self.vce.say("Fighter Destroyed, redeploying")
-                self.afk_combat.launch_fighter()  # assuming two fighter bays
-
-        self.vce.say("Terminating AFK Combat Assist")
 
     def dss_assist(self):
         while True:
@@ -2900,16 +2835,6 @@ class EDAutopilot:
             self.ctype_async_raise(self.ap_thread, EDAP_Interrupt)
         self.waypoint_assist_enabled = enable
 
-    def set_robigo_assist(self, enable=True):
-        if enable == False and self.robigo_assist_enabled == True:
-            self.ctype_async_raise(self.ap_thread, EDAP_Interrupt)
-        self.robigo_assist_enabled = enable
-
-    def set_afk_combat_assist(self, enable=True):
-        if enable == False and self.afk_combat_assist_enabled == True:
-            self.ctype_async_raise(self.ap_thread, EDAP_Interrupt)
-        self.afk_combat_assist_enabled = enable
-
     def set_dss_assist(self, enable=True):
         if enable == False and self.dss_assist_enabled == True:
             self.ctype_async_raise(self.ap_thread, EDAP_Interrupt)
@@ -2921,6 +2846,11 @@ class EDAutopilot:
         self._single_waypoint_system = system
         self._single_waypoint_station = station
         self.single_waypoint_enabled = enable
+
+    def set_favorites_assist(self, enable=True):
+        if not enable and self.favorites_assist_enabled:
+            self.ctype_async_raise(self.ap_thread, EDAP_Interrupt)
+        self.favorites_assist_enabled = enable
 
     def set_cv_view(self, enable=True, x=0, y=0):
         self.cv_view = enable
@@ -2950,12 +2880,6 @@ class EDAutopilot:
 
         self.overlay.overlay_paint()
 
-    def set_voice(self, enable=False):
-        if enable == True:
-            self.vce.set_on()
-        else:
-            self.vce.set_off()
-
     def set_fss_scan(self, enable=False):
         self.config["ElwScannerEnable"] = enable
 
@@ -2977,8 +2901,6 @@ class EDAutopilot:
     # quit() is important to call to clean up, if we don't terminate the threads we created the AP will hang on exit
     # have then then kill python exec
     def quit(self):
-        if self.vce != None:
-            self.vce.quit()
         if self.overlay != None:
             self.overlay.overlay_quit()
         self.terminate = True
@@ -3087,40 +3009,6 @@ class EDAutopilot:
                 self.ap_ckb('waypoint_stop')
                 self.update_overlay()
 
-            elif self.robigo_assist_enabled == True:
-                logger.debug("Running robigo_assist")
-                set_focus_elite_window()
-                self.update_overlay()
-                try:
-                    self.robigo_assist()
-                except EDAP_Interrupt:
-                    logger.debug("Caught stop exception")
-                except Exception as e:
-                    print("Trapped generic:"+str(e))
-                    logger.debug("Robigo Assist trapped generic:"+str(e))
-                    traceback.print_exc()
-
-                self.stop_sco_monitoring()
-                self.robigo_assist_enabled = False
-                self.ap_ckb('robigo_stop')
-                self.update_overlay()
-
-            elif self.afk_combat_assist_enabled == True:
-                self.update_overlay()
-                try:
-                    self.afk_combat_loop()
-                except EDAP_Interrupt:
-                    logger.debug("Stopping afk_combat")
-                except Exception as e:
-                    print("Trapped generic:" + str(e))
-                    logger.debug("AFK Combat Assist trapped generic:" + str(e))
-                    traceback.print_exc()
-
-                self.stop_sco_monitoring()
-                self.afk_combat_assist_enabled = False
-                self.ap_ckb('afk_stop')
-                self.update_overlay()
-
             elif self.dss_assist_enabled == True:
                 logger.debug("Running dss_assist")
                 set_focus_elite_window()
@@ -3152,6 +3040,24 @@ class EDAutopilot:
                 self.stop_sco_monitoring()
                 self.single_waypoint_enabled = False
                 self.ap_ckb('single_waypoint_stop')
+                self.update_overlay()
+
+            elif self.favorites_assist_enabled:
+                logger.debug("Running favorites_loop")
+                set_focus_elite_window()
+                self.update_overlay()
+                try:
+                    self.favorites_loop()
+                except EDAP_Interrupt:
+                    logger.debug("Stopping Favorites Assist")
+                except Exception as e:
+                    print("Trapped generic:" + str(e))
+                    logger.debug("Favorites Assist trapped generic:" + str(e))
+                    traceback.print_exc()
+
+                self.stop_sco_monitoring()
+                self.favorites_assist_enabled = False
+                self.ap_ckb('favorites_stop')
                 self.update_overlay()
 
             # Check once EDAPGUI loaded to prevent errors logging to the listbox before loaded

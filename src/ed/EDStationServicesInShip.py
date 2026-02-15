@@ -64,7 +64,7 @@ class EDStationServicesInShip:
             self.ap.overlay.overlay_paint()
 
         # Wait for screen to appear
-        res = self.ocr.wait_for_text(self.ap, [self.locale["STN_SVCS_CONNECTED_TO"]], self.reg['connected_to'], timeout=15)
+        res = self.ocr.wait_for_ui_element(self.ap, self.reg['connected_to'], timeout=15)
 
         # Store image
         # image = self.screen.get_screen_rect_pct(scl_reg['rect'])
@@ -157,7 +157,7 @@ class EDStationServicesInShip:
             self.ap.overlay.overlay_paint()
 
         # Wait for screen to appear
-        res = self.ocr.wait_for_text(self.ap, [self.locale["COMMODITIES_MARKET"]], self.reg['title'], timeout=15)
+        res = self.ocr.wait_for_ui_element(self.ap, self.reg['title'], timeout=15)
         return res
 
     @staticmethod

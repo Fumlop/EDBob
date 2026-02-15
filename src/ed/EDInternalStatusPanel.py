@@ -190,64 +190,38 @@ class EDInternalStatusPanel:
             self.ap.ship_control.goto_cockpit_view()
 
     def is_panel_active(self) -> (bool, str):
-        """ Determine if the Nav Panel is open and if so, which tab is active.
+        """ Determine if the Internal Panel is open and if so, which tab is active.
+            Uses pixel color detection to find the highlighted tab position.
             Returns True if active, False if not and also the string of the tab name.
         """
         logger.debug("is_right_panel_active: entered")
 
-        # Check if nav panel is open
+        # Tab order: MODULES, FIRE GROUPS, SHIP, INVENTORY, STORAGE, STATUS
+        tab_names = [
+            self.modules_tab_text,
+            self.fire_groups_tab_text,
+            self.ship_tab_text,
+            self.inventory_tab_text,
+            self.storage_tab_text,
+            self.status_tab_text,
+        ]
+
+        # Check if internal panel is open
         if not self.status_parser.wait_for_gui_focus(EDAP_data.GuiFocusInternalPanel, 3):
             logger.debug("is_right_panel_active: right panel not focused")
             return False, ""
 
         # Try this 'n' times before giving up
-        tab_text = ""
         for i in range(10):
-            # Is open, so proceed
             tab_bar = self.capture_tab_bar()
             if tab_bar is None:
                 return False, ""
 
-            item = Quad.from_rect(self.sub_reg['sts_pnl_tab']['rect'])
-            img_selected, _, ocr_textlist, quad = self.ocr.get_highlighted_item_data(tab_bar, item, 'status panel')
-            if img_selected is not None:
-                if self.ap.debug_overlay:
-                    tab_bar_quad = Quad.from_rect(self.sub_reg['tab_bar']['rect'])
-                    # Convert to a percentage of the nav panel
-                    quad.scale_from_origin(tab_bar_quad.get_width(), tab_bar_quad.get_height())
-                    # quad.offset(tab_bar_quad.get_left(), tab_bar_quad.get_top())
-
-                    # Transform the array of coordinates to the skew of the nav panel
-                    q_out = image_reverse_perspective_transform(self.panel, quad, self._rev_transform)
-                    # Offset to match the nav panel offset
-                    q_out.offset(self.panel_quad_pix.get_left(), self.panel_quad_pix.get_top())
-
-                    # Overlay OCR result
-                    self.ap.overlay.overlay_floating_text('sts_panel_item_text', f'{str(ocr_textlist)}', q_out.get_left(), q_out.get_top() - 25,                                                         (0, 255, 0))
-                    self.ap.overlay.overlay_quad_pix('sts_panel_item', q_out, (0, 255, 0), 2)
-                    self.ap.overlay.overlay_paint()
-
-                # Test OCR string
-                if self.modules_tab_text in str(ocr_textlist):
-                    tab_text = self.modules_tab_text
-                    break
-                if self.fire_groups_tab_text in str(ocr_textlist):
-                    tab_text = self.fire_groups_tab_text
-                    break
-                if self.ship_tab_text in str(ocr_textlist):
-                    tab_text = self.ship_tab_text
-                    break
-                if self.inventory_tab_text in str(ocr_textlist):
-                    tab_text = self.inventory_tab_text
-                    break
-                if self.storage_tab_text in str(ocr_textlist):
-                    tab_text = self.storage_tab_text
-                    break
-                if self.status_tab_text in str(ocr_textlist):
-                    tab_text = self.status_tab_text
-                    break
-            else:
-                logger.debug("is_right_panel_active: no image selected")
+            tab_index = self.ocr.detect_highlighted_tab_index(tab_bar, len(tab_names))
+            if tab_index >= 0:
+                tab_text = tab_names[tab_index]
+                logger.debug(f"is_panel_active: detected tab index {tab_index} -> {tab_text}")
+                return True, tab_text
 
             # Wait and retry
             sleep(1)
@@ -255,11 +229,7 @@ class EDInternalStatusPanel:
             # In case we are on a picture tab, cycle to the next tab
             self.keys.send('CycleNextPanel')
 
-        # Return Tab text or nothing
-        if tab_text != "":
-            return True, tab_text
-        else:
-            return False, ""
+        return False, ""
 
     def show_inventory_tab(self) -> bool | None:
         """ Shows the INVENTORY tab of the Nav Panel. Opens the Nav Panel if not already open.

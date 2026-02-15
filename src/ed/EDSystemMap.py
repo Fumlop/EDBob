@@ -113,7 +113,7 @@ class EDSystemMap:
                 self.ap.overlay.overlay_paint()
 
             # Wait for screen to appear. The text is the same, regardless of language.
-            res = self.ocr.wait_for_text(self.ap, ["CARTOGRAPHICS"], self.reg['cartographics'], timeout=15)
+            res = self.ocr.wait_for_ui_element(self.ap, self.reg['cartographics'], timeout=15)
             if not res:
                 if self.status_parser.get_gui_focus() != GuiFocusSystemMap:
                     logger.warning("Unable to open System Map")

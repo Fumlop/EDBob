@@ -147,8 +147,6 @@ class EDMesgServer:
 
     def _generic_action(self, name: str):
         self.ap_ckb('log', f"Received EDMesg Action: GenericAction '{name}'")
-        if name == 'WriteTCEShoppingList':
-            self.ap.tce_integration.write_shopping_list()
 
 def main():
     edmesg_server = EDMesgServer(ed_ap=None, cb=None)

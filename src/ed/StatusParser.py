@@ -9,7 +9,6 @@ from time import sleep
 
 from src.core import EDAP_data
 from src.core.EDlogger import logger
-from src.core.Voice import Voice
 from src.core.WindowsKnownPaths import get_path, FOLDERID, UserHandle
 
 
