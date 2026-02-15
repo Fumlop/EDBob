@@ -548,8 +548,10 @@ class EDWayPoint:
                         docked_at_stn = next_wp_station.endswith(cur_station)
                     elif cur_station_type == StationType.SquadronCarrier:
                         docked_at_stn = next_wp_station.endswith(cur_station)
-                    elif 'System Colonisation Ship'.upper() in next_wp_station:
-                        if cur_station_type == StationType.ColonisationShip:
+                    elif ('COLONISATION SHIP' in next_wp_station or
+                          'CONSTRUCTION' in next_wp_station):
+                        if (cur_station_type == StationType.ColonisationShip or
+                                cur_station_type == StationType.SpaceConstructionDepot):
                             docked_at_stn = True
                     elif cur_station == next_wp_station:
                         docked_at_stn = True
@@ -639,8 +641,10 @@ class EDWayPoint:
                         docked_at_stn = next_wp_station.endswith(cur_station)
                     elif cur_station_type == StationType.SquadronCarrier:
                         docked_at_stn = next_wp_station.endswith(cur_station)
-                    elif 'System Colonisation Ship'.upper() in next_wp_station:
-                        if cur_station_type == StationType.ColonisationShip:
+                    elif ('COLONISATION SHIP' in next_wp_station or
+                          'CONSTRUCTION' in next_wp_station):
+                        if (cur_station_type == StationType.ColonisationShip or
+                                cur_station_type == StationType.SpaceConstructionDepot):
                             docked_at_stn = True
                     elif cur_station == next_wp_station:
                         docked_at_stn = True

@@ -2325,7 +2325,8 @@ class EDAutopilot:
 
         # Store current location (on planet or in space)
         on_planet = self.status.get_flag(FlagsHasLatLong)
-        on_orbital_construction_site = self.jn.ship_state()['exp_station_type'] == EDJournal.StationType.SpaceConstructionDepot
+        on_orbital_construction_site = (self.jn.ship_state()['exp_station_type'] == EDJournal.StationType.SpaceConstructionDepot or
+                                       self.jn.ship_state()['exp_station_type'] == EDJournal.StationType.ColonisationShip)
         fleet_carrier = self.jn.ship_state()['exp_station_type'] == EDJournal.StationType.FleetCarrier
         squadron_fleet_carrier = self.jn.ship_state()['exp_station_type'] == EDJournal.StationType.SquadronCarrier
         starport_outpost = not on_planet and not on_orbital_construction_site and not fleet_carrier and not squadron_fleet_carrier
@@ -2363,10 +2364,11 @@ class EDAutopilot:
                     self.ap_ckb('log', 'Flying for configured FC departure time.')
                     sleep(self.config['FCDepartureTime'])
 
-                # If we are on an Orbital Construction Site we will need to pitch up 90 deg to avoid crashes
+                # If we are on a Colonisation Ship / Construction Site, pitch up and boost away
                 if on_orbital_construction_site:
-                    self.ap_ckb('log+vce', 'Maneuvering')
-                    # The pitch rates are defined in SC, not normal flights, so bump this up a bit
+                    self.ap_ckb('log+vce', 'Maneuvering away from station')
+                    self.set_speed_100()
+                    # Pitch up to clear the station structure
                     self.pitch_up_down(self.config['OCDepartureAngle'])
 
                 if starport_outpost or on_orbital_construction_site:
