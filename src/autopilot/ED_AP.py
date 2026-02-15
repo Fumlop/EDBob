@@ -11,7 +11,7 @@ from tkinter import messagebox
 import cv2
 from ultralytics import YOLO
 
-from EDAPColonizeEditor import read_json_file, write_json_file
+from src.gui.EDAPColonizeEditor import read_json_file, write_json_file
 from src.screen.MachineLearning import MachLearn
 from simple_localization import LocalizationManager
 

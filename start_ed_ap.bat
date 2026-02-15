@@ -80,4 +80,4 @@ if not exist "venv\Scripts\python.exe" (
 
 REM Run EDAPGui with venv python
 echo Starting EDAPGui...
-venv\Scripts\python.exe EDAPGui.py
+venv\Scripts\python.exe -m src.gui.EDAPGui

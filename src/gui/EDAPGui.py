@@ -26,8 +26,8 @@ import pywinstyles
 import sys  # Do not delete - prevents a 'super' error from tktoolip.
 from tktooltip import ToolTip  # In requirements.txt as 'tkinter-tooltip'.
 
-from EDAPCalibration import Calibration
-from EDAPColonizeEditor import ColonizeEditorTab
+from src.gui.EDAPCalibration import Calibration
+from src.gui.EDAPColonizeEditor import ColonizeEditorTab
 # from OCR import RegionCalibration
 # from src.core.Voice import Voice
 # from src.core.MousePt import MousePoint
@@ -38,7 +38,7 @@ from EDAPColonizeEditor import ColonizeEditorTab
 # from src.ed import EDKeys
 # from src.ed import EDJournal
 from src.autopilot import ED_AP
-from EDAPWaypointEditor import WaypointEditorTab
+from src.gui.EDAPWaypointEditor import WaypointEditorTab
 
 from src.core.EDlogger import logger
 
