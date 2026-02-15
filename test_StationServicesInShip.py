@@ -1,5 +1,5 @@
 import unittest
-from EDAP_data import FlagsDocked
+from src.core.EDAP_data import FlagsDocked
 from Screen import Screen
 from EDStationServicesInShip import EDStationServicesInShip
 from StatusParser import StatusParser

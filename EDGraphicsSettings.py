@@ -1,6 +1,6 @@
 from os.path import isfile
 
-from EDlogger import logger
+from src.core.EDlogger import logger
 import xmltodict
 from os import environ
 

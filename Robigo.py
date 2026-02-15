@@ -11,11 +11,11 @@ import Screen_Regions
 from ED_AP import *
 from EDJournal import *
 from EDKeys import *
-from EDlogger import logger
+from src.core.EDlogger import logger
 from Image_Templates import *
 from Overlay import *
 from Screen import *
-from Voice import *
+from src.core.Voice import Voice
 '''
 
 

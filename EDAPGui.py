@@ -29,8 +29,8 @@ from tktooltip import ToolTip  # In requirements.txt as 'tkinter-tooltip'.
 from EDAPCalibration import Calibration
 from EDAPColonizeEditor import ColonizeEditorTab
 # from OCR import RegionCalibration
-# from Voice import *
-# from MousePt import MousePoint
+# from src.core.Voice import Voice
+# from src.core.MousePt import MousePoint
 
 # from Image_Templates import *
 # from Screen import *
@@ -40,7 +40,7 @@ from EDAPColonizeEditor import ColonizeEditorTab
 from ED_AP import *
 from EDAPWaypointEditor import WaypointEditorTab
 
-from EDlogger import logger
+from src.core.EDlogger import logger
 
 """
 File:EDAPGui.py

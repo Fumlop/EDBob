@@ -5,8 +5,8 @@ import win32gui
 
 from EDJournal import *
 from EDKeys import *
-from EDlogger import logger
-from Voice import *
+from src.core.EDlogger import logger
+from src.core.Voice import Voice
 
 """
 Description:  AFK Combat in Rez site (see Type 10 AFK videos).

@@ -12,8 +12,8 @@ import win32gui
 import xmltodict
 
 from Screen import set_focus_elite_window
-from directinput import *
-from EDlogger import logger
+from src.core import directinput
+from src.core.EDlogger import logger
 
 """
 Description:  Pulls the keybindings for specific controls from the ED Key Bindings file, this class also
@@ -82,12 +82,12 @@ class EDKeys:
         self.missing_keys = []
         # We want to log the keyboard name instead of just the key number so we build a reverse dictionary
         # so we can look up the name also
-        self.reversed_dict = {value: key for key, value in SCANCODE.items()}
+        self.reversed_dict = {value: key for key, value in directinput.SCANCODE.items()}
 
         # dump config to log
         for key in self.keys_to_obtain:
             try:
-                # lookup the keyname in the SCANCODE reverse dictionary and output that key name
+                # lookup the keyname in the directinput.SCANCODE reverse dictionary and output that key name
                 keyname = self.reversed_dict.get(self.keys[key]['key'], "Key not found")
                 keymod = " "
                 # if key modifier, then look up that modifier name also
@@ -110,7 +110,7 @@ class EDKeys:
         for key in self.keys_to_obtain:
             collisions = self.get_collisions(key)
             if len(collisions) > 1:
-                # lookup the keyname in the SCANCODE reverse dictionary and output that key name
+                # lookup the keyname in the directinput.SCANCODE reverse dictionary and output that key name
                 keyname = self.reversed_dict.get(self.keys[key]['key'], "Key not found")
                 warn_text = (f"Key '{keyname}' is used for the following bindings: {collisions}. "
                              "This MAY causes issues when using EDAP. Monitor and adjust accordingly.")
@@ -183,10 +183,10 @@ class EDKeys:
                 try:
                     if key is not None:
                         binding = {}
-                        binding['key'] = SCANCODE[key]
+                        binding['key'] = directinput.SCANCODE[key]
                         binding['mods'] = []
                         for mod in mods:
-                            binding['mods'].append(SCANCODE[mod])
+                            binding['mods'].append(directinput.SCANCODE[mod])
                         if hold is not None:
                             binding['hold'] = True
                 except KeyError:
@@ -270,9 +270,9 @@ class EDKeys:
             sleep(0.05)
 
         if type == 'Up':
-            ReleaseKey(key)
+            directinput.ReleaseKey(key)
         else:
-            PressKey(key)
+            directinput.PressKey(key)
 
     def send(self, key_binding, hold=None, repeat=1, repeat_delay=None, state=None):
         """ Send a key based on the defined keybind
@@ -305,10 +305,10 @@ class EDKeys:
 
             if state is None or state == 1:
                 for mod in key['mods']:
-                    PressKey(mod)
+                    directinput.PressKey(mod)
                     sleep(self.key_mod_delay)
 
-                PressKey(key['key'])
+                directinput.PressKey(key['key'])
 
             if state is None:
                 if hold:
@@ -322,11 +322,11 @@ class EDKeys:
                 sleep(0.1)
 
             if state is None or state == 0:
-                ReleaseKey(key['key'])
+                directinput.ReleaseKey(key['key'])
 
                 for mod in key['mods']:
                     sleep(self.key_mod_delay)
-                    ReleaseKey(mod)
+                    directinput.ReleaseKey(mod)
 
             if repeat_delay:
                 sleep(repeat_delay)

@@ -6,7 +6,7 @@ import json
 import os
 from typing import TypedDict
 
-from EDlogger import logger
+from src.core.EDlogger import logger
 from FleetCarrierMonitorDataParser import FleetCarrierMonitorDataParser, FleetCarrierCargo
 
 

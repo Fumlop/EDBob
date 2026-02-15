@@ -21,7 +21,7 @@ from EDGraphicsSettings import EDGraphicsSettings
 from EDShipControl import EDShipControl
 from EDStationServicesInShip import EDStationServicesInShip
 from EDSystemMap import EDSystemMap
-from EDlogger import logging
+from src.core.EDlogger import logging
 import Image_Templates
 import Screen
 import Screen_Regions
@@ -35,7 +35,7 @@ from OCR import OCR
 from EDNavigationPanel import EDNavigationPanel
 from Overlay import *
 from StatusParser import StatusParser
-from Voice import *
+from src.core.Voice import Voice
 from Robigo import *
 from TCE_Integration import TceIntegration
 

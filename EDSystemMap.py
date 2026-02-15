@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import os
 
-from EDAP_data import GuiFocusSystemMap
-from EDlogger import logger
+from src.core.EDAP_data import GuiFocusSystemMap
+from src.core.EDlogger import logger
 from Screen_Regions import scale_region, Quad, load_calibrated_regions
 from StatusParser import StatusParser
 from time import sleep

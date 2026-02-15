@@ -9,7 +9,7 @@ from EDJournal import StationType
 from MarketParser import MarketParser
 from StatusParser import StatusParser
 from time import sleep
-from EDlogger import logger
+from src.core.EDlogger import logger
 from Screen_Regions import Quad, scale_region, load_calibrated_regions
 
 """

@@ -6,7 +6,7 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Union, Any, final
 
-from EDlogger import logger
+from src.core.EDlogger import logger
 
 
 @final

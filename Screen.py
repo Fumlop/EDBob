@@ -9,7 +9,7 @@ from numpy import array
 import mss
 import json
 
-from EDlogger import logger
+from src.core.EDlogger import logger
 from Screen_Regions import Quad
 
 """

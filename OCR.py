@@ -9,7 +9,7 @@ from paddleocr import PaddleOCR
 from strsimpy import SorensenDice
 from strsimpy.jaro_winkler import JaroWinkler
 from strsimpy.normalized_levenshtein import NormalizedLevenshtein
-from EDlogger import logger
+from src.core.EDlogger import logger
 from tkinter import messagebox
 import tkinter as tk
 

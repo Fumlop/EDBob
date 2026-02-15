@@ -14,7 +14,7 @@ import csv
 
 from tktooltip import ToolTip
 
-import EDAP_data
+from src.core import EDAP_data
 from EDAPColonizeEditor import CommodityDict, get_resources_required_dict
 from EDAP_EDMesg_Interface import (create_edap_client, LoadWaypointFileAction, GalaxyMapTargetSystemByNameAction)
 from EDJournal import read_construction

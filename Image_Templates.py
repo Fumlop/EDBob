@@ -2,7 +2,7 @@ import sys
 from os.path import abspath, getmtime, isfile, join, dirname
 
 import cv2
-from EDlogger import logger
+from src.core.EDlogger import logger
 
 """
 File:Image_Templates.py    

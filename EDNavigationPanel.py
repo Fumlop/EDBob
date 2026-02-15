@@ -9,8 +9,8 @@ from time import sleep
 import cv2
 import numpy as np
 
-from EDAP_data import GuiFocusExternalPanel
-from EDlogger import logger
+from src.core.EDAP_data import GuiFocusExternalPanel
+from src.core.EDlogger import logger
 from Screen_Regions import Quad, Point, load_calibrated_regions
 from StatusParser import StatusParser
 from Screen import crop_image_by_pct

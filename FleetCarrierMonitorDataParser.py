@@ -8,7 +8,7 @@ from sys import platform
 from time import sleep
 from typing import Dict, TypedDict
 
-from EDlogger import logger
+from src.core.EDlogger import logger
 
 
 @dataclass

@@ -3,13 +3,13 @@ from __future__ import annotations
 import os
 from time import sleep
 from CargoParser import CargoParser
-from EDAP_data import *
+from src.core import EDAP_data
 from EDJournal import StationType
 from EDKeys import EDKeys
-from EDlogger import logger
+from src.core.EDlogger import logger
 import json
 from MarketParser import MarketParser
-from MousePt import MousePoint
+from src.core.MousePt import MousePoint
 from pathlib import Path
 
 """

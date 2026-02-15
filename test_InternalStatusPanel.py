@@ -2,10 +2,10 @@ import logging
 import unittest
 import cv2
 
-from EDAP_data import FlagsDocked
+from src.core.EDAP_data import FlagsDocked
 from EDInternalStatusPanel import EDInternalStatusPanel
 from EDKeys import EDKeys
-from EDlogger import logger
+from src.core.EDlogger import logger
 from EDNavigationPanel import EDNavigationPanel
 from Screen import Screen
 from StatusParser import StatusParser

@@ -9,9 +9,9 @@ from json import loads
 from time import sleep, time
 from datetime import datetime
 
-from EDAP_data import ship_size_map, ship_name_map
-from EDlogger import logger
-from WindowsKnownPaths import *
+from src.core.EDAP_data import ship_size_map, ship_name_map
+from src.core.EDlogger import logger
+from src.core.WindowsKnownPaths import get_path, FOLDERID, UserHandle
 
 """
 File EDJournal.py  (leveraged the EDAutopilot on github, turned into a 

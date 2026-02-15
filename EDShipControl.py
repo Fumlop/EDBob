@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from EDAP_data import *
+from src.core import EDAP_data
 # from OCR import OCR
 from StatusParser import StatusParser
 
@@ -18,11 +18,11 @@ class EDShipControl:
         """ Goto cockpit view.
         @return: True once complete.
         """
-        if self.status_parser.get_gui_focus() == GuiFocusNoFocus:
+        if self.status_parser.get_gui_focus() == EDAP_data.GuiFocusNoFocus:
             return True
 
         # Go down to cockpit view
-        while not self.status_parser.get_gui_focus() == GuiFocusNoFocus:
+        while not self.status_parser.get_gui_focus() == EDAP_data.GuiFocusNoFocus:
             self.keys.send("UI_Back")  # make sure back in cockpit view
 
         return True

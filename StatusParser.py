@@ -7,10 +7,10 @@ from sys import platform
 import threading
 from time import sleep
 
-from EDAP_data import *
-from EDlogger import logger
-from Voice import Voice
-from WindowsKnownPaths import *
+from src.core import EDAP_data
+from src.core.EDlogger import logger
+from src.core.Voice import Voice
+from src.core.WindowsKnownPaths import get_path, FOLDERID, UserHandle
 
 
 class StatusParser:
@@ -20,7 +20,7 @@ class StatusParser:
         if platform != "win32":
             self.file_path = file_path if file_path else "./linux_ed/Status.json"
         else:
-            from WindowsKnownPaths import get_path, FOLDERID, UserHandle
+            from src.core.WindowsKnownPaths import get_path, FOLDERID, UserHandle
 
             self.file_path = file_path if file_path else (get_path(FOLDERID.SavedGames, UserHandle.current)
                                                           + "/Frontier Developments/Elite Dangerous/Status.json")

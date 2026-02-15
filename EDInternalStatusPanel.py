@@ -6,14 +6,14 @@ import os
 from copy import copy
 from time import sleep
 import cv2
-from EDAP_data import *
+from src.core import EDAP_data
 # from EDKeys import EDKeys
 from EDNavigationPanel import rects_to_quadrilateral, image_perspective_transform, image_reverse_perspective_transform
 # from OCR import OCR
 from Screen import Screen, crop_image_by_pct
 from Screen_Regions import Quad, load_calibrated_regions
 from StatusParser import StatusParser
-from EDlogger import logger
+from src.core.EDlogger import logger
 
 
 class EDInternalStatusPanel:
@@ -186,7 +186,7 @@ class EDInternalStatusPanel:
         """ Hides the Internal Panel if open.
         """
         # Is internal panel active?
-        if self.status_parser.get_gui_focus() == GuiFocusInternalPanel:
+        if self.status_parser.get_gui_focus() == EDAP_data.GuiFocusInternalPanel:
             self.ap.ship_control.goto_cockpit_view()
 
     def is_panel_active(self) -> (bool, str):
@@ -196,7 +196,7 @@ class EDInternalStatusPanel:
         logger.debug("is_right_panel_active: entered")
 
         # Check if nav panel is open
-        if not self.status_parser.wait_for_gui_focus(GuiFocusInternalPanel, 3):
+        if not self.status_parser.wait_for_gui_focus(EDAP_data.GuiFocusInternalPanel, 3):
             logger.debug("is_right_panel_active: right panel not focused")
             return False, ""
 
