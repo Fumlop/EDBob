@@ -14,6 +14,7 @@ from string import Formatter
 from tkinter import messagebox
 
 import cv2
+import numpy as np
 import kthread
 from ultralytics import YOLO
 
@@ -1180,122 +1181,119 @@ class EDAutopilot:
 
         return result
 
+    def _find_target_circle(self, image_bgr):
+        """Find the target circle in an image using color detection.
+        Looks for orange ring (normal) or grey ring (occluded).
+        @return: (center_x, center_y, occluded) or None if no circle found.
+        """
+        hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
+
+        # Orange filter for normal target circle (same range as EDAP uses)
+        orange_mask = cv2.inRange(hsv, np.array([16, 165, 220]), np.array([98, 255, 255]))
+
+        # Grey/white filter for occluded target circle (dashed grey ring)
+        grey_mask = cv2.inRange(hsv, np.array([0, 0, 140]), np.array([180, 50, 220]))
+
+        # Min area for a valid target arc (scales with image size)
+        min_arc_area = max(30, image_bgr.shape[0] * image_bgr.shape[1] * 0.0001)
+
+        best_contour = None
+        occluded = False
+
+        # Try orange first (normal target), then grey (occluded)
+        for mask, is_occ in [(orange_mask, False), (grey_mask, True)]:
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if not contours:
+                continue
+
+            # Find the largest contour that looks like an arc/ring
+            for c in sorted(contours, key=cv2.contourArea, reverse=True):
+                area = cv2.contourArea(c)
+                if area < min_arc_area:
+                    break  # sorted desc, rest are smaller
+
+                # Check if it's arc-shaped: bounding rect should be roughly square-ish
+                # and the area should be much smaller than bounding rect (hollow ring)
+                x, y, cw, ch = cv2.boundingRect(c)
+                rect_area = cw * ch
+                if rect_area == 0:
+                    continue
+
+                fill_ratio = area / rect_area
+                aspect = max(cw, ch) / max(min(cw, ch), 1)
+
+                # Arc: not too filled (< 0.5 means hollow), aspect not too extreme
+                # Also must be reasonably large (not a tiny dot)
+                if fill_ratio < 0.5 and aspect < 3.0 and min(cw, ch) > 15:
+                    best_contour = c
+                    occluded = is_occ
+                    break
+
+            if best_contour is not None:
+                break
+
+        if best_contour is None:
+            return None
+
+        # Use minimum enclosing circle center for the ring center
+        (cx, cy), radius = cv2.minEnclosingCircle(best_contour)
+        logger.debug(f"_find_target_circle: center=({cx:.0f},{cy:.0f}) radius={radius:.0f} occ={occluded}")
+        return cx, cy, occluded
+
     def get_target_offset(self, scr_reg, disable_auto_cal: bool = False):
-        """ Determine how far off we are from the target being in the middle of the screen
-        (in this case the specified region).
+        """ Determine how far off we are from the target being in the middle of the screen.
+        Uses color-based circle detection (no templates).
         @return: {'roll': r.rr, 'pit': p.pp, 'yaw': y.yy, 'occ': True|False}, where all are in degrees
-            Where 'roll' is:
-            -180deg (6 o'clock anticlockwise) to
-             0deg (12 o'clock) to
-             180deg (6 o'clock clockwise)
             'occ' is True if the target is occluded, else False
         """
-        # Clear the overlays before grabbing image
-        # if self.debug_overlay:
-        #     self.overlay.overlay_remove_rect('target')
-        #     self.overlay.overlay_remove_floating_text('target')
-        #     self.overlay.overlay_remove_floating_text('target_rpy')
-        #     self.overlay.overlay_paint()
+        # Grab the target search region (center of screen)
+        target_rect = scr_reg.reg['target']['rect']
+        image = self.scr.get_screen_rect_pct(target_rect)
+        if image is None:
+            return None
 
-        dst_image = None
-        maxLoc = 0
-        maxVal = 0
-        # for i in range(2):
-        dst_image, (minVal, maxVal, minLoc, maxLoc), match = scr_reg.match_template_in_region('target', 'target')
-        dst_image_occ, (minVal, maxVal_occ, minLoc, maxLoc_occ), match_occ = scr_reg.match_template_in_region('target_occluded', 'target_occluded', inv_col=False)
-        #
-        #     # need > x in the match to say we do have a destination
-        #     if maxVal < (scr_reg.target_thresh / 2):
-        #         # If we are so far below threshold, then target must not be up
-        #         return None
-        #     elif maxVal < scr_reg.target_thresh:
-        #         # We are below match, but only just, recalibrate
-        #         if not disable_auto_cal:
-        #             self.ap_ckb('log', f'Target Offset below threshold: {maxVal:5.4f} with scale: {self.scr.scaleX:5.4f}')
-        #             self.quick_calibrate_target()
+        result_circle = self._find_target_circle(image)
+        if result_circle is None:
+            logger.debug("get_target_offset: no target circle found")
+            return None
 
-        pt = maxLoc
-        pt_occ = maxLoc_occ
+        cx, cy, occluded = result_circle
+        img_h, img_w = image.shape[:2]
 
-        # Check if target is occluded
-        if maxVal > maxVal_occ:
-            sel_pt = pt
-            sel_loc = maxLoc
-            occluded = False
-        else:
-            sel_pt = pt_occ
-            sel_loc = maxLoc_occ
-            occluded = True
+        # Convert circle center to screen-relative position
+        # Region rect is [L, T, R, B] as percentage of screen
+        region_left_pct = target_rect[0]
+        region_top_pct = target_rect[1]
+        region_w_pct = target_rect[2] - target_rect[0]
+        region_h_pct = target_rect[3] - target_rect[1]
 
-        destination_left = scr_reg.reg['target']['rect'][0]
-        destination_top = scr_reg.reg['target']['rect'][1]
-        destination_width = scr_reg.reg['target']['width']
-        destination_height = scr_reg.reg['target']['height']
+        # Circle position as pct of full screen
+        screen_x_pct = region_left_pct + (cx / img_w) * region_w_pct
+        screen_y_pct = region_top_pct + (cy / img_h) * region_h_pct
 
-        width = scr_reg.templates.template['target']['width']
-        height = scr_reg.templates.template['target']['height']
+        # Convert to -100..+100 range (0 = center of screen)
+        final_x_pct = (screen_x_pct - 0.5) * 200.0
+        final_y_pct = -(screen_y_pct - 0.5) * 200.0  # flip Y (up is positive)
+        final_x_pct = max(min(final_x_pct, 100.0), -100.0)
+        final_y_pct = max(min(final_y_pct, 100.0), -100.0)
 
-        target_x_max = self.scr.screen_width - width
-        target_y_max = self.scr.screen_height - height
+        # Convert to degrees using FOV
+        final_yaw_deg = final_x_pct / 100 * (self.hor_fov / 2)
+        final_pit_deg = final_y_pct / 100 * (self.ver_fov / 2)
 
-        # X as percent (-1.0 to 1.0, 0.0 in the center)
-        final_x_pct = 2.0*(((sel_pt[0]+destination_left) / target_x_max) - 0.5)
-        final_x_pct = 100 * max(min(final_x_pct, 1.0), -1.0)
-
-        # Y as percent (-1.0 to 1.0, 0.0 in the center)
-        final_y_pct = -2.0*(((sel_pt[1]+destination_top) / target_y_max) - 0.5)
-        final_y_pct = 100 * max(min(final_y_pct, 1.0), -1.0)
-
-        final_yaw_deg = final_x_pct / 100 * (self.hor_fov / 2)  # X in deg (-90.0 to 90.0, 0.0 in the center)
-        final_pit_deg = final_y_pct / 100 * (self.ver_fov / 2)  # Y in deg (-90.0 to 90.0, 0.0 in the center)
-
-        # Calc angle in degrees starting at 0 deg at 12 o'clock and increasing clockwise
-        # so 3 o'clock is +90° and 9 o'clock is -90°.
+        # Calc roll angle (clock position of target)
         final_roll_deg = 0.0
         if final_x_pct > 0.0:
-            final_roll_deg = 90 - degrees(atan(final_pit_deg/final_yaw_deg))
+            final_roll_deg = 90 - degrees(atan(final_pit_deg / final_yaw_deg))
         elif final_x_pct < 0.0:
-            final_roll_deg = -90 - degrees(atan(final_pit_deg/final_yaw_deg))
+            final_roll_deg = -90 - degrees(atan(final_pit_deg / final_yaw_deg))
         elif final_y_pct < 0.0:
             final_roll_deg = 180.0
 
-        # Draw box around region
-        if self.debug_overlay:
-            border = 10  # border to prevent the box from interfering with future matches
-            left = destination_left + sel_loc[0]
-            top = destination_top + sel_loc[1]
-            self.overlay.overlay_rect('target', (left - border, top - border), (left + width + border, top + height + border), (0, 255, 0), 2)
-            self.overlay.overlay_floating_text('target', f'Tar: {maxVal:5.2f} > {scr_reg.target_thresh}', left - border, top - border - 45, (0, 255, 0))
-            self.overlay.overlay_floating_text('target_occ', f'TarOcc: {maxVal_occ:5.2f} > {scr_reg.target_occluded_thresh}', left - border, top - border - 25, (0, 255, 0))
-            self.overlay.overlay_floating_text('target_rpy', f'r: {round(final_roll_deg, 2)} p: {round(final_pit_deg, 2)} y: {round(final_yaw_deg, 2)}', left - border, top + height + border, (0, 255, 0))
-            self.overlay.overlay_paint()
+        logger.debug(f"get_target_offset: pit={final_pit_deg:.2f} yaw={final_yaw_deg:.2f} occ={occluded}")
 
-        if self.cv_view:
-            dst_image_d = cv2.cvtColor(dst_image, cv2.COLOR_GRAY2RGB)
-            try:
-                self.draw_match_rect(dst_image_d, sel_pt, (sel_pt[0]+width, sel_pt[1]+height), (0, 0, 255), 2)
-                dim = (int(destination_width/2), int(destination_height/2))
-
-                img = cv2.resize(dst_image_d, dim, interpolation=cv2.INTER_AREA)
-                img = cv2.rectangle(img, (0, 0), (1000, 25), (0, 0, 0), -1)
-                cv2.putText(img, f'{maxVal:5.4f} > {scr_reg.target_thresh:5.2f}', (1, 10), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
-                cv2.putText(img, f'p: {round(final_pit_deg, 4)} y: {round(final_yaw_deg, 4)}',
-                            (1, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
-                cv2.imshow('target', img)
-                #cv2.moveWindow('target', self.cv_view_x, self.cv_view_y+425)
-            except Exception as e:
-                print("exception in getdest: "+str(e))
-            cv2.waitKey(30)
-
-        # must be > x to have solid hit, otherwise we are facing wrong way (empty circle)
-        if maxVal < scr_reg.target_thresh and maxVal_occ < scr_reg.target_occluded_thresh:
-            if self.debug_images:
-                f = get_timestamped_filename('[get_target_offset] no_target_match', '', 'png')
-                cv2.imwrite(f'{self.debug_image_folder}/{f}', dst_image)
-            result = None
-        else:
-            result = {'roll': round(final_roll_deg, 2), 'pit': round(final_pit_deg, 2), 'yaw': round(final_yaw_deg, 2), 'occ': occluded}
-
+        result = {'roll': round(final_roll_deg, 2), 'pit': round(final_pit_deg, 2),
+                  'yaw': round(final_yaw_deg, 2), 'occ': occluded}
         return result
 
     # def is_destination_occluded(self, scr_reg) -> bool:
@@ -1693,8 +1691,8 @@ class EDAutopilot:
         # Step 2: Calculate hold time for remaining distance
         remaining = dist_after_cal
         while remaining > close and (time.time() - start) < timeout:
-            # Calculate hold time, aim for 80% of remaining to avoid overshoot
-            hold_time = (remaining * 0.8) / rate
+            # Calculate hold time, aim for 85% of remaining to avoid overshoot
+            hold_time = (remaining * 0.85) / rate
             hold_time = max(hold_time, 0.1)  # minimum pulse
             hold_time = min(hold_time, 5.0)  # maximum single hold
             # Add small random jitter
@@ -1797,27 +1795,29 @@ class EDAutopilot:
 
         self.set_speed_50()
         res = self.compass_align(scr_reg)
-        # Quick calibrate the compass
-        # if res:
-        #     self.quick_calibrate_compass()
 
-        self.ap_ckb('log+vce', 'Target Align')
-        for i in range(5):
-            self.set_speed_50()
-            align_res = self.sc_target_align(scr_reg)
-            if align_res == ScTargetAlignReturn.Lost:
+        # After compass align, check if target reticle is visible for fine alignment.
+        # If only compass is available, compass align is good enough for FSD -- just go.
+        tar_off = self.get_target_offset(scr_reg)
+        if tar_off:
+            self.ap_ckb('log+vce', 'Target Align')
+            for i in range(5):
                 self.set_speed_50()
-                self.compass_align(scr_reg)  # Compass Align
+                align_res = self.sc_target_align(scr_reg)
+                if align_res == ScTargetAlignReturn.Lost:
+                    self.set_speed_50()
+                    self.compass_align(scr_reg)
 
-            elif align_res == ScTargetAlignReturn.Found:
-                self.set_speed_100()
-                return
+                elif align_res == ScTargetAlignReturn.Found:
+                    break
 
-            elif align_res == ScTargetAlignReturn.Disengage:
-                break
+                elif align_res == ScTargetAlignReturn.Disengage:
+                    break
+        else:
+            logger.info('mnvr_to_target: no target reticle, compass align is sufficient for FSD')
+            self.ap_ckb('log', 'Compass aligned, proceeding to FSD')
 
-        logger.error('mnvr_to_target failed 5 times')
-        raise Exception('mnvr_to_target failed 5 times')
+        self.set_speed_100()
 
     def sc_target_align(self, scr_reg) -> ScTargetAlignReturn:
         """ Align to the target, monitoring for disengage and obscured.

@@ -124,7 +124,7 @@ class EDStationServicesInShip:
             return False
 
         self.ap_ckb('log+vce', "Connecting to commodities market.")
-        sleep(3)  # Wait for station services welcome screen to finish
+        sleep(5)  # Wait for station services welcome screen to finish rendering
 
         # Select Mission Board
         if res == "RR":
