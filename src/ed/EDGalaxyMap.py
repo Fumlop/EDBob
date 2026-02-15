@@ -32,7 +32,7 @@ class EDGalaxyMap:
     """ Handles the Galaxy Map. """
     def __init__(self, ed_ap, screen, keys, cb, is_odyssey=True):
         self.ap = ed_ap
-        self.ocr = ed_ap.ocr
+
         self.is_odyssey = is_odyssey
         self.screen = screen
         self.keys = keys
@@ -393,12 +393,10 @@ class EDGalaxyMap:
                 self.ap.overlay.overlay_quad_pct('system map', stn_svcs, (0, 255, 0), 2, 5)
                 self.ap.overlay.overlay_paint()
 
-            # Wait for screen to appear. The text is the same, regardless of language.
-            res = self.ocr.wait_for_ui_element(self.ap, self.reg['cartographics'], timeout=15)
-            if not res:
-                if self.status_parser.get_gui_focus() != GuiFocusGalaxyMap:
-                    logger.warning("Unable to open Galaxy Map")
-                    return False
+            # Wait for Galaxy Map to appear (Status.json GuiFocus check)
+            if not self.status_parser.wait_for_gui_focus(GuiFocusGalaxyMap, timeout=15):
+                logger.warning("Unable to open Galaxy Map")
+                return False
 
             self.keys.send('UI_Up')  # Go up to search bar
             return True

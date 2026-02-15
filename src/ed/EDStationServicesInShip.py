@@ -5,6 +5,7 @@ from copy import copy
 
 import cv2
 
+from src.core.EDAP_data import GuiFocusStationServices
 from src.ed.EDJournal import StationType
 from src.ed.MarketParser import MarketParser
 from src.ed.StatusParser import StatusParser
@@ -63,14 +64,8 @@ class EDStationServicesInShip:
             self.ap.overlay.overlay_quad_pct('stn_svcs', stn_svcs, (0, 255, 0), 2, 5)
             self.ap.overlay.overlay_paint()
 
-        # Wait for screen to appear
-        res = self.ocr.wait_for_ui_element(self.ap, self.reg['connected_to'], timeout=15)
-
-        # Store image
-        # image = self.screen.get_screen_rect_pct(scl_reg['rect'])
-        # cv2.imwrite(f'test/station-services/station-services.png', image)
-
-        # Return OCR result.
+        # Wait for Station Services to appear (Status.json GuiFocus check)
+        res = self.status_parser.wait_for_gui_focus(GuiFocusStationServices, timeout=15)
         return res
 
     def goto_construction_services(self) -> bool:
