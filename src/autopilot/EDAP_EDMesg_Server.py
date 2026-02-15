@@ -3,7 +3,7 @@ import sys
 import threading
 
 from EDMesg.EDMesgBase import EDMesgWelcomeAction
-from EDAP_EDMesg_Interface import (
+from src.autopilot.EDAP_EDMesg_Interface import (
     create_edap_provider,
     GetEDAPLocationAction,
     LoadWaypointFileAction,

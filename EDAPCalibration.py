@@ -391,7 +391,7 @@ def dummy_cb(msg, body=None):
 
 
 def main():
-    # from ED_AP import EDAutopilot
+    # from src.autopilot.ED_AP import EDAutopilot
 
     #ed_ap = EDAutopilot(cb=None)
     ce = Calibration(None, cb=dummy_cb)  # False = Horizons

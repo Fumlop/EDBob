@@ -1,6 +1,6 @@
 import threading
 
-from EDAP_EDMesg_Interface import (
+from src.autopilot.EDAP_EDMesg_Interface import (
     create_edap_client,
     LaunchAction,
     LaunchCompleteEvent,

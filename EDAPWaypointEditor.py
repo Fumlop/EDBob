@@ -16,7 +16,7 @@ from tktooltip import ToolTip
 
 from src.core import EDAP_data
 from EDAPColonizeEditor import CommodityDict, get_resources_required_dict
-from EDAP_EDMesg_Interface import (create_edap_client, LoadWaypointFileAction, GalaxyMapTargetSystemByNameAction)
+from src.autopilot.EDAP_EDMesg_Interface import (create_edap_client, LoadWaypointFileAction, GalaxyMapTargetSystemByNameAction)
 from src.ed.EDJournal import read_construction
 from src.ed.FleetCarrierMonitorDataParser import FleetCarrierMonitorDataParser, FleetCarrierCargo
 

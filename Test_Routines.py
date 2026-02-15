@@ -2,7 +2,7 @@ import logging
 import cv2
 import os
 
-from ED_AP import EDAutopilot
+from src.autopilot.ED_AP import EDAutopilot
 from src.screen.Screen_Regions import Screen_Regions
 from src.screen.Overlay import Overlay
 from src.screen.Screen import Screen

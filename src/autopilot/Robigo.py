@@ -3,21 +3,6 @@ from time import sleep
 import time
 
 
-'''
-import keyboard
-import win32gui
-
-from src.screen import Screen_Regions
-from ED_AP import *
-from src.ed import EDJournal
-from src.ed import EDKeys
-from src.core.EDlogger import logger
-from src.screen import Image_Templates
-from src.screen import Overlay
-from src.screen import Screen
-from src.core.Voice import Voice
-'''
-
 
 """
 File:Robigo.py   

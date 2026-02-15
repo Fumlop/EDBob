@@ -37,7 +37,7 @@ from EDAPColonizeEditor import ColonizeEditorTab
 # from src.screen import Screen_Regions
 # from src.ed import EDKeys
 # from src.ed import EDJournal
-from ED_AP import *
+from src.autopilot import ED_AP
 from EDAPWaypointEditor import WaypointEditorTab
 
 from src.core.EDlogger import logger
@@ -158,7 +158,7 @@ class APGui:
         self.log_buffer = queue.Queue()
         self.callback('log', f'Starting ED Autopilot {EDAP_VERSION}.')
 
-        self.ed_ap = EDAutopilot(cb=self.callback)
+        self.ed_ap = ED_AP.EDAutopilot(cb=self.callback)
         self.ed_ap.robigo.set_single_loop(self.ed_ap.config['Robigo_Single_Loop'])
         # self.calibrator = RegionCalibration(root, self.ed_ap, cb=self.callback)
 

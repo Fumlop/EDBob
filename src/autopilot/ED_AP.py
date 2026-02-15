@@ -15,7 +15,7 @@ from EDAPColonizeEditor import read_json_file, write_json_file
 from src.screen.MachineLearning import MachLearn
 from simple_localization import LocalizationManager
 
-from EDAP_EDMesg_Server import EDMesgServer
+from src.autopilot.EDAP_EDMesg_Server import EDMesgServer
 from src.ed.EDGalaxyMap import EDGalaxyMap
 from src.ed.EDGraphicsSettings import EDGraphicsSettings
 from src.ed.EDShipControl import EDShipControl
@@ -25,10 +25,10 @@ from src.core.EDlogger import logging
 from src.screen import Image_Templates
 from src.screen import Screen
 from src.screen import Screen_Regions
-from EDWayPoint import *
+from src.autopilot import EDWayPoint
 from src.ed import EDJournal
 from src.ed import EDKeys
-from EDafk_combat import AFK_Combat
+from src.autopilot.EDafk_combat import AFK_Combat
 from src.ed.EDInternalStatusPanel import EDInternalStatusPanel
 from src.ed.NavRouteParser import NavRouteParser
 from src.screen.OCR import OCR
@@ -36,8 +36,8 @@ from src.ed.EDNavigationPanel import EDNavigationPanel
 from src.screen.Overlay import Overlay
 from src.ed.StatusParser import StatusParser
 from src.core.Voice import Voice
-from Robigo import *
-from TCE_Integration import TceIntegration
+from src.autopilot import Robigo
+from src.autopilot.TCE_Integration import TceIntegration
 
 """
 File:EDAP.py    EDAutopilot
@@ -149,8 +149,8 @@ class EDAutopilot:
         self.jn = EDJournal.EDJournal(cb)
         self.keys = EDKeys.EDKeys(cb)
         self.afk_combat = AFK_Combat(self, self.keys, self.jn, self.vce)
-        self.waypoint = EDWayPoint(self, self.jn.ship_state()['odyssey'])
-        self.robigo = Robigo(self)
+        self.waypoint = EDWayPoint.EDWayPoint(self, self.jn.ship_state()['odyssey'])
+        self.robigo = Robigo.Robigo(self)
         self.status = StatusParser()
         self.nav_route = NavRouteParser()
         self.ship_control = EDShipControl(self, self.scr, self.keys, cb)

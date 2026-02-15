@@ -31,7 +31,7 @@ class InternalStatusPanelTestCase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        from ED_AP import EDAutopilot
+        from src.autopilot.ED_AP import EDAutopilot
         cls.ed_ap = EDAutopilot(cb=dummy_cb)
 
         keys = cls.ed_ap.keys

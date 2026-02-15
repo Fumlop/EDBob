@@ -366,7 +366,7 @@ def dummy_cb(msg, body=None):
 # Usage Example
 if __name__ == "__main__":
     logger.setLevel(logging.DEBUG)  # Default to log all debug when running this file.
-    from ED_AP import EDAutopilot
+    from src.autopilot.ED_AP import EDAutopilot
     ap = EDAutopilot(cb=dummy_cb)
     scr = ap.scr
     mykeys = ap.keys
