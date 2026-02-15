@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from src.core import EDAP_data
 # from src.screen.OCR import OCR
-from StatusParser import StatusParser
+from src.ed.StatusParser import StatusParser
 
 
 class EDShipControl:

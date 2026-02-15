@@ -16,25 +16,25 @@ from src.screen.MachineLearning import MachLearn
 from simple_localization import LocalizationManager
 
 from EDAP_EDMesg_Server import EDMesgServer
-from EDGalaxyMap import EDGalaxyMap
-from EDGraphicsSettings import EDGraphicsSettings
-from EDShipControl import EDShipControl
-from EDStationServicesInShip import EDStationServicesInShip
-from EDSystemMap import EDSystemMap
+from src.ed.EDGalaxyMap import EDGalaxyMap
+from src.ed.EDGraphicsSettings import EDGraphicsSettings
+from src.ed.EDShipControl import EDShipControl
+from src.ed.EDStationServicesInShip import EDStationServicesInShip
+from src.ed.EDSystemMap import EDSystemMap
 from src.core.EDlogger import logging
 from src.screen import Image_Templates
 from src.screen import Screen
 from src.screen import Screen_Regions
 from EDWayPoint import *
-from EDJournal import *
-from EDKeys import *
+from src.ed import EDJournal
+from src.ed import EDKeys
 from EDafk_combat import AFK_Combat
-from EDInternalStatusPanel import EDInternalStatusPanel
-from NavRouteParser import NavRouteParser
+from src.ed.EDInternalStatusPanel import EDInternalStatusPanel
+from src.ed.NavRouteParser import NavRouteParser
 from src.screen.OCR import OCR
-from EDNavigationPanel import EDNavigationPanel
+from src.ed.EDNavigationPanel import EDNavigationPanel
 from src.screen.Overlay import Overlay
-from StatusParser import StatusParser
+from src.ed.StatusParser import StatusParser
 from src.core.Voice import Voice
 from Robigo import *
 from TCE_Integration import TceIntegration
@@ -146,8 +146,8 @@ class EDAutopilot:
 
         self.templ = Image_Templates.Image_Templates(self.scr.scaleX, self.scr.scaleY, self.scr.scaleX, self.scr.scaleX)
         self.scrReg = Screen_Regions.Screen_Regions(self.scr, self.templ)
-        self.jn = EDJournal(cb)
-        self.keys = EDKeys(cb)
+        self.jn = EDJournal.EDJournal(cb)
+        self.keys = EDKeys.EDKeys(cb)
         self.afk_combat = AFK_Combat(self, self.keys, self.jn, self.vce)
         self.waypoint = EDWayPoint(self, self.jn.ship_state()['odyssey'])
         self.robigo = Robigo(self)
@@ -2381,9 +2381,9 @@ class EDAutopilot:
 
         # Store current location (on planet or in space)
         on_planet = self.status.get_flag(FlagsHasLatLong)
-        on_orbital_construction_site = self.jn.ship_state()['exp_station_type'] == StationType.SpaceConstructionDepot
-        fleet_carrier = self.jn.ship_state()['exp_station_type'] == StationType.FleetCarrier
-        squadron_fleet_carrier = self.jn.ship_state()['exp_station_type'] == StationType.SquadronCarrier
+        on_orbital_construction_site = self.jn.ship_state()['exp_station_type'] == EDJournal.StationType.SpaceConstructionDepot
+        fleet_carrier = self.jn.ship_state()['exp_station_type'] == EDJournal.StationType.FleetCarrier
+        squadron_fleet_carrier = self.jn.ship_state()['exp_station_type'] == EDJournal.StationType.SquadronCarrier
         starport_outpost = not on_planet and not on_orbital_construction_site and not fleet_carrier and not squadron_fleet_carrier
 
         # Leave starport or planetary port
@@ -3163,12 +3163,12 @@ class EDAutopilot:
                     # Clear current ship
                     self.current_ship_type = ''
                 else:
-                    ship_fullname = get_ship_fullname(ship)
+                    ship_fullname = EDJournal.get_ship_fullname(ship)
 
                     # Check if ship changed or just loaded
                     if ship != self.current_ship_type:
                         if self.current_ship_type is not None:
-                            cur_ship_fullname = get_ship_fullname(self.current_ship_type)
+                            cur_ship_fullname = EDJournal.get_ship_fullname(self.current_ship_type)
                             self.ap_ckb('log+vce', f"Switched ship from your {cur_ship_fullname} to your {ship_fullname}.")
                         else:
                             self.ap_ckb('log+vce', f"Welcome aboard your {ship_fullname}.")

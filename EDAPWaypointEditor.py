@@ -17,8 +17,8 @@ from tktooltip import ToolTip
 from src.core import EDAP_data
 from EDAPColonizeEditor import CommodityDict, get_resources_required_dict
 from EDAP_EDMesg_Interface import (create_edap_client, LoadWaypointFileAction, GalaxyMapTargetSystemByNameAction)
-from EDJournal import read_construction
-from FleetCarrierMonitorDataParser import FleetCarrierMonitorDataParser, FleetCarrierCargo
+from src.ed.EDJournal import read_construction
+from src.ed.FleetCarrierMonitorDataParser import FleetCarrierMonitorDataParser, FleetCarrierCargo
 
 
 def select_treeview_items_by_idx(tree: tkinter.ttk.Treeview, indexes: list[int]):

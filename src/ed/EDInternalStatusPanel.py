@@ -7,12 +7,12 @@ from copy import copy
 from time import sleep
 import cv2
 from src.core import EDAP_data
-# from EDKeys import EDKeys
-from EDNavigationPanel import rects_to_quadrilateral, image_perspective_transform, image_reverse_perspective_transform
+# from src.ed.EDKeys import EDKeys
+from src.ed.EDNavigationPanel import rects_to_quadrilateral, image_perspective_transform, image_reverse_perspective_transform
 # from src.screen.OCR import OCR
 from src.screen.Screen import Screen, crop_image_by_pct
 from src.screen.Screen_Regions import Quad, load_calibrated_regions
-from StatusParser import StatusParser
+from src.ed.StatusParser import StatusParser
 from src.core.EDlogger import logger
 
 

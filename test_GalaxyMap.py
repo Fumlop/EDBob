@@ -1,5 +1,5 @@
 import unittest
-from EDGalaxyMap import EDGalaxyMap
+from src.ed.EDGalaxyMap import EDGalaxyMap
 
 
 def dummy_cb(msg, body=None):

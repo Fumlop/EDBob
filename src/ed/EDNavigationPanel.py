@@ -12,7 +12,7 @@ import numpy as np
 from src.core.EDAP_data import GuiFocusExternalPanel
 from src.core.EDlogger import logger
 from src.screen.Screen_Regions import Quad, Point, load_calibrated_regions
-from StatusParser import StatusParser
+from src.ed.StatusParser import StatusParser
 from src.screen.Screen import crop_image_by_pct
 
 """

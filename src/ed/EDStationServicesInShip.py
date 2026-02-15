@@ -5,9 +5,9 @@ from copy import copy
 
 import cv2
 
-from EDJournal import StationType
-from MarketParser import MarketParser
-from StatusParser import StatusParser
+from src.ed.EDJournal import StationType
+from src.ed.MarketParser import MarketParser
+from src.ed.StatusParser import StatusParser
 from time import sleep
 from src.core.EDlogger import logger
 from src.screen.Screen_Regions import Quad, scale_region, load_calibrated_regions

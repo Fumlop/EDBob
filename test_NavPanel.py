@@ -3,11 +3,11 @@ import unittest
 import cv2
 
 from src.core.EDAP_data import FlagsDocked
-from EDKeys import EDKeys
+from src.ed.EDKeys import EDKeys
 from src.core.EDlogger import logger
-from EDNavigationPanel import EDNavigationPanel
+from src.ed.EDNavigationPanel import EDNavigationPanel
 from src.screen.Screen from src.screen import Screen
-from StatusParser import StatusParser
+from src.ed.StatusParser import StatusParser
 
 
 def dummy_cb(msg, body=None):

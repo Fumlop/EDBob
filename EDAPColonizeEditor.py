@@ -7,7 +7,7 @@ import os
 from typing import TypedDict
 
 from src.core.EDlogger import logger
-from FleetCarrierMonitorDataParser import FleetCarrierMonitorDataParser, FleetCarrierCargo
+from src.ed.FleetCarrierMonitorDataParser import FleetCarrierMonitorDataParser, FleetCarrierCargo
 
 
 class ResourcesRequired(TypedDict):

@@ -3,8 +3,8 @@ from time import sleep
 import keyboard
 import win32gui
 
-from EDJournal import *
-from EDKeys import *
+from src.ed import EDJournal
+from src.ed import EDKeys
 from src.core.EDlogger import logger
 from src.core.Voice import Voice
 
@@ -157,8 +157,8 @@ def key_callback(name):
         
 def main():
     global inp
-    k = EDKeys()
-    jn = EDJournal()
+    k = EDKeys.EDKeys()
+    jn = EDJournal.EDJournal()
     v = Voice()
     v.set_on()
 

@@ -35,8 +35,8 @@ from EDAPColonizeEditor import ColonizeEditorTab
 # from src.screen import Image_Templates
 # from src.screen import Screen
 # from src.screen import Screen_Regions
-# from EDKeys import *
-# from EDJournal import *
+# from src.ed import EDKeys
+# from src.ed import EDJournal
 from ED_AP import *
 from EDAPWaypointEditor import WaypointEditorTab
 

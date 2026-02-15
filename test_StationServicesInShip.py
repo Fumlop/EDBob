@@ -1,8 +1,8 @@
 import unittest
 from src.core.EDAP_data import FlagsDocked
 from src.screen.Screen from src.screen import Screen
-from EDStationServicesInShip import EDStationServicesInShip
-from StatusParser import StatusParser
+from src.ed.EDStationServicesInShip import EDStationServicesInShip
+from src.ed.StatusParser import StatusParser
 
 
 def dummy_cb(msg, body=None):
