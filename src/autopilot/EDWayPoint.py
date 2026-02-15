@@ -558,13 +558,22 @@ class EDWayPoint:
                     if new_waypoint:
                         self.ap.ap_ckb('log+vce', f"Already at target Station: {next_wp_station}")
                 else:
-                    # Use galaxy bookmark to target destination (system + station)
-                    self.ap.ap_ckb('log+vce', f"Targeting favorite #{gal_bookmark_num}")
-                    res = self.ap.galaxy_map.set_gal_map_dest_bookmark(self.ap, gal_bookmark_type, gal_bookmark_num)
-                    if not res:
-                        self.ap.ap_ckb('log+vce', f"Unable to set Galaxy Map bookmark.")
-                        _abort = True
-                        break
+                    # Check if destination is already targeted (avoid re-opening galmap every loop)
+                    already_targeted = False
+                    if destination_name != "":
+                        if (next_wp_station != "" and
+                                next_wp_station in destination_name.upper()):
+                            already_targeted = True
+                            logger.info(f"Destination already targeted: {destination_name}")
+
+                    if not already_targeted:
+                        # Use galaxy bookmark to target destination (system + station)
+                        self.ap.ap_ckb('log+vce', f"Targeting favorite #{gal_bookmark_num}")
+                        res = self.ap.galaxy_map.set_gal_map_dest_bookmark(self.ap, gal_bookmark_type, gal_bookmark_num)
+                        if not res:
+                            self.ap.ap_ckb('log+vce', f"Unable to set Galaxy Map bookmark.")
+                            _abort = True
+                            break
 
                     # If in a different system, jump there first
                     if next_wp_system != "" and cur_star_system != next_wp_system:

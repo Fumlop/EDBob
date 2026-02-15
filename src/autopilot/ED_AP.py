@@ -2565,8 +2565,11 @@ class EDAutopilot:
         # Ensure we are in supercruise
         self.sc_engage(False)
 
-        # Successful targeting of Station, lets go to it
-        sleep(3)  # Wait for compass to stop flashing blue!
+        # Lock target in SC -- target was set in galmap while docked, K re-locks it in SC
+        sleep(3)
+        self.keys.send('TargetNextRouteSystem')
+        sleep(2)
+
         if self.have_destination(scr_reg):
             self.ap_ckb('log', " - Station: " + station_name)
             self.update_ap_status(f"SC to Station: {station_name}")
