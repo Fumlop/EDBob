@@ -56,7 +56,9 @@ class EDStationServicesInShip:
         self.ap.ship_control.goto_cockpit_view()
 
         self.keys.send("UI_Up", repeat=3)  # go to very top (refuel line)
+        sleep(0.3)
         self.keys.send("UI_Down")  # station services
+        sleep(0.3)
         self.keys.send("UI_Select")  # station services
 
         if self.ap.debug_overlay:
@@ -122,28 +124,34 @@ class EDStationServicesInShip:
             return False
 
         self.ap_ckb('log+vce', "Connecting to commodities market.")
+        sleep(3)  # Wait for station services welcome screen to finish
 
         # Select Mission Board
         if res == "RR":
             # Fleet Carrier COMMODITIES MARKET location top right, with:
             # uni cart, redemption, tritium depot, shipyard, crew lounge
             self.keys.send('UI_Right', repeat=2)
+            sleep(0.3)
             self.keys.send('UI_Select')  # Select Commodities
 
         elif res == "RD":
             # Squadron Fleet Carrier COMMODITIES MARKET location right and one down
             self.keys.send('UI_Right')
+            sleep(0.3)
             self.keys.send('UI_Down')
+            sleep(0.3)
             self.keys.send('UI_Select')  # Select Commodities
 
         elif res == "R":
             # Outpost COMMODITIES MARKET location in middle column
             self.keys.send('UI_Right')
+            sleep(0.3)
             self.keys.send('UI_Select')  # Select Commodities
 
         elif res == "D":
             # Orbital station COMMODITIES MARKET location bottom left
             self.keys.send('UI_Down')
+            sleep(0.3)
             self.keys.send('UI_Select')  # Select Commodities
 
         # Wait for market screen transition. The actual "market loaded" check

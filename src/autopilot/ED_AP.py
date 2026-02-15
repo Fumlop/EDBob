@@ -282,7 +282,7 @@ class EDAutopilot:
             "DockingRetries": 30,  # number of time to attempt docking
             "HotKey_StartFSD": "home",  # if going to use other keys, need to look at the python keyboard package
             "HotKey_StartSC": "ins",  # to determine other keynames, make sure these keys are not used in ED bindings
-            "HotKey_StopAllAssists": "end",
+            "HotKey_StopAllAssists": "ctrl+x",
             "EnableRandomness": False,  # add some additional random sleep times to avoid AP detection (0-3sec at specific locations)
             "ActivateEliteEachKey": False,  # Activate Elite window before each key or group of keys
             "OverlayTextEnable": False,  # Experimental at this stage
@@ -1580,9 +1580,85 @@ class EDAutopilot:
             sleep(-1.0 * self.sunpitchuptime)
             self.keys.send('PitchDownButton', state=0)
 
+    @staticmethod
+    def _roll_on_centerline(roll_deg, close):
+        """Check if the dot is on the vertical centerline (near 0 or ±180 degrees)."""
+        return abs(roll_deg) < close or (180 - abs(roll_deg)) < close
+
+    def _hold_until_aligned(self, scr_reg, axis, off, close=5.0, timeout=15.0):
+        """Hold a movement key while continuously reading the compass, release when aligned.
+        No rates, no calibration -- pure visual feedback loop.
+        @param axis: 'roll', 'pit', or 'yaw'
+        @param off: Current offset dict.
+        @param close: Threshold in degrees to consider aligned.
+        @param timeout: Max seconds to hold the key.
+        @return: New offset dict, or None if compass lost.
+        """
+        deg = off[axis]
+
+        if axis == 'roll':
+            # For roll: target whichever is closer -- 0 (top) or ±180 (bottom)
+            if self._roll_on_centerline(deg, close):
+                return off
+            # Decide direction: roll towards nearest centerline point (0 or ±180)
+            # abs(roll) < 90 means 0 is closer, abs(roll) > 90 means 180 is closer
+            if abs(deg) <= 90:
+                # Target 0 (top): roll right if dot is on right (deg>0), left if on left (deg<0)
+                key = 'RollRightButton' if deg > 0 else 'RollLeftButton'
+            else:
+                # Target ±180 (bottom): roll the short way
+                key = 'RollLeftButton' if deg > 0 else 'RollRightButton'
+        elif axis == 'pit':
+            if abs(deg) < close:
+                return off
+            key = 'PitchUpButton' if deg > 0 else 'PitchDownButton'
+        else:
+            if abs(deg) < close:
+                return off
+            key = 'YawRightButton' if deg > 0 else 'YawLeftButton'
+
+        logger.info(f"Hold-align {axis}: {deg:.1f}deg, key={key}")
+
+        # Press key (hold)
+        self.keys.send(key, state=1)
+        start = time.time()
+        last_off = off
+
+        try:
+            while (time.time() - start) < timeout:
+                sleep(0.5)  # check ~2x per second, compass read is expensive (screenshot + ML + template match)
+                new_off = self.get_nav_offset(scr_reg)
+                if new_off is None:
+                    continue
+
+                last_off = new_off
+
+                if axis == 'roll':
+                    # Stop when dot is on the vertical centerline (0 or ±180)
+                    if self._roll_on_centerline(new_off['roll'], close):
+                        logger.info(f"Hold-align roll: on centerline at {new_off['roll']:.1f}deg ({time.time()-start:.1f}s)")
+                        break
+                else:
+                    # Stop when aligned on this axis
+                    if abs(new_off[axis]) < close:
+                        logger.info(f"Hold-align {axis}: aligned at {new_off[axis]:.1f}deg ({time.time()-start:.1f}s)")
+                        break
+                    # Stop if overshot
+                    if (deg > 0 and new_off[axis] < -close) or (deg < 0 and new_off[axis] > close):
+                        logger.info(f"Hold-align {axis}: overshot to {new_off[axis]:.1f}deg, stopping")
+                        break
+        finally:
+            # Release key
+            self.keys.send(key, state=0)
+
+        sleep(0.2)
+        final = self.get_nav_offset(scr_reg)
+        return final if final is not None else last_off
+
     def compass_align(self, scr_reg) -> bool:
-        """ Use the compass to find the nav point position when in SC or in space.  Will then perform rotation and
-        pitching to put the nav point in the middle of the compass, i.e. target right in front of us.
+        """ Use the compass to align to nav target. Holds movement keys while continuously
+        reading the compass, releases when aligned. No calibrated rates needed.
+        Strategy: 1) Roll to put dot on vertical centerline, 2) Pitch to center, 3) Yaw to fine-tune.
         @return: True if aligned, else False.
         """
         close = 5.0  # in degrees
@@ -1592,95 +1668,43 @@ class EDAutopilot:
 
         self.ap_ckb('log+vce', 'Compass Align')
 
-        # try multiple times to get aligned.  If the sun is shining on console, this it will be hard to match
-        # the vehicle should be positioned with the sun below us via the sun_avoid() routine after a jump
         for ii in range(self.config['NavAlignTries']):
             off = self.get_nav_offset(scr_reg)
             if off is None:
                 self.ap_ckb('log', 'Unable to detect compass. Rolling to new position.')
-                # Try rolling if star glare is obscuring the compass
                 self.roll_clockwise_anticlockwise(90)
                 continue
 
-            logger.debug(f"Compass position: yaw: {str(off['yaw'])} pit: {str(off['pit'])}")
+            logger.info(f"Compass: roll={off['roll']:.1f} pit={off['pit']:.1f} yaw={off['yaw']:.1f}")
 
             # Check if we are close enough already
             if abs(off['yaw']) < close and abs(off['pit']) < close:
                 self.ap_ckb('log', 'Compass Align complete')
                 return True
 
-            # Roll if the nav point is not directly behind us.
-            if ((-180 + close) < off['yaw'] < (180 - close) and
-                    (-180 + close) < off['pit'] < (180 - close)):
-
-                for i in range(20):
-                    # Calc roll time based on nav point location
-                    if off is None:
-                        self.ap_ckb('log', 'Unable to detect compass.')
-                        continue
-                    if abs(off['roll']) > close and (180 - abs(off['roll']) > close):
-                        # Clear the overlays before moving
-                        if self.debug_overlay:
-                            self.overlay.overlay_remove_rect('compass')
-                            self.overlay.overlay_remove_floating_text('compass')
-                            self.overlay.overlay_remove_floating_text('nav')
-                            self.overlay.overlay_remove_floating_text('nav_beh')
-                            self.overlay.overlay_remove_floating_text('compass_rpy')
-                            self.overlay.overlay_paint()
-
-                        self.roll_clockwise_anticlockwise(off['roll'])
-                        sleep(1)
-                        off = self.get_nav_offset(scr_reg)
-                    else:
-                        break
-
-            for i in range(20):
-                # Calc pitch time based on nav point location
+            # Step 1: ALWAYS roll to put dot on vertical centerline (0 or ±180)
+            if not self._roll_on_centerline(off['roll'], close):
+                off = self._hold_until_aligned(scr_reg, 'roll', off, close)
                 if off is None:
-                    self.ap_ckb('log', 'Unable to detect compass.')
                     continue
-                if abs(off['pit']) > close:
-                    # Clear the overlays before moving
-                    if self.debug_overlay:
-                        self.overlay.overlay_remove_rect('compass')
-                        self.overlay.overlay_remove_floating_text('compass')
-                        self.overlay.overlay_remove_floating_text('nav')
-                        self.overlay.overlay_remove_floating_text('nav_beh')
-                        self.overlay.overlay_remove_floating_text('compass_rpy')
-                        self.overlay.overlay_paint()
 
-                    self.pitch_up_down(off['pit'])
-                    sleep(0.75)
-                    off = self.get_nav_offset(scr_reg)
-                else:
-                    break
-
-            for i in range(20):
-                # Calc yaw time based on nav point location
+            # Step 2: Pitch to center. After roll, dot is at top (roll~0) or bottom (roll~180).
+            # Pitch moves the dot towards pit=0. Works for both in-front and behind cases.
+            if off is not None and abs(off['pit']) > close:
+                off = self._hold_until_aligned(scr_reg, 'pit', off, close)
                 if off is None:
-                    self.ap_ckb('log', 'Unable to detect compass.')
                     continue
-                if abs(off['yaw']) > close:
-                    # Clear the overlays before moving
-                    if self.debug_overlay:
-                        self.overlay.overlay_remove_rect('compass')
-                        self.overlay.overlay_remove_floating_text('compass')
-                        self.overlay.overlay_remove_floating_text('nav')
-                        self.overlay.overlay_remove_floating_text('nav_beh')
-                        self.overlay.overlay_remove_floating_text('compass_rpy')
-                        self.overlay.overlay_paint()
 
-                    self.yaw_right_left(off['yaw'])
-                    sleep(0.5)
-                    off = self.get_nav_offset(scr_reg)
-                else:
-                    break
+            # Step 3: Yaw for final horizontal correction
+            if off is not None and abs(off['yaw']) > close:
+                off = self._hold_until_aligned(scr_reg, 'yaw', off, close)
 
-            sleep(.1)
             if off is not None:
-                logger.debug(f"Compass position: yaw: {str(off['yaw'])} pit: {str(off['pit'])}")
+                logger.info(f"Compass after align: pit={off['pit']:.1f} yaw={off['yaw']:.1f}")
+                if abs(off['yaw']) < close and abs(off['pit']) < close:
+                    self.ap_ckb('log', 'Compass Align complete')
+                    return True
 
-        # Not aligned
         self.ap_ckb('log+vce', 'Compass Align failed - exhausted all retries')
         return False
 

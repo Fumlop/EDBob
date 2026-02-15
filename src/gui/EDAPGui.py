@@ -392,8 +392,8 @@ class APGui:
 
     def close_window(self):
         logger.debug("Entered: close_window")
-        self.stop_fsd()
-        self.stop_sc()
+        self.stop_all_assists()
+        sleep(0.5)
         self.ed_ap.quit()
         sleep(0.1)
         self.root.destroy()

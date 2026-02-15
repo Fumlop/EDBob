@@ -32,21 +32,38 @@ elite_dangerous_window = "Elite - Dangerous (CLIENT)"
 
 def set_focus_elite_window():
     """ set focus to the ED window, if ED does not have focus then the keystrokes will go to the window
-    that does have focus. """
+    that does have focus. Uses Alt key trick to bypass Windows SetForegroundWindow restrictions. """
     ed_title = "Elite - Dangerous (CLIENT)"
 
-    # TODO - determine if GetWindowText is faster than FindWindow if ED is in foreground
-    if win32gui.GetWindowText(win32gui.GetForegroundWindow()) == ed_title:
+    fg_hwnd = win32gui.GetForegroundWindow()
+    fg_title = win32gui.GetWindowText(fg_hwnd)
+    if fg_title == ed_title:
         return
 
     handle = win32gui.FindWindow(0, ed_title)
-    if handle != 0:
-        try:
-            win32gui.ShowWindow(handle, win32con.SW_NORMAL)  # give focus to ED
-            win32gui.SetForegroundWindow(handle)  # give focus to ED
-        except:
-            print("set_focus_elite_window ERROR")
-            pass
+    if handle == 0:
+        logger.warning("set_focus: ED window not found!")
+        return
+
+    try:
+        import ctypes
+        # Attach to foreground thread so we're allowed to call SetForegroundWindow
+        current_thread = ctypes.windll.kernel32.GetCurrentThreadId()
+        fg_thread = ctypes.windll.user32.GetWindowThreadProcessId(fg_hwnd, None)
+        if current_thread != fg_thread:
+            ctypes.windll.user32.AttachThreadInput(current_thread, fg_thread, True)
+        win32gui.ShowWindow(handle, win32con.SW_NORMAL)
+        win32gui.SetForegroundWindow(handle)
+        if current_thread != fg_thread:
+            ctypes.windll.user32.AttachThreadInput(current_thread, fg_thread, False)
+        # Verify
+        new_fg = win32gui.GetWindowText(win32gui.GetForegroundWindow())
+        if new_fg != ed_title:
+            logger.warning(f"set_focus: FAILED, foreground is '{new_fg}'")
+        else:
+            logger.info(f"set_focus: ED focused successfully")
+    except Exception as ex:
+        logger.warning(f"set_focus_elite_window failed: {ex}")
 
 
 def crop_image_by_pct(image, quad: Quad):

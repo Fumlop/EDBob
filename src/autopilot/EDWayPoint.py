@@ -475,6 +475,7 @@ class EDWayPoint:
             return
 
         self.step = 0  # start at first waypoint
+        self.mark_all_waypoints_not_complete()  # reset completed flags on each start
         self.ap.ap_ckb('log', "Waypoint file: " + str(Path(self.filename).name))
         self.reset_stats()
 
@@ -532,120 +533,138 @@ class EDWayPoint:
                 self.ap.ap_ckb('log+vce', f"Next Waypoint: {next_wp_station} in {next_wp_system}")
 
             # ====================================
-            # Target and travel to a System
+            # Galaxy Bookmark: handles both system + station in one step
             # ====================================
-
-            # Check current system and go to next system if different and not blank
-            if next_wp_system == "" or (cur_star_system == next_wp_system):
-                if new_waypoint:
-                    self.ap.ap_ckb('log+vce', f"Already in target System.")
-            else:
-                # Check if the current nav route is to the target system
-                last_nav_route_sys = self.ap.nav_route.get_last_system().upper()
-                # Check we have a route and that we have a destination to a star (body 0).
-                # We can have one without the other.
-                if ((last_nav_route_sys == next_wp_system) and
-                        (destination_body == 0 and destination_name != "")):
-                    # No need to target system
-                    self.ap.ap_ckb('log+vce', f"System already targeted.")
-                else:
-                    self.ap.ap_ckb('log+vce', f"Targeting system {next_wp_system}.")
-                    # Select destination in galaxy map based on name
-                    res = self.ap.galaxy_map.set_gal_map_destination_text(self.ap, next_wp_system,
-                                                                          self.ap.jn.ship_state)
-                    if res:
-                        self.ap.ap_ckb('log', f"System has been targeted.")
-                    else:
-                        self.ap.ap_ckb('log+vce', f"Unable to target {next_wp_system} in Galaxy Map.")
-                        _abort = True
-                        break
-
-                # Select next target system
-                # TODO should this be in before every jump?
-                keys.send('TargetNextRouteSystem')
-
-                # Jump to the destination system
-                self.ap.ap_ckb('log+vce', f"Jumping to {next_wp_system}.")
-                res = self.ap.jump_to_system(scr_reg)
-                if not res:
-                    self.ap.ap_ckb('log', f"Failed to jump to {next_wp_system}.")
-                    _abort = True
-                    break
-
-                continue
-
-            # ====================================
-            # Target and travel to a local Station
-            # ====================================
-
-            # If we are in the right system, check if we are already docked.
-            docked_at_stn = False
-            is_docked = self.ap.status.get_flag(FlagsDocked)
-            if is_docked:
-                # Check if we are at the correct station. Note that for FCs, the station name
-                # reported by the Journal is only the ship identifier (ABC-123) and not the carrier name.
-                # So we need to check if the ID (ABC-123) is at the end of the target ('Fleety McFleet ABC-123').
-                self.ap.ap_ckb('log', f"Docked at {cur_station}.")
-                if cur_station_type == StationType.FleetCarrier:
-                    docked_at_stn = next_wp_station.endswith(cur_station)
-                elif cur_station_type == StationType.SquadronCarrier:
-                    docked_at_stn = next_wp_station.endswith(cur_station)
-                elif 'System Colonisation Ship'.upper() in next_wp_station:
-                    if cur_station_type == StationType.ColonisationShip:
+            if gal_bookmark:
+                # Check if already docked at target
+                docked_at_stn = False
+                is_docked = self.ap.status.get_flag(FlagsDocked)
+                if is_docked:
+                    self.ap.ap_ckb('log', f"Docked at {cur_station}.")
+                    if next_wp_station == "":
+                        # No station name specified, any docked state counts
                         docked_at_stn = True
-                # elif next_wp_station.startswith('Orbital Construction Site'.upper()):
-                #     if (cur_station_type == 'SurfaceStation'.upper() and
-                #             'Orbital Construction Site'.upper() in cur_station.upper()):
-                #         docked_at_stn = True
-                elif cur_station == next_wp_station:
-                    docked_at_stn = True
+                    elif cur_station_type == StationType.FleetCarrier:
+                        docked_at_stn = next_wp_station.endswith(cur_station)
+                    elif cur_station_type == StationType.SquadronCarrier:
+                        docked_at_stn = next_wp_station.endswith(cur_station)
+                    elif 'System Colonisation Ship'.upper() in next_wp_station:
+                        if cur_station_type == StationType.ColonisationShip:
+                            docked_at_stn = True
+                    elif cur_station == next_wp_station:
+                        docked_at_stn = True
 
-            # Check current station and go to it if different
-            if docked_at_stn:
-                if new_waypoint:
-                    self.ap.ap_ckb('log+vce', f"Already at target Station: {next_wp_station}")
-            else:
-                # Check if we need to travel to a station, else we are done.
-                # This may be by 1) System bookmark, 2) Galaxy bookmark or 3) by Station Name text
-                if sys_bookmark or gal_bookmark or next_wp_station != "":
-                    # If waypoint file has a Station Name associated then attempt targeting it
-                    self.ap.ap_ckb('log+vce', f"Targeting Station: {next_wp_station}")
-
-                    if gal_bookmark:
-                        # Set destination via gal bookmark, not system bookmark
-                        res = self.ap.galaxy_map.set_gal_map_dest_bookmark(self.ap, gal_bookmark_type, gal_bookmark_num)
-                        if not res:
-                            self.ap.ap_ckb('log+vce', f"Unable to set Galaxy Map bookmark.")
-                            _abort = True
-                            break
-
-                    elif sys_bookmark and sys_bookmark_type != 'Nav Panel OCR':
-                        # Set destination via system bookmark
-                        res = self.ap.system_map.set_sys_map_dest_bookmark(self.ap, sys_bookmark_type, sys_bookmark_num)
-                        if not res:
-                            self.ap.ap_ckb('log+vce', f"Unable to set System Map bookmark.")
-                            _abort = True
-                            break
-
-                    elif sys_bookmark_type == 'Nav Panel OCR' and next_wp_station != "":
-                        # Set destination via system name
-                        res = self.ap.nav_panel.lock_destination(next_wp_station)
-                        if not res:
-                            self.ap.ap_ckb('log+vce', f"Unable to set Nav Panel OCR bookmark.")
-                            _abort = True
-                            break
-
-                    else:
-                        self.ap.ap_ckb('log+vce', f"No bookmark defined.")
+                if docked_at_stn:
+                    if new_waypoint:
+                        self.ap.ap_ckb('log+vce', f"Already at target Station: {next_wp_station}")
+                else:
+                    # Use galaxy bookmark to target destination (system + station)
+                    self.ap.ap_ckb('log+vce', f"Targeting favorite #{gal_bookmark_num}")
+                    res = self.ap.galaxy_map.set_gal_map_dest_bookmark(self.ap, gal_bookmark_type, gal_bookmark_num)
+                    if not res:
+                        self.ap.ap_ckb('log+vce', f"Unable to set Galaxy Map bookmark.")
                         _abort = True
                         break
 
-                    # Jump to the station by name
-                    res = self.ap.supercruise_to_station(scr_reg, next_wp_station)
-                    sleep(1)  # Allow status log to update
-                    continue
+                    # If in a different system, jump there first
+                    if next_wp_system != "" and cur_star_system != next_wp_system:
+                        keys.send('TargetNextRouteSystem')
+                        self.ap.ap_ckb('log+vce', f"Jumping to {next_wp_system}.")
+                        res = self.ap.jump_to_system(scr_reg)
+                        if not res:
+                            self.ap.ap_ckb('log', f"Failed to jump to {next_wp_system}.")
+                            _abort = True
+                            break
+                        continue
+
+                    # Same system, supercruise to station
+                    if next_wp_station != "":
+                        res = self.ap.supercruise_to_station(scr_reg, next_wp_station)
+                        sleep(1)
+                        continue
+
+            else:
+                # ====================================
+                # Target and travel to a System (non-bookmark)
+                # ====================================
+
+                # Check current system and go to next system if different and not blank
+                if next_wp_system == "" or (cur_star_system == next_wp_system):
+                    if new_waypoint:
+                        self.ap.ap_ckb('log+vce', f"Already in target System.")
                 else:
-                    self.ap.ap_ckb('log+vce', f"Arrived at target System: {next_wp_system}")
+                    # Check if the current nav route is to the target system
+                    last_nav_route_sys = self.ap.nav_route.get_last_system().upper()
+                    if ((last_nav_route_sys == next_wp_system) and
+                            (destination_body == 0 and destination_name != "")):
+                        self.ap.ap_ckb('log+vce', f"System already targeted.")
+                    else:
+                        self.ap.ap_ckb('log+vce', f"Targeting system {next_wp_system}.")
+                        res = self.ap.galaxy_map.set_gal_map_destination_text(self.ap, next_wp_system,
+                                                                              self.ap.jn.ship_state)
+                        if res:
+                            self.ap.ap_ckb('log', f"System has been targeted.")
+                        else:
+                            self.ap.ap_ckb('log+vce', f"Unable to target {next_wp_system} in Galaxy Map.")
+                            _abort = True
+                            break
+
+                    keys.send('TargetNextRouteSystem')
+                    self.ap.ap_ckb('log+vce', f"Jumping to {next_wp_system}.")
+                    res = self.ap.jump_to_system(scr_reg)
+                    if not res:
+                        self.ap.ap_ckb('log', f"Failed to jump to {next_wp_system}.")
+                        _abort = True
+                        break
+                    continue
+
+                # ====================================
+                # Target and travel to a local Station (non-bookmark)
+                # ====================================
+
+                docked_at_stn = False
+                is_docked = self.ap.status.get_flag(FlagsDocked)
+                if is_docked:
+                    self.ap.ap_ckb('log', f"Docked at {cur_station}.")
+                    if cur_station_type == StationType.FleetCarrier:
+                        docked_at_stn = next_wp_station.endswith(cur_station)
+                    elif cur_station_type == StationType.SquadronCarrier:
+                        docked_at_stn = next_wp_station.endswith(cur_station)
+                    elif 'System Colonisation Ship'.upper() in next_wp_station:
+                        if cur_station_type == StationType.ColonisationShip:
+                            docked_at_stn = True
+                    elif cur_station == next_wp_station:
+                        docked_at_stn = True
+
+                if docked_at_stn:
+                    if new_waypoint:
+                        self.ap.ap_ckb('log+vce', f"Already at target Station: {next_wp_station}")
+                else:
+                    if sys_bookmark or next_wp_station != "":
+                        self.ap.ap_ckb('log+vce', f"Targeting Station: {next_wp_station}")
+
+                        if sys_bookmark and sys_bookmark_type != 'Nav Panel OCR':
+                            res = self.ap.system_map.set_sys_map_dest_bookmark(self.ap, sys_bookmark_type, sys_bookmark_num)
+                            if not res:
+                                self.ap.ap_ckb('log+vce', f"Unable to set System Map bookmark.")
+                                _abort = True
+                                break
+                        elif sys_bookmark_type == 'Nav Panel OCR' and next_wp_station != "":
+                            res = self.ap.nav_panel.lock_destination(next_wp_station)
+                            if not res:
+                                self.ap.ap_ckb('log+vce', f"Unable to set Nav Panel OCR bookmark.")
+                                _abort = True
+                                break
+                        else:
+                            self.ap.ap_ckb('log+vce', f"No bookmark defined.")
+                            _abort = True
+                            break
+
+                        res = self.ap.supercruise_to_station(scr_reg, next_wp_station)
+                        sleep(1)
+                        continue
+                    else:
+                        self.ap.ap_ckb('log+vce', f"Arrived at target System: {next_wp_system}")
 
             # ====================================
             # Dock and Trade at Station

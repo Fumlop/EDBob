@@ -315,11 +315,6 @@ class EDKeys:
         return latest_bindings
 
     def send_key(self, type, key):
-        # Focus Elite window if configured
-        if self.activate_window:
-            set_focus_elite_window()
-            sleep(0.05)
-
         if type == 'Up':
             directinput.ReleaseKey(key)
         else:
@@ -344,15 +339,14 @@ class EDKeys:
                 f"Unable to retrieve keybinding for {key_binding}. Advise user to check game settings for keyboard bindings.")
 
         key_name = self.reversed_dict.get(key['key'], "Key not found")
-        logger.debug('\tsend=' + key_binding + ',key:' + str(key) + ',key_name:' + key_name + ',hold:' + str(
-            hold) + ',repeat:' + str(
-            repeat) + ',repeat_delay:' + str(repeat_delay) + ',state:' + str(state))
+        logger.info(f"send: {key_binding} -> {key_name} (scancode={key['key']}, hold={hold}, state={state})")
+
+        # Focus Elite window before sending keys
+        if self.activate_window:
+            set_focus_elite_window()
+            sleep(0.2)
 
         for i in range(repeat):
-            # Focus Elite window if configured.
-            if self.activate_window:
-                set_focus_elite_window()
-                sleep(0.05)
 
             if state is None or state == 1:
                 for mod in key['mods']:
