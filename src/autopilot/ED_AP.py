@@ -1616,9 +1616,21 @@ class EDAutopilot:
         """Check if the dot is on the vertical centerline (near 0 or ±180 degrees)."""
         return abs(roll_deg) < close or (180 - abs(roll_deg)) < close
 
+    def _get_dist(self, axis, off):
+        """Get distance to target for an axis."""
+        if axis == 'roll':
+            return min(abs(off['roll']), 180 - abs(off['roll']))
+        return abs(off[axis])
+
+    def _is_aligned(self, axis, off, close):
+        """Check if aligned on an axis."""
+        if axis == 'roll':
+            return self._roll_on_centerline(off['roll'], close)
+        return abs(off[axis]) < close
+
     def _pulse_until_aligned(self, scr_reg, axis, off, close=5.0, timeout=30.0):
-        """Hold movement key, check compass periodically, release when aligned or overshot.
-        Uses long holds (SC roll is very slow) with periodic compass checks.
+        """Measure-then-move alignment. First pulse measures the rate,
+        then calculates exact hold time for remaining distance.
         @param axis: 'roll', 'pit', or 'yaw'
         @param off: Current offset dict.
         @param close: Threshold in degrees to consider aligned.
@@ -1629,71 +1641,97 @@ class EDAutopilot:
         deg = off[axis]
 
         # Check if already aligned
+        if self._is_aligned(axis, off, close):
+            return off
+
+        # Determine key direction
         if axis == 'roll':
-            if self._roll_on_centerline(deg, close):
-                return off
-            # Direction to nearest centerline (0 or 180)
             if abs(deg) <= 90:
                 key = 'RollRightButton' if deg > 0 else 'RollLeftButton'
             else:
                 key = 'RollLeftButton' if deg > 0 else 'RollRightButton'
-            dist = min(abs(deg), 180 - abs(deg))
         elif axis == 'pit':
-            if abs(deg) < close:
-                return off
             key = 'PitchUpButton' if deg > 0 else 'PitchDownButton'
-            dist = abs(deg)
         else:
-            if abs(deg) < close:
-                return off
             key = 'YawRightButton' if deg > 0 else 'YawLeftButton'
-            dist = abs(deg)
 
-        logger.info(f"Align {axis}: {deg:.1f}deg, dist={dist:.1f}, key={key}")
+        dist_before = self._get_dist(axis, off)
+        logger.info(f"Align {axis}: {deg:.1f}deg, dist={dist_before:.1f}, key={key}")
 
-        # Hold key and check compass periodically
-        last_off = off
-        self.keys.send(key, state=1)  # press and hold
+        # Step 1: Measure rate with a short calibration pulse
+        cal_time = random.uniform(1.0, 1.5)
+        self.keys.send(key, hold=cal_time)
+        sleep(random.uniform(0.3, 0.5))
 
-        try:
-            while (time.time() - start) < timeout:
-                # Check interval: random 1.5-2.5s (SC is slow, need time between reads)
-                sleep(random.uniform(1.5, 2.5))
+        cal_off = self.get_nav_offset(scr_reg)
+        if cal_off is None:
+            sleep(0.5)
+            cal_off = self.get_nav_offset(scr_reg)
+            if cal_off is None:
+                return off
 
+        dist_after_cal = self._get_dist(axis, cal_off)
+
+        # Check if calibration pulse already aligned us
+        if self._is_aligned(axis, cal_off, close):
+            logger.info(f"Align {axis}: aligned after cal pulse at {cal_off[axis]:.1f}deg")
+            return cal_off
+
+        # Calculate rate (degrees per second)
+        moved = dist_before - dist_after_cal
+        if moved <= 0:
+            # Didn't move or moved wrong way -- try longer hold
+            logger.info(f"Align {axis}: cal pulse moved {moved:.1f}deg, trying longer hold")
+            self.keys.send(key, hold=random.uniform(3.0, 4.0))
+            sleep(random.uniform(0.3, 0.5))
+            result = self.get_nav_offset(scr_reg)
+            return result if result is not None else cal_off
+
+        rate = moved / cal_time
+        logger.info(f"Align {axis}: rate={rate:.1f}deg/s (moved {moved:.1f}deg in {cal_time:.1f}s)")
+
+        # Step 2: Calculate hold time for remaining distance
+        remaining = dist_after_cal
+        while remaining > close and (time.time() - start) < timeout:
+            # Calculate hold time, aim for 80% of remaining to avoid overshoot
+            hold_time = (remaining * 0.8) / rate
+            hold_time = max(hold_time, 0.1)  # minimum pulse
+            hold_time = min(hold_time, 5.0)  # maximum single hold
+            # Add small random jitter
+            hold_time *= random.uniform(0.9, 1.1)
+
+            logger.info(f"Align {axis}: remaining={remaining:.1f}deg, hold={hold_time:.2f}s")
+            self.keys.send(key, hold=hold_time)
+            sleep(random.uniform(0.3, 0.5))
+
+            new_off = self.get_nav_offset(scr_reg)
+            if new_off is None:
+                sleep(0.5)
                 new_off = self.get_nav_offset(scr_reg)
                 if new_off is None:
-                    continue
-                last_off = new_off
+                    return cal_off
 
-                if axis == 'roll':
-                    if self._roll_on_centerline(new_off['roll'], close):
-                        logger.info(f"Align roll: on centerline at {new_off['roll']:.1f}deg ({time.time()-start:.1f}s)")
-                        break
-                    # Overshoot: crossed the centerline target
-                    new_dist = min(abs(new_off['roll']), 180 - abs(new_off['roll']))
-                    # If we were heading to 180 and crossed it, or heading to 0 and crossed it
-                    if new_dist > dist + 10:
-                        logger.info(f"Align roll: overshot, dist went {dist:.1f}->{new_dist:.1f}, stopping")
-                        break
-                    dist = new_dist
-                    logger.info(f"Align roll: {new_off['roll']:.1f}deg, dist={new_dist:.1f}")
-                else:
-                    if abs(new_off[axis]) < close:
-                        logger.info(f"Align {axis}: aligned at {new_off[axis]:.1f}deg ({time.time()-start:.1f}s)")
-                        break
-                    # Overshoot: sign flipped
-                    if (deg > 0 and new_off[axis] < -close) or (deg < 0 and new_off[axis] > close):
-                        logger.info(f"Align {axis}: overshot to {new_off[axis]:.1f}deg, stopping")
-                        break
-                    logger.info(f"Align {axis}: {new_off[axis]:.1f}deg")
-            else:
-                logger.warning(f"Align {axis}: timeout after {timeout}s")
-        finally:
-            self.keys.send(key, state=0)  # release
+            # Check aligned
+            if self._is_aligned(axis, new_off, close):
+                logger.info(f"Align {axis}: aligned at {new_off[axis]:.1f}deg ({time.time()-start:.1f}s)")
+                return new_off
 
-        sleep(random.uniform(0.3, 0.6))
-        final = self.get_nav_offset(scr_reg)
-        return final if final is not None else last_off
+            # Check overshoot: distance increased instead of decreased
+            new_dist = self._get_dist(axis, new_off)
+            if new_dist > remaining + 5:
+                logger.info(f"Align {axis}: overshot, dist {remaining:.1f}->{new_dist:.1f}, stopping")
+                return new_off
+
+            # Update remaining and recalculate rate from this step
+            actual_moved = remaining - new_dist
+            if actual_moved > 0 and hold_time > 0.1:
+                rate = actual_moved / hold_time  # update rate estimate
+            remaining = new_dist
+            cal_off = new_off
+
+        if (time.time() - start) >= timeout:
+            logger.warning(f"Align {axis}: timeout after {timeout}s")
+        return cal_off
 
     def compass_align(self, scr_reg) -> bool:
         """ Use the compass to align to nav target. Holds movement keys while continuously
@@ -1717,31 +1755,30 @@ class EDAutopilot:
 
             logger.info(f"Compass: roll={off['roll']:.1f} pit={off['pit']:.1f} yaw={off['yaw']:.1f}")
 
-            # Check if we are close enough already
-            if abs(off['yaw']) < close and abs(off['pit']) < close:
+            # Check if we are close enough already (roll on centerline + pitch near 0)
+            if self._roll_on_centerline(off['roll'], close) and abs(off['pit']) < close:
                 self.ap_ckb('log', 'Compass Align complete')
                 return True
 
-            # Step 1: ALWAYS roll to put dot on vertical centerline (0 or ±180)
+            # Step 1: Roll to put dot on vertical centerline (0 or ±180)
             if not self._roll_on_centerline(off['roll'], close):
                 off = self._pulse_until_aligned(scr_reg, 'roll', off, close)
                 if off is None:
                     continue
 
-            # Step 2: Pitch to center. After roll, dot is at top (roll~0) or bottom (roll~180).
-            # Pitch moves the dot towards pit=0. Works for both in-front and behind cases.
+            # Step 2: Pitch to center. After roll, dot is on centerline.
+            # Pitch moves it towards pit=0. Works for both in-front and behind.
             if off is not None and abs(off['pit']) > close:
                 off = self._pulse_until_aligned(scr_reg, 'pit', off, close)
                 if off is None:
                     continue
 
-            # Step 3: Yaw for final horizontal correction
-            if off is not None and abs(off['yaw']) > close:
-                off = self._pulse_until_aligned(scr_reg, 'yaw', off, close)
+            # No yaw needed -- roll + pitch is sufficient. Yaw causes oscillation.
+            # sc_target_align handles fine yaw correction later.
 
             if off is not None:
-                logger.info(f"Compass after align: pit={off['pit']:.1f} yaw={off['yaw']:.1f}")
-                if abs(off['yaw']) < close and abs(off['pit']) < close:
+                logger.info(f"Compass after align: roll={off['roll']:.1f} pit={off['pit']:.1f}")
+                if abs(off['pit']) < close:
                     self.ap_ckb('log', 'Compass Align complete')
                     return True
 
@@ -1859,6 +1896,8 @@ class EDAutopilot:
             return ScTargetAlignReturn.Lost
 
         # We have Target or Compass. Are we close to Target?
+        compass_only_count = 0  # Track iterations with only compass (no target reticle)
+        max_compass_only = 3  # Accept "close enough" after this many compass-only iterations
         while ((abs(off['yaw']) > target_align_outer_lim) or
                (abs(off['pit']) > target_align_outer_lim)):
 
@@ -1900,17 +1939,24 @@ class EDAutopilot:
             tar_off2 = self.get_target_offset(scr_reg)
             if tar_off2:
                 off = tar_off2
+                compass_only_count = 0  # Reset -- we found the target reticle
                 logger.debug(f"sc_target_align after: pit:{off['pit']} yaw: {off['yaw']} ")
                 # Apply offset to keep target above center
                 off['pit'] = off['pit'] - target_align_pit_off
             elif nav_off2:
                 # Try to use the compass data if the target is not visible.
                 off = nav_off2
-                self.ap_ckb('log', 'Using Compass for Target Align')
+                compass_only_count += 1
+                self.ap_ckb('log', f'Using Compass for Target Align ({compass_only_count}/{max_compass_only})')
                 # Check if Target is now behind us
                 if nav_off2['z'] < 0:
                     self.ap_ckb('log', 'Target is behind us')
                     return ScTargetAlignReturn.Lost
+                # Compass isn't precise enough for tight alignment -- accept "close enough"
+                if compass_only_count >= max_compass_only:
+                    logger.info(f"sc_target_align: compass-only for {compass_only_count} iterations, accepting current alignment")
+                    self.ap_ckb('log', 'Target Align: compass close enough, proceeding')
+                    break
 
             if tar_off1 and tar_off2:
                 # Check diff from before and after movement
