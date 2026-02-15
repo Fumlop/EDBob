@@ -4,6 +4,7 @@ import os
 from time import sleep
 from src.ed.CargoParser import CargoParser
 from src.core import EDAP_data
+from src.core.EDAP_data import FlagsDocked
 from src.ed.EDJournal import StationType
 from src.ed.EDKeys import EDKeys
 from src.core.EDlogger import logger

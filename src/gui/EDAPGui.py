@@ -8,6 +8,9 @@
 # import cv2
 # import json
 # from pathlib import Path
+from datetime import datetime
+import os
+import queue
 import subprocess
 from typing import TypedDict
 
@@ -19,17 +22,18 @@ import webbrowser
 # from PIL import Image, ImageGrab, ImageTk
 import tkinter as tk
 from tkinter import filedialog as fd
-# from tkinter import messagebox
+from tkinter import messagebox
 from tkinter import ttk
 import sv_ttk
 import pywinstyles
 import sys  # Do not delete - prevents a 'super' error from tktoolip.
+from time import sleep
 from tktooltip import ToolTip  # In requirements.txt as 'tkinter-tooltip'.
 
 from src.gui.EDAPCalibration import Calibration
 from src.gui.EDAPColonizeEditor import ColonizeEditorTab
 # from OCR import RegionCalibration
-# from src.core.MousePt import MousePoint
+from src.core.MousePt import MousePoint
 
 # from src.screen import Image_Templates
 # from src.screen import Screen
@@ -114,6 +118,7 @@ class APGui:
             'Supercruise Assist': "Will keep your ship pointed to target, \nyou target can only be a station for the autodocking to work.",
             'Waypoint Assist': "When selected, will prompt for the waypoint file. \nThe waypoint file contains System names that \nwill be entered into Galaxy Map and route plotted.",
             'DSS Assist': "When selected, will perform DSS scans while you are traveling between stars.",
+            'Favorites Assist': "Cycles through galaxy map favorites (-1-, -2-, etc.) and flies to each in order.",
             'Single Waypoint Assist': "",
             'ELW Scanner': "Will perform FSS scans while FSD Assist is traveling between stars. \nIf the FSS shows a signal in the region of Earth, \nWater or Ammonia type worlds, it will announce that discovery.",
             'RollRate': "Roll rate your ship has in deg/sec. Higher the number the more maneuverable the ship.",

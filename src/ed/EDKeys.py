@@ -31,9 +31,10 @@ class EDKeys:
         self.key_mod_delay = 0.01  # Delay for key modifiers to ensure modifier is detected before/after the key
         self.key_def_hold_time = 0.2  # Default hold time for a key press
         self.key_repeat_delay = 0.1  # Delay between key press repeats
-        self.activate_window = False
+        self.activate_window = True
 
         self.keys_to_obtain = [
+            # Flight
             'YawLeftButton',
             'YawRightButton',
             'RollLeftButton',
@@ -43,9 +44,17 @@ class EDKeys:
             'SetSpeedZero',
             'SetSpeed50',
             'SetSpeed100',
+            'UpThrustButton',
+            'UseBoostJuice',
+            'LandingGearToggle',
+            # Navigation
             'HyperSuperCombination',
+            'Supercruise',
             'SelectTarget',
-            'DeployHeatSink',
+            'TargetNextRouteSystem',
+            'GalaxyMapOpen',
+            'SystemMapOpen',
+            # UI
             'UIFocus',
             'UI_Up',
             'UI_Down',
@@ -55,29 +64,69 @@ class EDKeys:
             'UI_Back',
             'CycleNextPanel',
             'HeadLookReset',
-            'PrimaryFire',
-            'SecondaryFire',
-            'ExplorationFSSEnter',
-            'ExplorationFSSQuit',
-            'MouseReset',
-            'DeployHardpointToggle',
+            # Power
             'IncreaseEnginesPower',
             'IncreaseWeaponsPower',
             'IncreaseSystemsPower',
-            'GalaxyMapOpen',
-            'CamZoomIn',  # Gal map zoom in
-            'SystemMapOpen',
-            'UseBoostJuice',
-            'Supercruise',
-            'UpThrustButton',
-            'LandingGearToggle',
-            'TargetNextRouteSystem',  # Target next system in route
+            # Combat (optional, used by some assists)
+            'DeployHeatSink',
+            'DeployHardpointToggle',
+            'PrimaryFire',
+            'SecondaryFire',
+            # Exploration (optional)
+            'ExplorationFSSEnter',
+            'ExplorationFSSQuit',
+            'MouseReset',
+            'CamZoomIn',
             'CamTranslateForward',
             'CamTranslateRight',
             'OrderAggressiveBehaviour',
         ]
+
+        # Hardcoded fallback keys -- used when a binding is missing from the .binds file.
+        # These match common ED defaults. Override by setting the key in ED options.
+        self._fallback_keys = {
+            'YawLeftButton':        {'key': directinput.SCANCODE['Key_Numpad_4'], 'mods': []},
+            'YawRightButton':       {'key': directinput.SCANCODE['Key_Numpad_6'], 'mods': []},
+            'RollLeftButton':       {'key': directinput.SCANCODE['Key_A'], 'mods': []},
+            'RollRightButton':      {'key': directinput.SCANCODE['Key_D'], 'mods': []},
+            'PitchUpButton':        {'key': directinput.SCANCODE['Key_Numpad_8'], 'mods': []},
+            'PitchDownButton':      {'key': directinput.SCANCODE['Key_Numpad_2'], 'mods': []},
+            'SetSpeedZero':         {'key': directinput.SCANCODE['Key_LeftShift'], 'mods': []},
+            'SetSpeed50':           {'key': directinput.SCANCODE['Key_Y'], 'mods': []},
+            'SetSpeed100':          {'key': directinput.SCANCODE['Key_C'], 'mods': []},
+            'UpThrustButton':       {'key': directinput.SCANCODE['Key_R'], 'mods': []},
+            'UseBoostJuice':        {'key': directinput.SCANCODE['Key_Tab'], 'mods': []},
+            'LandingGearToggle':    {'key': directinput.SCANCODE['Key_L'], 'mods': []},
+            'HyperSuperCombination': {'key': directinput.SCANCODE['Key_J'], 'mods': []},
+            'Supercruise':          {'key': directinput.SCANCODE['Key_Numpad_Add'], 'mods': []},
+            'SelectTarget':         {'key': directinput.SCANCODE['Key_T'], 'mods': []},
+            'TargetNextRouteSystem': {'key': directinput.SCANCODE['Key_K'], 'mods': []},
+            'GalaxyMapOpen':        {'key': directinput.SCANCODE['Key_PageUp'], 'mods': []},
+            'SystemMapOpen':        {'key': directinput.SCANCODE['Key_PageDown'], 'mods': []},
+            'UIFocus':              {'key': directinput.SCANCODE['Key_5'], 'mods': []},
+            'UI_Up':                {'key': directinput.SCANCODE['Key_W'], 'mods': []},
+            'UI_Down':              {'key': directinput.SCANCODE['Key_S'], 'mods': []},
+            'UI_Left':              {'key': directinput.SCANCODE['Key_A'], 'mods': []},
+            'UI_Right':             {'key': directinput.SCANCODE['Key_D'], 'mods': []},
+            'UI_Select':            {'key': directinput.SCANCODE['Key_Space'], 'mods': []},
+            'UI_Back':              {'key': directinput.SCANCODE['Key_Backspace'], 'mods': []},
+            'CycleNextPanel':       {'key': directinput.SCANCODE['Key_E'], 'mods': []},
+            'HeadLookReset':        {'key': directinput.SCANCODE['Key_7'], 'mods': []},
+            'IncreaseEnginesPower': {'key': directinput.SCANCODE['Key_UpArrow'], 'mods': []},
+            'IncreaseWeaponsPower': {'key': directinput.SCANCODE['Key_RightArrow'], 'mods': []},
+            'IncreaseSystemsPower': {'key': directinput.SCANCODE['Key_LeftArrow'], 'mods': []},
+            'DeployHardpointToggle': {'key': directinput.SCANCODE['Key_U'], 'mods': []},
+        }
+
         self.keys = self.get_bindings()
         self.bindings = self.get_bindings_dict()
+
+        # Apply fallbacks for any missing keys
+        for key_name, fallback in self._fallback_keys.items():
+            if key_name not in self.keys:
+                self.keys[key_name] = fallback
+                logger.info(f"Using fallback key for '{key_name}': {self.reversed_dict.get(fallback['key'], '?')}")
 
         self.missing_keys = []
         # We want to log the keyboard name instead of just the key number so we build a reverse dictionary
@@ -108,10 +157,12 @@ class EDKeys:
 
         # Check for key collisions with the keys EDAP uses.
         for key in self.keys_to_obtain:
+            if key in self.missing_keys:
+                continue
             collisions = self.get_collisions(key)
             if len(collisions) > 1:
                 # lookup the keyname in the directinput.SCANCODE reverse dictionary and output that key name
-                keyname = self.reversed_dict.get(self.keys[key]['key'], "Key not found")
+                keyname = self.reversed_dict.get(self.keys[key].get('key'), "Key not found")
                 warn_text = (f"Key '{keyname}' is used for the following bindings: {collisions}. "
                              "This MAY causes issues when using EDAP. Monitor and adjust accordingly.")
                 self.ap_ckb('log', f"WARNING: {warn_text}")

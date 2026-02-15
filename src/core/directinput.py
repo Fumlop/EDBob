@@ -302,16 +302,45 @@ class Input(ctypes.Structure):
 
 # Actual Functions
 
+_EXTENDED_SCANCODES = {
+    156,  # Key_Numpad_Enter
+    157,  # Key_RightControl
+    181,  # Key_Numpad_Divide
+    184,  # Key_RightAlt
+    197,  # Key_Pause
+    199,  # Key_Home
+    200,  # Key_UpArrow
+    201,  # Key_PageUp
+    203,  # Key_LeftArrow
+    205,  # Key_RightArrow
+    207,  # Key_End
+    208,  # Key_DownArrow
+    209,  # Key_PageDown
+    210,  # Key_Insert
+    211,  # Key_Delete
+    221,  # Key_Apps
+}
+
+def _is_extended_key(hexKeyCode):
+    """Extended keys need KEYEVENTF_EXTENDEDKEY flag for SendInput to work."""
+    return hexKeyCode in _EXTENDED_SCANCODES
+
 def PressKey(hexKeyCode):
     extra = ctypes.c_ulong(0)
     ii_ = Input_I()
-    ii_.ki = KeyBdInput(0, hexKeyCode, 0x0008, 0, ctypes.pointer(extra))
+    flags = 0x0008  # KEYEVENTF_SCANCODE
+    if _is_extended_key(hexKeyCode):
+        flags |= 0x0001  # KEYEVENTF_EXTENDEDKEY
+    ii_.ki = KeyBdInput(0, hexKeyCode, flags, 0, ctypes.pointer(extra))
     x = Input(ctypes.c_ulong(1), ii_)
     ctypes.windll.user32.SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))
 
 def ReleaseKey(hexKeyCode):
     extra = ctypes.c_ulong(0)
     ii_ = Input_I()
-    ii_.ki = KeyBdInput(0, hexKeyCode, 0x0008 | 0x0002, 0, ctypes.pointer(extra))
+    flags = 0x0008 | 0x0002  # KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP
+    if _is_extended_key(hexKeyCode):
+        flags |= 0x0001  # KEYEVENTF_EXTENDEDKEY
+    ii_.ki = KeyBdInput(0, hexKeyCode, flags, 0, ctypes.pointer(extra))
     x = Input(ctypes.c_ulong(1), ii_)
     ctypes.windll.user32.SendInput(1, ctypes.pointer(x), ctypes.sizeof(x))

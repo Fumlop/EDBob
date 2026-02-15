@@ -1,0 +1,64 @@
+{
+  "GlobalShoppingList": {
+    "BuyCommodities": {
+      "Liquid Oxygen": 1056,
+      "Steel": 4306,
+      "Titanium": 4843
+    },
+    "UpdateCommodityCount": true,
+    "FleetCarrierTransfer": false,
+    "Skip": false,
+    "Completed": false
+  },
+  "1": {
+    "SystemName": "Buy Station",
+    "StationName": "",
+    "GalaxyBookmarkType": "Favorites",
+    "GalaxyBookmarkNumber": 1,
+    "SystemBookmarkType": "Station",
+    "SystemBookmarkNumber": 1,
+    "SellCommodities": {},
+    "BuyCommodities": {
+      "Liquid Oxygen": 9999,
+      "Steel": 9999,
+      "Titanium": 9999
+    },
+    "Comment": "Buy commodities here",
+    "UpdateCommodityCount": true,
+    "FleetCarrierTransfer": false,
+    "Skip": false,
+    "Completed": false
+  },
+  "2": {
+    "SystemName": "Colonisation Ship",
+    "StationName": "System Colonisation Ship",
+    "GalaxyBookmarkType": "Favorites",
+    "GalaxyBookmarkNumber": 2,
+    "SystemBookmarkType": "Station",
+    "SystemBookmarkNumber": 1,
+    "SellCommodities": {
+      "ALL": 0
+    },
+    "BuyCommodities": {},
+    "Comment": "Deliver to colonisation ship",
+    "UpdateCommodityCount": true,
+    "FleetCarrierTransfer": false,
+    "Skip": false,
+    "Completed": false
+  },
+  "3": {
+    "SystemName": "REPEAT",
+    "StationName": "",
+    "GalaxyBookmarkType": "",
+    "GalaxyBookmarkNumber": 0,
+    "SystemBookmarkType": "",
+    "SystemBookmarkNumber": 0,
+    "SellCommodities": {},
+    "BuyCommodities": {},
+    "Comment": null,
+    "UpdateCommodityCount": false,
+    "FleetCarrierTransfer": false,
+    "Skip": false,
+    "Completed": false
+  }
+}

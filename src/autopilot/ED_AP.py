@@ -1,8 +1,11 @@
+import ctypes
 import math
 import os
+import threading
 import time
 import traceback
-from datetime import timedelta
+from copy import copy
+from datetime import datetime, timedelta
 from time import sleep
 from enum import Enum
 from math import atan, degrees
@@ -11,6 +14,7 @@ from string import Formatter
 from tkinter import messagebox
 
 import cv2
+import kthread
 from ultralytics import YOLO
 
 from src.gui.EDAPColonizeEditor import read_json_file, write_json_file
@@ -18,15 +22,25 @@ from src.screen.MachineLearning import MachLearn
 from simple_localization import LocalizationManager
 
 from src.autopilot.EDAP_EDMesg_Server import EDMesgServer
+from src.core.EDAP_data import (
+    FlagsDocked, FlagsLanded, FlagsSupercruise, FlagsFsdMassLocked,
+    FlagsFsdCharging, FlagsFsdCooldown, FlagsFsdJump, FlagsLowFuel,
+    FlagsOverHeating, FlagsHasLatLong, FlagsBeingInterdicted,
+    FlagsAnalysisMode, Flags2FsdHyperdriveCharging, Flags2FsdScoActive,
+    Flags2GlideMode, GuiFocusNoFocus, ship_size_map, ship_rpy_sc_50,
+)
+from src.core.directinput import SCANCODE
+from src.core.EDlogger import logger, logging
 from src.ed.EDGalaxyMap import EDGalaxyMap
 from src.ed.EDGraphicsSettings import EDGraphicsSettings
 from src.ed.EDShipControl import EDShipControl
 from src.ed.EDStationServicesInShip import EDStationServicesInShip
 from src.ed.EDSystemMap import EDSystemMap
-from src.core.EDlogger import logging
 from src.screen import Image_Templates
 from src.screen import Screen
 from src.screen import Screen_Regions
+from src.screen.Screen import set_focus_elite_window
+from src.screen.Screen_Regions import Quad
 from src.autopilot import EDWayPoint
 from src.ed import EDJournal
 from src.ed import EDKeys

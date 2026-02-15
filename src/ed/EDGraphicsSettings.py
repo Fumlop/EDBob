@@ -56,9 +56,11 @@ class EDGraphicsSettings:
             self.monitor = self.display_settings['DisplayConfig']['Monitor']
             logger.debug(f"Elite Dangerous Display Config 'Monitor': {self.monitor}.")
 
-        if not self.fullscreen_str.upper() == "Borderless".upper():
-            logger.error("Elite Dangerous is not set to BORDERLESS in graphics display settings.")
-            raise Exception('Elite Dangerous is not set to BORDERLESS in graphics display settings.')
+        if self.fullscreen_str.upper() == "Fullscreen".upper():
+            logger.error("Elite Dangerous is set to FULLSCREEN. Use Borderless or Windowed mode.")
+            raise Exception('Elite Dangerous is set to FULLSCREEN. Use Borderless or Windowed mode.')
+        if self.fullscreen_str.upper() == "Windowed".upper():
+            logger.warning("Elite Dangerous is in WINDOWED mode. Borderless is recommended but Windowed will work.")
 
         # Process graphics settings
         if self.settings is not None:
