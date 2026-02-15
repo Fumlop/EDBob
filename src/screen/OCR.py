@@ -1,5 +1,4 @@
 from __future__ import annotations
-import time
 
 import cv2
 import numpy as np
@@ -128,62 +127,6 @@ class OCR:
         rect = region['rect']
         image = self.screen.get_screen_rect_pct(rect)
         return image
-
-    def wait_for_ui_element(self, ap, region, timeout=15, color='orange') -> bool:
-        """ Wait for a UI element to appear by checking for colored pixels in a region.
-        Replaces wait_for_text -- instead of OCR, counts orange/white pixels via HSV filtering.
-        @param ap: ED_AP instance.
-        @param region: The screen region to check in % (0.0 - 1.0) of the full screen.
-        @param timeout: Time to wait for element in seconds.
-        @param color: Color to detect -- 'orange' for ED UI text, 'white' for white text.
-        @return: True if enough colored pixels found, else False.
-        """
-        # Draw box around region
-        abs_rect = self.screen.screen_rect_to_abs(region['rect'])
-        if ap.debug_overlay:
-            ap.overlay.overlay_rect1('wait_for_ui_element', abs_rect, (0, 255, 0), 2)
-            ap.overlay.overlay_paint()
-
-        # HSV ranges for ED UI colors
-        if color == 'orange':
-            lower = np.array([10, 100, 150])
-            upper = np.array([30, 255, 255])
-        else:  # white
-            lower = np.array([0, 0, 200])
-            upper = np.array([180, 40, 255])
-
-        # Minimum pixel count threshold (relative to region size)
-        min_pixel_ratio = 0.01  # 1% of region must be the target color
-
-        start_time = time.time()
-        while True:
-            if time.time() > (start_time + timeout):
-                return False
-
-            image = self.capture_region_pct(region)
-            if image is None:
-                time.sleep(0.25)
-                continue
-
-            # Convert to HSV and count matching pixels
-            hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-            mask = cv2.inRange(hsv, lower, upper)
-            pixel_count = cv2.countNonZero(mask)
-            total_pixels = image.shape[0] * image.shape[1]
-            ratio = pixel_count / total_pixels if total_pixels > 0 else 0
-
-            if ap.debug_overlay:
-                ap.overlay.overlay_floating_text('wait_for_ui_element',
-                                                 f'pixels: {pixel_count} ({ratio:.3f})',
-                                                 abs_rect[0], abs_rect[1] - 25, (0, 255, 0))
-                ap.overlay.overlay_paint()
-
-            if ratio >= min_pixel_ratio:
-                return True
-
-            time.sleep(0.25)
-
-        return False
 
     def detect_highlighted_tab_index(self, tab_bar_image, num_tabs) -> int:
         """ Detect which tab is highlighted (active) in a tab bar image by finding
