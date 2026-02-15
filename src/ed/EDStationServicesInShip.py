@@ -146,14 +146,10 @@ class EDStationServicesInShip:
             self.keys.send('UI_Down')
             self.keys.send('UI_Select')  # Select Commodities
 
-        if self.ap.debug_overlay:
-            mkt = Quad.from_rect(self.reg['commodities_market']['rect'])
-            self.ap.overlay.overlay_quad_pct('commodities_market', mkt, (0, 255, 0), 2, 5)
-            self.ap.overlay.overlay_paint()
-
-        # Wait for screen to appear
-        res = self.ocr.wait_for_ui_element(self.ap, self.reg['title'], timeout=15)
-        return res
+        # Wait for market screen transition. The actual "market loaded" check
+        # happens in EDWayPoint via Market.json timestamp polling.
+        sleep(2)
+        return True
 
     @staticmethod
     def sell_to_colonisation_ship(ap):
