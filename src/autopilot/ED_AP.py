@@ -1031,38 +1031,69 @@ class EDAutopilot:
         hgt = scr_reg.templates.template['navpoint']['height']
 
         # cut out the compass from the region
-        pad = 5
-        # compass_image = full_compass_image[abs(pt[1]-pad): pt[1]+c_hgt+pad, abs(pt[0]-pad): pt[0]+c_wid+pad].copy()
         compass_image = Screen.crop_image_pix(full_compass_image, compass_quad)
-        #compass_image_gray = cv2.cvtColor(compass_image, cv2.COLOR_BGR2GRAY)
-        # compass_image_gray = self.scrReg.equalize(compass_image)
+        comp_h, comp_w = compass_image.shape[:2]
 
-        # find the nav point within the compass box
-        navpt_image, (n_minVal, n_maxVal, n_minLoc, n_maxLoc), match = scr_reg.match_template_in_image_x3(compass_image, 'navpoint')
-        navpt_image_beh, (n_minVal, n_maxVal_beh, n_minLoc, n_maxLoc_beh), match_beh = scr_reg.match_template_in_image_x3(compass_image, 'navpoint-behind')
-
-        n_pt = n_maxLoc
-        n_pt_beh = n_maxLoc_beh
-
-        compass_x_min = 0
-        compass_x_max = compass_quad.get_width() - wid
-        compass_y_min = 0
-        compass_y_max = compass_quad.get_height() - hgt
-
-        # Check if the Nav Point is visible. If not, the Nav Point Behind may be visible
-        if n_maxVal > scr_reg.navpoint_match_thresh:
-            final_z_pct = 1.0  # Ahead
-            n_pt = n_maxLoc
+        # Find nav dot by color instead of template matching
+        # Convert to HSV for color-based detection
+        if compass_image.shape[2] == 4:
+            compass_bgr = cv2.cvtColor(compass_image, cv2.COLOR_BGRA2BGR)
         else:
-            final_z_pct = -1.0  # Behind
-            n_pt = n_maxLoc_beh
+            compass_bgr = compass_image
+        compass_hsv = cv2.cvtColor(compass_bgr, cv2.COLOR_BGR2HSV)
 
-        # Continue calc
-        final_x_pct = 2*(((n_pt[0]-compass_x_min)/(compass_x_max-compass_x_min))-0.5)  # X as percent (-1.0 to 1.0, 0.0 in the center)
+        # Mask out the orange compass ring (hue ~5-25, high saturation)
+        orange_mask = cv2.inRange(compass_hsv, (5, 100, 100), (25, 255, 255))
+
+        # 1) Look for bright white/yellow dot (front target): high value, low-mid saturation
+        bright_mask = cv2.inRange(compass_hsv, (0, 0, 200), (180, 80, 255))
+        bright_mask = cv2.bitwise_and(bright_mask, cv2.bitwise_not(orange_mask))
+
+        # 2) Look for blue/cyan dot (behind target): hue ~85-130
+        blue_mask = cv2.inRange(compass_hsv, (85, 50, 100), (130, 255, 255))
+
+        # Try front dot first, fall back to behind dot
+        final_z_pct = 0.0
+        dot_cx, dot_cy = comp_w / 2, comp_h / 2  # default to center
+
+        for z_val, mask in [(1.0, bright_mask), (-1.0, blue_mask)]:
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # Filter by area: nav dot is roughly 10-200 pixels in a 64x65 crop
+            valid = [c for c in contours if 5 < cv2.contourArea(c) < comp_w * comp_h * 0.3]
+            if valid:
+                largest = max(valid, key=cv2.contourArea)
+                M = cv2.moments(largest)
+                if M["m00"] > 0:
+                    dot_cx = M["m10"] / M["m00"]
+                    dot_cy = M["m01"] / M["m00"]
+                    final_z_pct = z_val
+                    break
+
+        if final_z_pct == 0.0:
+            # Neither front nor behind dot found -- fall back to template matching
+            navpt_image, (n_minVal, n_maxVal, n_minLoc, n_maxLoc), match = scr_reg.match_template_in_image_x3(compass_image, 'navpoint')
+            navpt_image_beh, (n_minVal, n_maxVal_beh, n_minLoc, n_maxLoc_beh), match_beh = scr_reg.match_template_in_image_x3(compass_image, 'navpoint-behind')
+            if n_maxVal > scr_reg.navpoint_match_thresh:
+                final_z_pct = 1.0
+                dot_cx = n_maxLoc[0] + wid / 2
+                dot_cy = n_maxLoc[1] + hgt / 2
+            elif n_maxVal_beh > 0.3:
+                final_z_pct = -1.0
+                dot_cx = n_maxLoc_beh[0] + wid / 2
+                dot_cy = n_maxLoc_beh[1] + hgt / 2
+            else:
+                return None
+
+        # Convert dot position to percentage (-1.0 to 1.0)
+        compass_x_max = comp_w
+        compass_y_max = comp_h
+
+        # Continue calc -- dot_cx/dot_cy is the centroid of the nav dot
+        final_x_pct = 2 * (dot_cx / compass_x_max) - 1.0  # X as percent (-1.0 to 1.0, 0.0 in the center)
         final_x_pct = final_x_pct - self._nav_cor_x
         final_x_pct = max(min(final_x_pct, 1.0), -1.0)
 
-        final_y_pct = -2*(((n_pt[1]-compass_y_min)/(compass_y_max-compass_y_min))-0.5)  # Y as percent (-1.0 to 1.0, 0.0 in the center)
+        final_y_pct = -(2 * (dot_cy / compass_y_max) - 1.0)  # Y as percent (-1.0 to 1.0, 0.0 in the center), flip Y
         final_y_pct = final_y_pct - self._nav_cor_y
         final_y_pct = max(min(final_y_pct, 1.0), -1.0)
 
@@ -1585,73 +1616,82 @@ class EDAutopilot:
         """Check if the dot is on the vertical centerline (near 0 or ±180 degrees)."""
         return abs(roll_deg) < close or (180 - abs(roll_deg)) < close
 
-    def _hold_until_aligned(self, scr_reg, axis, off, close=5.0, timeout=15.0):
-        """Hold a movement key while continuously reading the compass, release when aligned.
-        No rates, no calibration -- pure visual feedback loop.
+    def _pulse_until_aligned(self, scr_reg, axis, off, close=5.0, timeout=30.0):
+        """Hold movement key, check compass periodically, release when aligned or overshot.
+        Uses long holds (SC roll is very slow) with periodic compass checks.
         @param axis: 'roll', 'pit', or 'yaw'
         @param off: Current offset dict.
         @param close: Threshold in degrees to consider aligned.
-        @param timeout: Max seconds to hold the key.
+        @param timeout: Max seconds total.
         @return: New offset dict, or None if compass lost.
         """
+        start = time.time()
         deg = off[axis]
 
+        # Check if already aligned
         if axis == 'roll':
-            # For roll: target whichever is closer -- 0 (top) or ±180 (bottom)
             if self._roll_on_centerline(deg, close):
                 return off
-            # Decide direction: roll towards nearest centerline point (0 or ±180)
-            # abs(roll) < 90 means 0 is closer, abs(roll) > 90 means 180 is closer
+            # Direction to nearest centerline (0 or 180)
             if abs(deg) <= 90:
-                # Target 0 (top): roll right if dot is on right (deg>0), left if on left (deg<0)
                 key = 'RollRightButton' if deg > 0 else 'RollLeftButton'
             else:
-                # Target ±180 (bottom): roll the short way
                 key = 'RollLeftButton' if deg > 0 else 'RollRightButton'
+            dist = min(abs(deg), 180 - abs(deg))
         elif axis == 'pit':
             if abs(deg) < close:
                 return off
             key = 'PitchUpButton' if deg > 0 else 'PitchDownButton'
+            dist = abs(deg)
         else:
             if abs(deg) < close:
                 return off
             key = 'YawRightButton' if deg > 0 else 'YawLeftButton'
+            dist = abs(deg)
 
-        logger.info(f"Hold-align {axis}: {deg:.1f}deg, key={key}")
+        logger.info(f"Align {axis}: {deg:.1f}deg, dist={dist:.1f}, key={key}")
 
-        # Press key (hold)
-        self.keys.send(key, state=1)
-        start = time.time()
+        # Hold key and check compass periodically
         last_off = off
+        self.keys.send(key, state=1)  # press and hold
 
         try:
             while (time.time() - start) < timeout:
-                sleep(0.5)  # check ~2x per second, compass read is expensive (screenshot + ML + template match)
+                # Check interval: random 1.5-2.5s (SC is slow, need time between reads)
+                sleep(random.uniform(1.5, 2.5))
+
                 new_off = self.get_nav_offset(scr_reg)
                 if new_off is None:
                     continue
-
                 last_off = new_off
 
                 if axis == 'roll':
-                    # Stop when dot is on the vertical centerline (0 or ±180)
                     if self._roll_on_centerline(new_off['roll'], close):
-                        logger.info(f"Hold-align roll: on centerline at {new_off['roll']:.1f}deg ({time.time()-start:.1f}s)")
+                        logger.info(f"Align roll: on centerline at {new_off['roll']:.1f}deg ({time.time()-start:.1f}s)")
                         break
+                    # Overshoot: crossed the centerline target
+                    new_dist = min(abs(new_off['roll']), 180 - abs(new_off['roll']))
+                    # If we were heading to 180 and crossed it, or heading to 0 and crossed it
+                    if new_dist > dist + 10:
+                        logger.info(f"Align roll: overshot, dist went {dist:.1f}->{new_dist:.1f}, stopping")
+                        break
+                    dist = new_dist
+                    logger.info(f"Align roll: {new_off['roll']:.1f}deg, dist={new_dist:.1f}")
                 else:
-                    # Stop when aligned on this axis
                     if abs(new_off[axis]) < close:
-                        logger.info(f"Hold-align {axis}: aligned at {new_off[axis]:.1f}deg ({time.time()-start:.1f}s)")
+                        logger.info(f"Align {axis}: aligned at {new_off[axis]:.1f}deg ({time.time()-start:.1f}s)")
                         break
-                    # Stop if overshot
+                    # Overshoot: sign flipped
                     if (deg > 0 and new_off[axis] < -close) or (deg < 0 and new_off[axis] > close):
-                        logger.info(f"Hold-align {axis}: overshot to {new_off[axis]:.1f}deg, stopping")
+                        logger.info(f"Align {axis}: overshot to {new_off[axis]:.1f}deg, stopping")
                         break
+                    logger.info(f"Align {axis}: {new_off[axis]:.1f}deg")
+            else:
+                logger.warning(f"Align {axis}: timeout after {timeout}s")
         finally:
-            # Release key
-            self.keys.send(key, state=0)
+            self.keys.send(key, state=0)  # release
 
-        sleep(0.2)
+        sleep(random.uniform(0.3, 0.6))
         final = self.get_nav_offset(scr_reg)
         return final if final is not None else last_off
 
@@ -1684,20 +1724,20 @@ class EDAutopilot:
 
             # Step 1: ALWAYS roll to put dot on vertical centerline (0 or ±180)
             if not self._roll_on_centerline(off['roll'], close):
-                off = self._hold_until_aligned(scr_reg, 'roll', off, close)
+                off = self._pulse_until_aligned(scr_reg, 'roll', off, close)
                 if off is None:
                     continue
 
             # Step 2: Pitch to center. After roll, dot is at top (roll~0) or bottom (roll~180).
             # Pitch moves the dot towards pit=0. Works for both in-front and behind cases.
             if off is not None and abs(off['pit']) > close:
-                off = self._hold_until_aligned(scr_reg, 'pit', off, close)
+                off = self._pulse_until_aligned(scr_reg, 'pit', off, close)
                 if off is None:
                     continue
 
             # Step 3: Yaw for final horizontal correction
             if off is not None and abs(off['yaw']) > close:
-                off = self._hold_until_aligned(scr_reg, 'yaw', off, close)
+                off = self._pulse_until_aligned(scr_reg, 'yaw', off, close)
 
             if off is not None:
                 logger.info(f"Compass after align: pit={off['pit']:.1f} yaw={off['yaw']:.1f}")

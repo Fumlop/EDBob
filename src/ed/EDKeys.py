@@ -32,6 +32,7 @@ class EDKeys:
         self.key_def_hold_time = 0.2  # Default hold time for a key press
         self.key_repeat_delay = 0.1  # Delay between key press repeats
         self.activate_window = True
+        self._last_focus_check = 0  # timestamp of last focus check
 
         self.keys_to_obtain = [
             # Flight
@@ -341,10 +342,11 @@ class EDKeys:
         key_name = self.reversed_dict.get(key['key'], "Key not found")
         logger.info(f"send: {key_binding} -> {key_name} (scancode={key['key']}, hold={hold}, state={state})")
 
-        # Focus Elite window before sending keys
-        if self.activate_window:
+        # Focus Elite window before sending keys (only check every 5 seconds to avoid disrupting holds)
+        import time as _time
+        if self.activate_window and (_time.time() - self._last_focus_check) > 5.0:
+            self._last_focus_check = _time.time()
             set_focus_elite_window()
-            sleep(0.2)
 
         for i in range(repeat):
 

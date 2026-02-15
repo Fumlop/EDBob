@@ -113,6 +113,9 @@ class Screen:
         else:
             logger.debug(f'Found Elite Dangerous window position: {ed_rect}')
 
+        # Use ED window client area for screen dimensions (handles windowed/borderless correctly)
+        ed_client_rect = self.get_elite_client_rect()
+
         # Examine all monitors to determine match with ED
         self.mons = self.mss.monitors
         mon_num = 0
@@ -125,24 +128,41 @@ class Screen:
                         # Get information of monitor
                         self.monitor_number = mon_num
                         self.mon = self.mss.monitors[self.monitor_number]
-                        self.screen_width = item['width']
-                        self.screen_height = item['height']
-                        self.aspect_ratio = self.screen_width / self.screen_height
-                        self.screen_left = item['left']
-                        self.screen_top = item['top']
-                        logger.debug(f'Elite Dangerous is on monitor {mon_num}.')
                         default = False
+
+                        # Use ED client area dimensions instead of monitor dimensions
+                        # This handles windowed borderless where taskbar reduces game area
+                        if ed_client_rect is not None:
+                            self.screen_width = ed_client_rect[2] - ed_client_rect[0]
+                            self.screen_height = ed_client_rect[3] - ed_client_rect[1]
+                            self.screen_left = ed_client_rect[0]
+                            self.screen_top = ed_client_rect[1]
+                            logger.info(f'ED client area: {self.screen_width}x{self.screen_height} at ({self.screen_left},{self.screen_top})')
+                        else:
+                            self.screen_width = item['width']
+                            self.screen_height = item['height']
+                            self.screen_left = item['left']
+                            self.screen_top = item['top']
+
+                        self.aspect_ratio = self.screen_width / self.screen_height
+                        logger.debug(f'Elite Dangerous is on monitor {mon_num}.')
                         break
 
             # Store the first monitor incase we need it as default
             if mon_num == 1:
                 self.monitor_number = mon_num
                 self.mon = self.mss.monitors[self.monitor_number]
-                self.screen_width = item['width']
-                self.screen_height = item['height']
+                if ed_client_rect is not None:
+                    self.screen_width = ed_client_rect[2] - ed_client_rect[0]
+                    self.screen_height = ed_client_rect[3] - ed_client_rect[1]
+                    self.screen_left = ed_client_rect[0]
+                    self.screen_top = ed_client_rect[1]
+                else:
+                    self.screen_width = item['width']
+                    self.screen_height = item['height']
+                    self.screen_left = item['left']
+                    self.screen_top = item['top']
                 self.aspect_ratio = self.screen_width / self.screen_height
-                self.screen_left = item['left']
-                self.screen_top = item['top']
 
             # Next monitor
             mon_num = mon_num + 1
@@ -215,6 +235,32 @@ class Screen:
             return None
 
     @staticmethod
+    def get_elite_client_rect() -> typing.Tuple[int, int, int, int] | None:
+        """ Gets the ED client area rectangle (game content, excluding title bar/borders).
+        Returns (left, top, right, bottom) in screen coordinates, or None.
+        """
+        hwnd = win32gui.FindWindow(None, elite_dangerous_window)
+        if hwnd:
+            try:
+                client_rect = win32gui.GetClientRect(hwnd)  # relative to window
+                # Convert to screen coordinates
+                import ctypes
+                class POINT(ctypes.Structure):
+                    _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+                pt = POINT(0, 0)
+                ctypes.windll.user32.ClientToScreen(hwnd, ctypes.byref(pt))
+                left = pt.x
+                top = pt.y
+                right = left + client_rect[2]
+                bottom = top + client_rect[3]
+                logger.debug(f'ED client rect: ({left},{top},{right},{bottom})')
+                return (left, top, right, bottom)
+            except Exception as e:
+                logger.warning(f'get_elite_client_rect failed: {e}')
+                return None
+        return None
+
+    @staticmethod
     def elite_window_exists() -> bool:
         """ Does the ED Client Window exist (i.e. is ED running)
         """
@@ -251,8 +297,8 @@ class Screen:
     def get_screen(self, x_left, y_top, x_right, y_bot, rgb=True):    # if absolute need to scale??
         """ Get screen from co-ords in pixels."""
         monitor = {
-            "top": self.mon["top"] + int(y_top),
-            "left": self.mon["left"] + int(x_left),
+            "top": self.screen_top + int(y_top),
+            "left": self.screen_left + int(x_left),
             "width": int(x_right - x_left),
             "height": int(y_bot - y_top),
             "mon": self.monitor_number,
