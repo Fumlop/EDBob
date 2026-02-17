@@ -1095,14 +1095,14 @@ class EDAutopilot:
         # if sun in front of us, pitch up in 15deg steps until clear
         step_time = 15.0 / self.pitchrate
         while self.is_sun_dead_ahead(scr_reg):
-            logger.info(f"Sun ahead, pitching up {step_time:.1f}s (30deg)")
+            logger.info(f"Sun ahead, pitching up {step_time:.1f}s (15deg)")
             self.keys.send('PitchUpButton', hold=step_time)
             sleep(0.3)
             if (time.time() - starttime) > fail_safe_timeout:
                 logger.debug('sun avoid failsafe timeout')
                 break
 
-        self.set_speed_50()
+        self.set_speed_100()
 
     @staticmethod
     def _roll_on_centerline(roll_deg, close):
@@ -2325,8 +2325,8 @@ class EDAutopilot:
                 self.keys.send('SetSpeed25')  # deactivate SC Assist
                 pitch_time = 90.0 / self.pitchrate
                 self.keys.send('PitchUpButton', hold=pitch_time)
-                self.keys.send('SetSpeed50')
-                sleep(30)  # fly past at normal SC speed
+                self.set_speed_100()
+                sleep(30)  # fly past at full speed
                 self.keys.send('PitchDownButton', hold=pitch_time)  # pitch back toward target
                 self.set_speed_0()
                 self.compass_align(scr_reg)
@@ -2343,8 +2343,8 @@ class EDAutopilot:
                 self.keys.send('SetSpeed25')  # deactivate SC Assist
                 pitch_time = 90.0 / self.pitchrate
                 self.keys.send('PitchUpButton', hold=pitch_time)
-                self.keys.send('SetSpeed50')
-                sleep(30)  # fly past at normal SC speed
+                self.set_speed_100()
+                sleep(30)  # fly past at full speed
                 self.keys.send('PitchDownButton', hold=pitch_time)  # pitch back toward target
                 self.set_speed_0()
                 self.compass_align(scr_reg)
