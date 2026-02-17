@@ -268,15 +268,12 @@ class APGui:
             self.update_statusline(body)
         elif msg == 'waypoint_stop':
             logger.debug("Detected 'waypoint_stop' callback msg")
-            self.checkboxvar['Waypoint Assist'].set(0)
-            self.check_cb('Waypoint Assist')
+            self.after(0, lambda: (self.checkboxvar['Waypoint Assist'].set(0), self.check_cb('Waypoint Assist')))
         elif msg == 'waypoint_start':
-            self.checkboxvar['Waypoint Assist'].set(1)
-            self.check_cb('Waypoint Assist')
+            self.after(0, lambda: (self.checkboxvar['Waypoint Assist'].set(1), self.check_cb('Waypoint Assist')))
         elif msg == 'stop_all_assists':
             logger.debug("Detected 'stop_all_assists' callback msg")
-            self.checkboxvar['Waypoint Assist'].set(0)
-            self.check_cb('Waypoint Assist')
+            self.after(0, lambda: (self.checkboxvar['Waypoint Assist'].set(0), self.check_cb('Waypoint Assist')))
 
         elif msg == 'jumpcount':
             self.update_jumpcount(body)
