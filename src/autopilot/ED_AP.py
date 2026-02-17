@@ -2324,10 +2324,10 @@ class EDAutopilot:
                 logger.info(f"sc_assist: ApproachBody detected: {approach_body}")
                 self.keys.send('SetSpeed25')  # deactivate SC Assist
                 pitch_time = 90.0 / self.pitchrate
-                self.keys.send('PitchUpButton', hold=pitch_time)
-                self.set_speed_100()
-                self.start_sco_monitoring()
-                sleep(5)  # SCO burst
+                self.keys.send('PitchDownButton', hold=pitch_time)
+                self.keys.send('SetSpeed50')
+                sleep(30)  # fly past at normal SC speed
+                self.keys.send('PitchUpButton', hold=pitch_time)  # target now below
                 self.set_speed_0()
                 self.compass_align(scr_reg)
                 self.keys.send('SetSpeed75')  # re-engage SC Assist
@@ -2341,13 +2341,15 @@ class EDAutopilot:
                 self.ap_ckb('log', 'Target obscured by body -- evading')
                 logger.info("sc_assist: occlusion warning text detected")
                 self.keys.send('SetSpeed25')  # deactivate SC Assist
-                pitch_time = 45.0 / self.pitchrate
-                self.keys.send('PitchUpButton', hold=pitch_time)
-                self.set_speed_100()
-                sleep(15)
-                self.set_speed_25()
+                pitch_time = 90.0 / self.pitchrate
+                self.keys.send('PitchDownButton', hold=pitch_time)
+                self.keys.send('SetSpeed50')
+                sleep(30)  # fly past at normal SC speed
+                self.keys.send('PitchUpButton', hold=pitch_time)  # target now below, compass_align finds it fast
+                self.set_speed_0()
                 self.compass_align(scr_reg)
                 self.keys.send('SetSpeed75')  # re-engage SC Assist
+                sleep(5)
                 sc_assist_cruising = True
                 continue
 
