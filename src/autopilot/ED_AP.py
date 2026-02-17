@@ -1304,7 +1304,9 @@ class EDAutopilot:
         sleep(0.3)
         new_off = self.get_nav_offset(scr_reg)
         if new_off and new_off['z'] >= 0:
-            moved = abs(new_off['roll'] - off['roll'])
+            # Roll wraps at 180/-180, use shortest angular difference
+            diff = new_off['roll'] - off['roll']
+            moved = abs((diff + 180) % 360 - 180)
             if moved > 5.0:
                 self.rollrate = moved / CAL_PULSE
                 logger.info(f"calibrate_rates: rollrate = {self.rollrate:.1f} deg/s")
@@ -1365,9 +1367,9 @@ class EDAutopilot:
                     align_tries += 1  # stuck flips count
 
                 pitch_time = 180.0 / self.pitchrate
-                logger.info(f"Compass: target behind, pitching up {pitch_time:.1f}s")
+                logger.info(f"Compass: target behind, pitching down {pitch_time:.1f}s")
                 self.ap_ckb('log', 'Target behind, flipping')
-                self.keys.send('PitchUpButton', hold=pitch_time)
+                self.keys.send('PitchDownButton', hold=pitch_time)
                 sleep(0.5)
                 prev_off = off
                 continue  # flip itself doesn't count
@@ -1389,7 +1391,7 @@ class EDAutopilot:
                 if off.get('z', 1) < 0:
                     logger.info("Compass: target went behind during roll, flipping")
                     pitch_time = 180.0 / self.pitchrate
-                    self.keys.send('PitchUpButton', hold=pitch_time)
+                    self.keys.send('PitchDownButton', hold=pitch_time)
                     sleep(0.5)
                     continue
 
