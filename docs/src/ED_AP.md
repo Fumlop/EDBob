@@ -12,17 +12,17 @@ Core autopilot engine for Elite Dangerous that coordinates autonomous navigation
 ## Key Methods
 
 ### Core Assistance Systems
-- **fsd_assist(scr_reg)**: Execute multi-jump FSD navigation to destination system with refueling
-- **sc_assist(scr_reg, do_docking=True)**: Supercruise navigation to target station/location
+- **do_route_jump(scr_reg)**: Single FSD jump: align, jump, honk, refuel, position, throttle 0. Used by waypoint loop for one-jump-at-a-time multi-system routes
+- **sc_assist(scr_reg, do_docking=True)**: Supercruise navigation: sun avoid, compass align, activate SC Assist via nav panel, monitor for body obscuring (every 2.5s), wait for auto-drop
 - **waypoint_assist(keys, scr_reg)**: Follow waypoint file sequence for autonomous trading routes
 - **robigo_assist()**: Specialized flight assistance for Robigo Mines mission runs
 - **afk_combat_loop()**: AFK combat automation with shield/fighter monitoring
 - **dss_assist()**: Deep Space Scanner assistance
-- **single_waypoint_assist()**: Navigate to single system/station waypoint
 
 ### Navigation & Targeting
 - **get_nav_offset(scr_reg, disable_auto_cal=False)**: Calculate navigation point offset on compass
-- **get_target_offset(scr_reg, disable_auto_cal=False)**: Calculate target reticle offset
+- **get_target_offset(scr_reg, disable_auto_cal=False)**: Calculate target reticle offset using color-based circle detection (orange normal, grey occluded)
+- **_find_target_circle(image_bgr)**: HSV color filter + contour detection for target circle (replaces template matching)
 - **compass_align(scr_reg)**: Align ship heading to navigation point
 - **sc_target_align(scr_reg)**: Align ship to target object in supercruise
 - **sun_avoid(scr_reg)**: Detect and avoid star hazards
@@ -59,7 +59,6 @@ Core autopilot engine for Elite Dangerous that coordinates autonomous navigation
 - **update_config()**: Save current config state to AP.json
 - **load_ship_configs()**: Load ship-specific configuration overrides
 - **load_ship_configuration(ship_type)**: Load settings for specific ship type
-- **set_fsd_assist(enable)**: Enable/disable FSD assistance mode
 - **set_sc_assist(enable)**: Enable/disable supercruise assistance mode
 - **set_waypoint_assist(enable)**: Enable/disable waypoint mode
 - **set_robigo_assist(enable)**: Enable/disable Robigo mode
@@ -80,7 +79,7 @@ Core autopilot engine for Elite Dangerous that coordinates autonomous navigation
 State is managed through:
 - **config dict**: Loaded from AP.json containing user settings, UI offsets, keybinds, voice settings
 - **ship_configs dict**: Per-ship configuration overrides (compass_scale, yaw/roll/pitch rates)
-- **Assistance mode flags**: Boolean flags track active assistance (fsd_assist_enabled, sc_assist_enabled, etc.)
+- **Assistance mode flags**: Boolean flags track active assistance (sc_assist_enabled, waypoint_assist_enabled, etc.)
 - **Derived state**: Navigation corrections (_nav_cor_x/_nav_cor_y), target alignment limits, FOV calculations
 - **Ship state**: Current ship type, jump/refuel counters, ETA tracking
 - **Overlay state**: AP status text, FSS detection results, debug display toggles
@@ -97,7 +96,8 @@ State is managed through:
 
 ## Notes
 - Large monolithic class (3600+ lines) handling multiple autopilot modes; primary execution hub
-- Heavy reliance on screen detection and template matching for game interaction
+- Increasingly uses color-based detection (HSV filtering) over template matching for resolution independence
+- SC Assist workflow: sun_avoid -> compass_align -> activate_sc_assist (nav panel) -> monitor loop with body avoidance (25% throttle, roll+pitch to evade, SC Assist re-aligns automatically)
 - Thread-based architecture with engine_loop running continuously; uses EDAP_Interrupt exception for clean shutdown
 - Extensive ship calibration requirements; compass/target alignment uses machine learning assistance
 - State machine orchestrates multiple assistance modes with proper cleanup and mode transitions

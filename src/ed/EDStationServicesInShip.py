@@ -9,6 +9,7 @@ from src.core.EDAP_data import GuiFocusStationServices
 from src.ed.EDJournal import StationType
 from src.ed.MarketParser import MarketParser
 from src.ed.StatusParser import StatusParser
+from src.ed import MenuNav
 from time import sleep
 from src.core.EDlogger import logger
 from src.screen.Screen_Regions import Quad, scale_region, load_calibrated_regions
@@ -51,33 +52,27 @@ class EDStationServicesInShip:
         load_calibrated_regions('EDStationServicesInShip', self.reg)
 
     def goto_station_services(self) -> bool:
-        """ Goto Station Services. """
-        # Go to cockpit view
-        self.ap.ship_control.goto_cockpit_view()
+        """ Goto Station Services. Delegates to MenuNav.open_station_services. """
+        res = MenuNav.open_station_services(self.keys, self.status_parser)
 
-        self.keys.send("UI_Up", repeat=3)  # go to very top (refuel line)
-        sleep(0.3)
-        self.keys.send("UI_Down")  # station services
-        sleep(0.3)
-        self.keys.send("UI_Select")  # station services
-
-        if self.ap.debug_overlay:
+        if res and self.ap.debug_overlay:
             stn_svcs = Quad.from_rect(self.reg['station_services']['rect'])
             self.ap.overlay.overlay_quad_pct('stn_svcs', stn_svcs, (0, 255, 0), 2, 5)
             self.ap.overlay.overlay_paint()
 
-        # Wait for Station Services to appear (Status.json GuiFocus check)
-        res = self.status_parser.wait_for_gui_focus(GuiFocusStationServices, timeout=15)
         return res
 
     def goto_construction_services(self) -> bool:
-        """ Goto Construction Services. This is for an Orbital Construction Site. """
-        # Go to cockpit view
-        self.ap.ship_control.goto_cockpit_view()
-
-        self.keys.send("UI_Up", repeat=3)  # go to very top (refuel line)
-        self.keys.send("UI_Down")  # station services
-        self.keys.send("UI_Select")  # station services
+        """ Goto Construction Services. This is for an Orbital Construction Site.
+        Same menu path as Station Services, just no GuiFocus wait.
+        """
+        MenuNav.goto_cockpit(self.keys, self.status_parser)
+        MenuNav.realign_cursor(self.keys, hold=3)
+        sleep(0.3)
+        self.keys.send("UI_Select")  # select refuel line
+        sleep(0.3)
+        self.keys.send("UI_Down")    # construction services
+        self.keys.send("UI_Select")  # open it
 
         # TODO - replace with OCR from OCR branch?
         sleep(3)  # wait for new menu to finish rendering
@@ -161,24 +156,8 @@ class EDStationServicesInShip:
 
     @staticmethod
     def sell_to_colonisation_ship(ap):
-        """ Sell all cargo to a colonisation/construction ship.
-        """
-        ap.keys.send('UI_Left', repeat=3)  # Go to table
-        ap.keys.send('UI_Down', hold=2)  # Go to bottom
-        ap.keys.send('UI_Up')  # Select RESET/CONFIRM TRANSFER/TRANSFER ALL
-        ap.keys.send('UI_Left', repeat=2)  # Go to RESET
-        ap.keys.send('UI_Right', repeat=2)  # Go to TRANSFER ALL
-        ap.keys.send('UI_Select')  # Select TRANSFER ALL
-        sleep(0.5)
-
-        ap.keys.send('UI_Left')  # Go to CONFIRM TRANSFER
-        ap.keys.send('UI_Select')  # Select CONFIRM TRANSFER
-        sleep(2)
-
-        ap.keys.send('UI_Down')  # Go to EXIT
-        ap.keys.send('UI_Select')  # Select EXIT
-
-        sleep(2)  # give time to popdown menu
+        """ Sell all cargo to a colonisation/construction ship. Delegates to MenuNav. """
+        MenuNav.transfer_all_to_colonisation(ap.keys)
 
 
 class PassengerLounge:
@@ -220,6 +199,62 @@ class CommoditiesMarket:
                     'supply_demand_col': {'rect': [0.42, 0.227, 0.49, 0.90]}}
         self.commodity_row_width = 422  # Buy/sell item width in pixels at 1920x1080
         self.commodity_row_height = 35  # Buy/sell item height in pixels at 1920x1080
+        self._cursor_pos = 0  # current row in commodity list
+
+    def _ocr_quantity(self) -> int:
+        """Read the buy/sell quantity from the screen using OCR.
+        Returns the current quantity value, or -1 if OCR fails.
+        The quantity field shows 'NNN / MAX' -- we want the left number.
+        """
+        import numpy as np
+        try:
+            import easyocr
+        except ImportError:
+            return -1
+
+        # Capture the quantity input box (left number only, we already know max)
+        img = self.screen.get_screen_full()
+        # Crop the quantity input box (NNN/MAX field inside buy popup)
+        # Absolute pixel coords at 1920x1080, calibrated from OCR Area Value Commodity.png
+        x1, x2 = 460, 729
+        y1, y2 = 356, 421
+        crop = img[y1:y2, x1:x2]
+
+        # Threshold for orange text on dark background
+        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+        # Orange text: H=10-25, S>100, V>150
+        mask = cv2.inRange(hsv, np.array([5, 100, 150]), np.array([30, 255, 255]))
+        # Also white text
+        mask2 = cv2.inRange(hsv, np.array([0, 0, 200]), np.array([180, 40, 255]))
+        mask = cv2.bitwise_or(mask, mask2)
+
+        # Make white text on black bg for OCR
+        ocr_img = mask
+
+        from src.ed.EDGalaxyMap import _get_ocr_reader
+        reader = _get_ocr_reader()
+        results = reader.readtext(ocr_img, allowlist='0123456789', detail=0)
+        if results:
+            # Take only the first detected number (left side = current qty, ignore /MAX)
+            digits = ''.join(c for c in results[0] if c.isdigit())
+            if digits:
+                val = int(digits)
+                logger.info(f"OCR quantity: {val} (raw: {results})")
+                return val
+        logger.info(f"OCR quantity: failed (results: {results})")
+        return -1
+
+    def _set_buy_sell_quantity(self, keys, target_qty: int, max_qty: int):
+        """Set the buy/sell quantity in the popup dialog.
+        If target fills all free cargo, hold right to max.
+        Otherwise tap right for exact count.
+        """
+        target_qty = int(target_qty)
+        max_qty = int(max_qty)
+        if target_qty >= max_qty:
+            keys.send("UI_Right", hold=4)
+        else:
+            keys.send("UI_Right", hold=0.04, repeat=target_qty)
 
     def select_buy(self, keys) -> bool:
         """ Select Buy. Assumes on Commodities Market screen. """
@@ -232,12 +267,13 @@ class CommoditiesMarket:
 
         sleep(0.5)  # give time to bring up list
         keys.send('UI_Right')  # Go to top of commodities list
+        self._cursor_pos = 0
         return True
 
     def select_sell(self, keys) -> bool:
-        """ Select Buy. Assumes on Commodities Market screen. """
+        """ Select Sell. Assumes on Commodities Market screen. """
 
-        # Select Buy
+        # Select Sell
         keys.send("UI_Left", repeat=2)
         keys.send("UI_Up", repeat=4)
 
@@ -246,6 +282,7 @@ class CommoditiesMarket:
 
         sleep(0.5)  # give time to bring up list
         keys.send('UI_Right')  # Go to top of commodities list
+        self._cursor_pos = 0
         return True
 
     def buy_commodity(self, keys, name: str, qty: int, free_cargo: int) -> tuple[bool, int]:
@@ -288,41 +325,13 @@ class CommoditiesMarket:
                     self.market_parser.current_data['Items'][i]['StockBracket'] = 0
 
         if index > -1:
-            keys.send('UI_Up', hold=5.0)  # go up to top of list
-            sleep(1.0)
-            keys.send('UI_Down', hold=0.05, repeat=index)  # go down # of times user specified
-
-            # # Get the goods panel image
-            # goods_panel = self.capture_goods_panel()
-            # if goods_panel is None:
-            #     return False, 0
-            #
-            # # Find the selected item/menu (solid orange)
-            # img_selected, quad = self.ocr.get_highlighted_item_in_image(goods_panel,
-            #                                                             self.parent.sub_reg_size['commodity_name']['width'],
-            #                                                             self.parent.sub_reg_size['commodity_name']['height'])
-            # # Check if end of list.
-            # if img_selected is None:
-            #     # logger.debug(f"Off end of list. Did not find '{dst_name}' in list.")
-            #     return False, 0
-            #
-            # if self.ap.debug_overlay:
-            #     # Scale the selected item down to the scale of the tab bar
-            #     loc_pnl_quad = Quad.from_rect(self.parent.sub_reg['location_panel']['rect'])
-            #
-            #     # Overlay OCR result
-            #     self.ap.overlay.overlay_quad_pix('nav_panel_item', q_out, (0, 255, 0), 2)
-            #     self.ap.overlay.overlay_paint()
-            #
-            #     # OCR the selected item
-            #     sim_match = 0.8  # Similarity match 0.0 - 1.0 for 0% - 100%)
-            #     ocr_textlist = self.ocr.image_simple_ocr(img_selected)
-            #     if ocr_textlist is not None:
-            #         if self.ap.debug_overlay:
-            #             # Overlay OCR result
-            #             self.ap.overlay.overlay_floating_text('nav_panel_item_text', f'{str(ocr_textlist)}',
-            #                                                   q_out.get_left(), q_out.get_top() - 25, (0, 255, 0))
-            #             self.ap.overlay.overlay_paint()
+            # Navigate from current cursor position to target index
+            delta = index - self._cursor_pos
+            logger.info(f"Buy {name}: index={index}, cursor={self._cursor_pos}, delta={delta}")
+            if delta > 0:
+                keys.send('UI_Down', hold=0.05, repeat=delta)
+            elif delta < 0:
+                keys.send('UI_Up', hold=0.05, repeat=abs(delta))
 
             sleep(0.75)
             keys.send('UI_Select')  # Select that commodity
@@ -333,21 +342,37 @@ class CommoditiesMarket:
                 self.ap.overlay.overlay_paint()
 
             sleep(0.5)  # give time to popup
-            keys.send('UI_Up', repeat=2)  # go up to quantity to buy (may not default to this)
+            keys.send('UI_Up', repeat=2)  # go up to quantity field
             # Log the planned quantity
             self.ap_ckb('log+vce', f"Buying {act_qty} units of {name}.")
             logger.info(f"Attempting to buy {act_qty} units of {name}")
-            # Increment count
-            if qty >= 9999 or qty >= stock or qty >= free_cargo:
-                keys.send("UI_Right", hold=4)
-            else:
-                keys.send("UI_Right", hold=0.04, repeat=act_qty)
+
+            # Set quantity
+            max_qty = max(1, min(stock, free_cargo))
+            self._set_buy_sell_quantity(keys, act_qty, max_qty)
+
             keys.send('UI_Down')
             keys.send('UI_Select')  # Select Buy
             sleep(0.5)
-            # keys.send('UI_Back')  # Back to commodities list
 
-        return True, act_qty
+            # Cross-check with journal for actual quantity bought
+            actual_qty = act_qty
+            ship = self.ap.jn.ship_state()
+            last_buy = ship.get('last_market_buy')
+            if last_buy and last_buy['Type'].upper() == name.upper():
+                actual_qty = last_buy['Count']
+                if actual_qty != act_qty:
+                    logger.warning(f"Buy {name}: journal says {actual_qty}, planned {act_qty}")
+                    self.ap_ckb('log', f"Buy mismatch: got {actual_qty}/{act_qty} {name}")
+
+            # After buying all stock, item disappears from list
+            if buy_all:
+                # Item removed, cursor now points to next item at same index
+                pass  # cursor_pos stays the same (next item slid up)
+            else:
+                self._cursor_pos = index
+
+        return True, actual_qty
 
     def sell_commodity(self, keys, name: str, qty: int, cargo_parser) -> tuple[bool, int]:
         """ Sell qty of commodity. If qty >= 9999 then sell as much as possible.
@@ -395,9 +420,13 @@ class CommoditiesMarket:
         act_qty = min(qty, qty_in_cargo)
 
         if index > -1:
-            keys.send('UI_Up', hold=5.0)  # go up to top of list
-            sleep(1.0)
-            keys.send('UI_Down', hold=0.05, repeat=index)  # go down # of times user specified
+            # Navigate from current cursor position to target index
+            delta = index - self._cursor_pos
+            logger.info(f"Sell {name}: index={index}, cursor={self._cursor_pos}, delta={delta}")
+            if delta > 0:
+                keys.send('UI_Down', hold=0.05, repeat=delta)
+            elif delta < 0:
+                keys.send('UI_Up', hold=0.05, repeat=abs(delta))
 
             sleep(0.75)
             keys.send('UI_Select')  # Select that commodity
@@ -410,23 +439,40 @@ class CommoditiesMarket:
             sleep(0.5)  # give time for popup
             keys.send('UI_Up', repeat=2)  # make sure at top
 
-            # Sell all if quantity is 9999 or if we are selling
+            # Set quantity
             if act_qty >= 9999 or qty_in_cargo <= act_qty:
                 self.ap_ckb('log+vce', f"Selling all our units of {name}.")
                 logger.info(f"Attempting to sell all our units of {name}")
-                keys.send("UI_Right", hold=4)
+                max_qty = qty_in_cargo
             else:
                 self.ap_ckb('log+vce', f"Selling {act_qty} units of {name}.")
                 logger.info(f"Attempting to sell {act_qty} units of {name}")
-                keys.send('UI_Left', hold=4.0)  # Clear quantity to 0
-                keys.send("UI_Right", hold=0.04, repeat=act_qty)
+                max_qty = qty_in_cargo
 
-            keys.send('UI_Down')  # Down to the Sell button (already assume sell all)
-            keys.send('UI_Select')  # Select to Sell all
+            self._set_buy_sell_quantity(keys, min(act_qty, max_qty), max_qty)
+
+            keys.send('UI_Down')  # Down to the Sell button
+            keys.send('UI_Select')  # Select to Sell
             sleep(0.5)
-            # keys.send('UI_Back')  # Back to commodities list
 
-        return True, act_qty
+            # Cross-check with journal for actual quantity sold
+            actual_qty = act_qty
+            ship = self.ap.jn.ship_state()
+            last_sell = ship.get('last_market_sell')
+            if last_sell and last_sell['Type'].upper() == name.upper():
+                actual_qty = last_sell['Count']
+                if actual_qty != act_qty:
+                    logger.warning(f"Sell {name}: journal says {actual_qty}, planned {act_qty}")
+                    self.ap_ckb('log', f"Sell mismatch: got {actual_qty}/{act_qty} {name}")
+
+            # After selling all, item may disappear from list
+            sell_all = (actual_qty >= qty_in_cargo)
+            if sell_all:
+                pass  # cursor stays at same index (next item slid up)
+            else:
+                self._cursor_pos = index
+
+        return True, actual_qty
 
     def capture_goods_panel(self):
         """ Get the location panel from within the nav panel.

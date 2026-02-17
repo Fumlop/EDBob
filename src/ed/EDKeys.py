@@ -43,7 +43,9 @@ class EDKeys:
             'PitchUpButton',
             'PitchDownButton',
             'SetSpeedZero',
+            'SetSpeed25',
             'SetSpeed50',
+            'SetSpeed75',
             'SetSpeed100',
             'UpThrustButton',
             'UseBoostJuice',
@@ -56,6 +58,7 @@ class EDKeys:
             'GalaxyMapOpen',
             'SystemMapOpen',
             # UI
+            'FocusLeftPanel',
             'UIFocus',
             'UI_Up',
             'UI_Down',
@@ -64,6 +67,7 @@ class EDKeys:
             'UI_Select',
             'UI_Back',
             'CycleNextPanel',
+            'CyclePreviousPanel',
             'HeadLookReset',
             # Power
             'IncreaseEnginesPower',
@@ -105,6 +109,7 @@ class EDKeys:
             'TargetNextRouteSystem': {'key': directinput.SCANCODE['Key_K'], 'mods': []},
             'GalaxyMapOpen':        {'key': directinput.SCANCODE['Key_PageUp'], 'mods': []},
             'SystemMapOpen':        {'key': directinput.SCANCODE['Key_PageDown'], 'mods': []},
+            'FocusLeftPanel':       {'key': directinput.SCANCODE['Key_1'], 'mods': []},
             'UIFocus':              {'key': directinput.SCANCODE['Key_5'], 'mods': []},
             'UI_Up':                {'key': directinput.SCANCODE['Key_W'], 'mods': []},
             'UI_Down':              {'key': directinput.SCANCODE['Key_S'], 'mods': []},
@@ -113,6 +118,7 @@ class EDKeys:
             'UI_Select':            {'key': directinput.SCANCODE['Key_Space'], 'mods': []},
             'UI_Back':              {'key': directinput.SCANCODE['Key_Backspace'], 'mods': []},
             'CycleNextPanel':       {'key': directinput.SCANCODE['Key_E'], 'mods': []},
+            'CyclePreviousPanel':   {'key': directinput.SCANCODE['Key_Q'], 'mods': []},
             'HeadLookReset':        {'key': directinput.SCANCODE['Key_7'], 'mods': []},
             'IncreaseEnginesPower': {'key': directinput.SCANCODE['Key_UpArrow'], 'mods': []},
             'IncreaseWeaponsPower': {'key': directinput.SCANCODE['Key_RightArrow'], 'mods': []},
@@ -320,6 +326,10 @@ class EDKeys:
             directinput.ReleaseKey(key)
         else:
             directinput.PressKey(key)
+
+    def has_binding(self, key_binding: str) -> bool:
+        """Check if a keybinding exists."""
+        return self.keys.get(key_binding) is not None
 
     def send(self, key_binding, hold=None, repeat=1, repeat_delay=None, state=None):
         """ Send a key based on the defined keybind

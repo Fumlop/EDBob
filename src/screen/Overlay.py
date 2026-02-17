@@ -62,13 +62,21 @@ class Overlay:
             self.parent = elite_dangerous_window
         
         self.hWindow = None
-        self.overlay_thr = threading.Thread(target=self.overlay_win32_run)
-        self.overlay_thr.setDaemon(False)
+        self.overlay_thr = threading.Thread(target=self.overlay_win32_run, daemon=True)
         self.overlay_thr.start()
         self.targetRect = Vector(0, 0, 1920, 1200)
         self.tHwnd = None
         self._overlay_update_thread = threading.Thread(target=self._overlay_cleanup_loop, daemon=True)
         self._overlay_update_thread.start()
+
+    def shutdown(self):
+        """Destroy the overlay window so the message loop exits and the thread can join."""
+        if self.hWindow:
+            try:
+                win32gui.PostMessage(self.hWindow, win32con.WM_DESTROY, 0, 0)
+                self.overlay_thr.join(timeout=3.0)
+            except Exception:
+                pass
 
     def overlay_win32_run(self):
         hInstance = win32api.GetModuleHandle()

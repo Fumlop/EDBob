@@ -1,8 +1,7 @@
 {
     "GlobalShoppingList": {
         "BuyCommodities": {
-            "Steel": 4168,
-            "Titanium": 4843
+            "Steel": 54801
         },
         "UpdateCommodityCount": true,
         "FleetCarrierTransfer": false,
@@ -17,10 +16,7 @@
         "SystemBookmarkType": "Station",
         "SystemBookmarkNumber": 1,
         "SellCommodities": {},
-        "BuyCommodities": {
-            "Steel": 2886,
-            "Titanium": 4843
-        },
+        "BuyCommodities": {},
         "Comment": "Buy commodities here",
         "UpdateCommodityCount": true,
         "FleetCarrierTransfer": false,
@@ -29,16 +25,16 @@
     },
     "2": {
         "SystemName": "",
-        "StationName": "System Colonisation Ship",
+        "StationName": "Construction Site",
         "GalaxyBookmarkType": "Favorites",
         "GalaxyBookmarkNumber": 3,
         "SystemBookmarkType": "Station",
-        "SystemBookmarkNumber": 1,
+        "SystemBookmarkNumber": 2,
         "SellCommodities": {
             "ALL": 0
         },
         "BuyCommodities": {},
-        "Comment": "Deliver to colonisation ship",
+        "Comment": "",
         "UpdateCommodityCount": true,
         "FleetCarrierTransfer": false,
         "Skip": false,

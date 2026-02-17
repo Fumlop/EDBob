@@ -7,13 +7,13 @@ Basic ship control interface for managing GUI focus states. Primarily handles re
 - EDShipControl: Handles ship control and panel state management
 
 ## Key Methods
-- goto_cockpit_view(): Returns to cockpit view by sending UI_Back commands until all panels are closed, returns True when complete
+- goto_cockpit_view(): Delegates to `MenuNav.goto_cockpit()`. Returns True when in cockpit view.
 
 ## Dependencies
+- MenuNav: All menu key sequences delegated here
 - StatusParser: Monitors GUI focus state (GuiFocusNoFocus constant)
 - EDAP_data: Global constants for GUI focus states
 
 ## Notes
-- Simple implementation currently focused on panel management
-- Uses StatusParser to check current GUI focus state
+- Thin wrapper, actual key logic lives in MenuNav
 - Can be extended for additional ship control operations

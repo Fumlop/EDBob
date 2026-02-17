@@ -3,6 +3,7 @@ from __future__ import annotations
 from src.core import EDAP_data
 # from src.screen.OCR import OCR
 from src.ed.StatusParser import StatusParser
+from src.ed import MenuNav
 
 
 class EDShipControl:
@@ -18,11 +19,4 @@ class EDShipControl:
         """ Goto cockpit view.
         @return: True once complete.
         """
-        if self.status_parser.get_gui_focus() == EDAP_data.GuiFocusNoFocus:
-            return True
-
-        # Go down to cockpit view
-        while not self.status_parser.get_gui_focus() == EDAP_data.GuiFocusNoFocus:
-            self.keys.send("UI_Back")  # make sure back in cockpit view
-
-        return True
+        return MenuNav.goto_cockpit(self.keys, self.status_parser)

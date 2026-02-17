@@ -239,6 +239,9 @@ class EDJournal:
             'StationServices': None,
             'ConstructionDepotDetails': dict[str, any],
             'MarketID': 0,
+            'last_market_buy': None,   # {'Type': str, 'Count': int, 'timestamp': str}
+            'last_market_sell': None,   # {'Type': str, 'Count': int, 'timestamp': str}
+            'nav_route_cleared': False,
         }
         self.ship_state()    # load up from file
         self.reset_items()
@@ -408,6 +411,20 @@ class EDJournal:
                 self.ship['has_std_dock_comp'] = check_std_docking_computer(log['Modules'])
                 self.ship['has_sco_fsd'] = check_sco_fsd(log['Modules'])
 
+            # parse market transactions
+            elif log_event == 'MarketBuy':
+                self.ship['last_market_buy'] = {
+                    'Type': log.get('Type_Localised', log.get('Type', '')),
+                    'Count': log['Count'],
+                    'timestamp': log['timestamp'],
+                }
+            elif log_event == 'MarketSell':
+                self.ship['last_market_sell'] = {
+                    'Type': log.get('Type_Localised', log.get('Type', '')),
+                    'Count': log['Count'],
+                    'timestamp': log['timestamp'],
+                }
+
             # parse fuel
             if 'FuelLevel' in log and self.ship['type'] != 'TestBuggy':
                 self.ship['fuel_level'] = log['FuelLevel']
@@ -461,6 +478,10 @@ class EDJournal:
             elif log_event == 'NavRouteClear':
                 self.ship['target'] = None
                 self.ship['jumps_remains'] = 0
+                self.ship['nav_route_cleared'] = True
+
+            elif log_event == 'NavRoute':
+                self.ship['nav_route_cleared'] = False
 
             elif log_event == 'CarrierJump':
                 self.ship['location'] = log['StarSystem']
@@ -567,7 +588,11 @@ class EDJournal:
             if not line:
                 break
             else:
-                log = loads(line)
+                try:
+                    log = loads(line)
+                except (json.JSONDecodeError, ValueError):
+                    logger.warning(f"Skipping corrupt journal line: {line[:80]}...")
+                    continue
                 cnt = cnt + 1
                 current_jrnl = self.ship.copy()
                 self.parse_line(log)

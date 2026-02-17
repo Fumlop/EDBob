@@ -6,8 +6,6 @@ from typing import TypedDict
 import numpy as np
 from numpy import array, sum
 import cv2
-from datetime import datetime
-
 """
 File:Screen_Regions.py    
 
@@ -209,25 +207,16 @@ def load_ocr_calibration_data() -> dict[str, MyRegion]:
 
 
 class Screen_Regions:
-    def __init__(self, screen, templ):
+    def __init__(self, screen):
         self.screen = screen
-        self.templates = templ
 
-        # Define the thresholds for template matching to be consistent throughout the program
-        self.compass_match_thresh = 0.50
-        self.navpoint_match_thresh = 0.8
-        self.target_thresh = 0.50
-        self.target_occluded_thresh = 0.55
         self.sun_threshold = 125
-        self.disengage_thresh = 0.35
 
         # array is in HSV order which represents color ranges for filtering
         self.orange_color_range   = [array([0, 130, 123]),  array([25, 235, 220])]
         self.orange_2_color_range = [array([16, 165, 220]), array([98, 255, 255])]
-        self.target_occluded_range= [array([16, 31, 85]),   array([26, 160, 255])]
         self.blue_color_range     = [array([0, 28, 170]), array([180, 100, 255])]
         self.blue_sco_color_range = [array([10, 0, 0]), array([100, 150, 255])]
-        self.fss_color_range      = [array([95, 210, 70]),  array([105, 255, 120])]
 
         self.reg = {}
         # regions with associated filter and color ranges
@@ -235,12 +224,9 @@ class Screen_Regions:
         self.reg['compass']   = {'rect': [0.33, 0.65, 0.46, 1.0], 'width': 1, 'height': 1, 'filterCB': self.equalize,                                'filter': None}
         self.reg['target']    = {'rect': [0.33, 0.25, 0.66, 0.75], 'width': 1, 'height': 1, 'filterCB': self.filter_by_color, 'filter': self.orange_2_color_range}  # also called destination
         # self.reg['target']    = {'rect': [0.0, 0.1, 0.99, 0.9], 'width': 1, 'height': 1, 'filterCB': self.filter_by_color, 'filter': self.orange_2_color_range}   # also called destination
-        self.reg['target_occluded']    = {'rect': [0.33, 0.25, 0.66, 0.75], 'width': 1, 'height': 1, 'filterCB': self.filter_by_color, 'filter': self.target_occluded_range}
-        # self.reg['target_occluded']    = {'rect': [0.0, 0.1, 0.99, 0.9], 'width': 1, 'height': 1, 'filterCB': self.filter_by_color, 'filter': self.target_occluded_range}
         self.reg['sun']       = {'rect': [0.30, 0.30, 0.70, 0.68], 'width': 1, 'height': 1, 'filterCB': self.filter_sun, 'filter': None}
         self.reg['disengage'] = {'rect': [0.42, 0.65, 0.60, 0.80], 'width': 1, 'height': 1, 'filterCB': self.filter_by_color, 'filter': self.blue_sco_color_range}
         self.reg['sco']       = {'rect': [0.42, 0.65, 0.60, 0.80], 'width': 1, 'height': 1, 'filterCB': self.filter_by_color, 'filter': self.blue_sco_color_range}
-        self.reg['fss']       = {'rect': [0.5045, 0.7545, 0.532, 0.7955], 'width': 1, 'height': 1, 'filterCB': self.equalize, 'filter': None}
         self.reg['mission_dest']  = {'rect': [0.46, 0.38, 0.65, 0.86], 'width': 1, 'height': 1, 'filterCB': self.equalize, 'filter': None}
         self.reg['missions']    = {'rect': [0.50, 0.78, 0.65, 0.85], 'width': 1, 'height': 1, 'filterCB': self.equalize, 'filter': None}
         self.reg['nav_panel']   = {'rect': [0.25, 0.36, 0.60, 0.85], 'width': 1, 'height': 1, 'filterCB': self.equalize, 'filter': None}
@@ -268,93 +254,6 @@ class Screen_Regions:
         else:
             # return the screen region in the format returned by the filter.
             return self.reg[region_name]['filterCB'](scr, self.reg[region_name]['filter'])
-
-    def match_template_in_region(self, region_name, templ_name, inv_col=True):
-        """ Attempt to match the given template in the given region which is filtered using the region filter.
-        Returns the filtered image, detail of match and the match mask. """
-        img_region = self.capture_region_filtered(self.screen, region_name, inv_col)   # which would call, reg.capture_region('compass') and apply defined filter
-        img_templ = self.templates.template[templ_name]['image']
-
-        # now = datetime.now()
-        # x = now.strftime("%Y-%m-%d %H-%M-%S.%f")[:-3]  # Date time with mS.
-        # cv2.imwrite(f'test/match/{templ_name} {x} region.png', img_region)
-        # cv2.imwrite(f'test/match/{templ_name} {x} templ.png', img_templ)
-
-        match = cv2.matchTemplate(img_region, img_templ, cv2.TM_CCOEFF_NORMED)
-        (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(match)
-        return img_region, (minVal, maxVal, minLoc, maxLoc), match
-
-    def match_template_in_region_x3(self, region_name, templ_name, inv_col=True):
-        """ Attempt to match the given template in the given region which is unfiltered.
-        The region's image is split into separate HSV channels, each channel tested and the best result kept.
-        Returns the image, detail of match and the match mask. """
-        img_region = self.screen.get_screen_region(self.reg[region_name]['rect'], rgb=False)
-        templ = self.templates.template[templ_name]['image']
-
-        # Convert to HSV and split.
-        img_hsv = cv2.cvtColor(img_region, cv2.COLOR_BGR2HSV)
-        h, s, v = cv2.split(img_hsv)
-        # hsv_comb = np.concatenate((h, s, v), axis=1)  # Combine 3 images
-        # cv2.imshow("Split HSV", hsv_comb)
-
-        # Perform matches
-        match_h = cv2.matchTemplate(h, templ, cv2.TM_CCOEFF_NORMED)
-        match_s = cv2.matchTemplate(s, templ, cv2.TM_CCOEFF_NORMED)
-        match_v = cv2.matchTemplate(v, templ, cv2.TM_CCOEFF_NORMED)
-        (minVal_h, maxVal_h, minLoc_h, maxLoc_h) = cv2.minMaxLoc(match_h)
-        (minVal_s, maxVal_s, minLoc_s, maxLoc_s) = cv2.minMaxLoc(match_s)
-        (minVal_v, maxVal_v, minLoc_v, maxLoc_v) = cv2.minMaxLoc(match_v)
-        # match_comb = np.concatenate((match_h, match_s, match_v), axis=1)  # Combine 3 images
-        # cv2.imshow("Split Matches", match_comb)
-
-        # Get best result
-        # V is likely the best match, so check it first
-        if maxVal_v > maxVal_s and maxVal_v > maxVal_h:
-            return img_region, (minVal_v, maxVal_v, minLoc_v, maxLoc_v), match_v
-        # S is likely the 2nd best match, so check it
-        if maxVal_s > maxVal_h:
-            return img_region, (minVal_s, maxVal_s, minLoc_s, maxLoc_s), match_s
-        # H must be the best match
-        return img_region, (minVal_h, maxVal_h, minLoc_h, maxLoc_h), match_h
-
-    def match_template_in_image(self, image, template):
-        """ Attempt to match the given template in the (unfiltered) image.
-        Returns the original image, detail of match and the match mask. """
-        match = cv2.matchTemplate(image, self.templates.template[template]['image'], cv2.TM_CCOEFF_NORMED)
-        (minVal, maxVal, minLoc, maxLoc) = cv2.minMaxLoc(match)
-        return image, (minVal, maxVal, minLoc, maxLoc), match
-
-    def match_template_in_image_x3(self, image, templ_name):
-        """ Attempt to match the given template in the (unfiltered) image.
-        The image is split into separate HSV channels, each channel tested and the best result kept.
-        Returns the original image, detail of match and the match mask. """
-        templ = self.templates.template[templ_name]['image']
-
-        # Convert to HSV and split.
-        img_hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        h, s, v = cv2.split(img_hsv)
-        # hsv_comb = np.concatenate((h, s, v), axis=1)  # Combine 3 images
-        # cv2.imshow("Split HSV", hsv_comb)
-
-        # Perform matches
-        match_h = cv2.matchTemplate(h, templ, cv2.TM_CCOEFF_NORMED)
-        match_s = cv2.matchTemplate(s, templ, cv2.TM_CCOEFF_NORMED)
-        match_v = cv2.matchTemplate(v, templ, cv2.TM_CCOEFF_NORMED)
-        (minVal_h, maxVal_h, minLoc_h, maxLoc_h) = cv2.minMaxLoc(match_h)
-        (minVal_s, maxVal_s, minLoc_s, maxLoc_s) = cv2.minMaxLoc(match_s)
-        (minVal_v, maxVal_v, minLoc_v, maxLoc_v) = cv2.minMaxLoc(match_v)
-        # match_comb = np.concatenate((match_h, match_s, match_v), axis=1)  # Combine 3 images
-        # cv2.imshow("Split Matches", match_comb)
-
-        # Get best result
-        # V is likely the best match, so check it first
-        if maxVal_v > maxVal_s and maxVal_v > maxVal_h:
-            return image, (minVal_v, maxVal_v, minLoc_v, maxLoc_v), match_v
-        # S is likely the 2nd best match, so check it
-        if maxVal_s > maxVal_h:
-            return image, (minVal_s, maxVal_s, minLoc_s, maxLoc_s), match_s
-        # H must be the best match
-        return image, (minVal_h, maxVal_h, minLoc_h, maxLoc_h), match_h
 
     def equalize(self, image=None, noOp=None):
         # Load the image in greyscale

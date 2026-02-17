@@ -30,16 +30,9 @@ import sys  # Do not delete - prevents a 'super' error from tktoolip.
 from time import sleep
 from tktooltip import ToolTip  # In requirements.txt as 'tkinter-tooltip'.
 
-from src.gui.EDAPCalibration import Calibration
 from src.gui.EDAPColonizeEditor import ColonizeEditorTab
-# from OCR import RegionCalibration
 from src.core.MousePt import MousePoint
 
-# from src.screen import Image_Templates
-# from src.screen import Screen
-# from src.screen import Screen_Regions
-# from src.ed import EDKeys
-# from src.ed import EDJournal
 from src.autopilot import ED_AP
 from src.gui.EDAPWaypointEditor import WaypointEditorTab
 
@@ -114,17 +107,9 @@ class APGui:
         root.resizable(False, False)
 
         self.tooltips = {
-            'FSD Route Assist': "Will execute your route. \nAt each jump the sequence will perform some fuel scooping.",
-            'Supercruise Assist': "Will keep your ship pointed to target, \nyou target can only be a station for the autodocking to work.",
             'Waypoint Assist': "When selected, will prompt for the waypoint file. \nThe waypoint file contains System names that \nwill be entered into Galaxy Map and route plotted.",
-            'DSS Assist': "When selected, will perform DSS scans while you are traveling between stars.",
-            'Favorites Assist': "Cycles through galaxy map favorites (-1-, -2-, etc.) and flies to each in order.",
-            'Single Waypoint Assist': "",
-            'ELW Scanner': "Will perform FSS scans while FSD Assist is traveling between stars. \nIf the FSS shows a signal in the region of Earth, \nWater or Ammonia type worlds, it will announce that discovery.",
-            'RollRate': "Roll rate your ship has in deg/sec. Higher the number the more maneuverable the ship.",
             'PitchRate': "Pitch (up/down) rate your ship has in deg/sec. Higher the number the more maneuverable the ship.",
             'YawRate': "Yaw rate (rudder) your ship has in deg/sec. Higher the number the more maneuverable the ship.",
-            'RollFactor': "TBD",
             'PitchFactor': "TBD",
             'YawFactor': "TBD",
             'SunPitchUp+Time': "This field are for ship that tend to overheat. \nProviding 1-2 more seconds of Pitch up when avoiding the Sun \nwill overcome this problem.",
@@ -157,9 +142,7 @@ class APGui:
         self.callback('log', f'Starting ED Autopilot {EDAP_VERSION}.')
 
         self.ed_ap = ED_AP.EDAutopilot(cb=self.callback)
-        # self.calibrator = RegionCalibration(root, self.ed_ap, cb=self.callback)
 
-        self.ocr_calibration_data = {}
 
         self.mouse = MousePoint()
 
@@ -167,18 +150,11 @@ class APGui:
         self.radiobuttonvar = {}
         self.entries = {}
         self.lab_ck = {}
-        self.single_waypoint_system = tk.StringVar()
-        self.single_waypoint_station = tk.StringVar()
         self._global_shopping_list_tab = None
         self.waypoint_editor_tab = None
         self.colonize_tab = None
 
-        self.FSD_A_running = False
-        self.SC_A_running = False
         self.WP_A_running = False
-        self.DSS_A_running = False
-        self.SWP_A_running = False
-        self.FAV_A_running = False
 
         self.cv_view = False
 
@@ -195,11 +171,9 @@ class APGui:
         self.radiobuttonvar['dss_button'].set(self.ed_ap.config['DSSButton'])
 
         self.entries['ship']['PitchRate'].delete(0, tk.END)
-        self.entries['ship']['RollRate'].delete(0, tk.END)
         self.entries['ship']['YawRate'].delete(0, tk.END)
         self.entries['ship']['SunPitchUp+Time'].delete(0, tk.END)
         self.entries['ship']['PitchFactor'].delete(0, tk.END)
-        self.entries['ship']['RollFactor'].delete(0, tk.END)
         self.entries['ship']['YawFactor'].delete(0, tk.END)
 
         self.entries['autopilot']['Sun Bright Threshold'].delete(0, tk.END)
@@ -225,11 +199,9 @@ class APGui:
         self.entries['keys']['Repeat Key Delay'].delete(0, tk.END)
 
         self.entries['ship']['PitchRate'].insert(0, float(self.ed_ap.pitchrate))
-        self.entries['ship']['RollRate'].insert(0, float(self.ed_ap.rollrate))
         self.entries['ship']['YawRate'].insert(0, float(self.ed_ap.yawrate))
         self.entries['ship']['SunPitchUp+Time'].insert(0, float(self.ed_ap.sunpitchuptime))
         self.entries['ship']['PitchFactor'].insert(0, float(self.ed_ap.pitchfactor))
-        self.entries['ship']['RollFactor'].insert(0, float(self.ed_ap.rollfactor))
         self.entries['ship']['YawFactor'].insert(0, float(self.ed_ap.yawfactor))
 
         self.entries['autopilot']['Sun Bright Threshold'].insert(0, int(self.ed_ap.config['SunBrightThreshold']))
@@ -285,7 +257,6 @@ class APGui:
             # Add the desired hotkeys
             keyboard.add_hotkey(self.ed_ap.config['HotKey_StopAllAssists'], self.stop_all_assists)
             keyboard.add_hotkey(self.ed_ap.config['HotKey_StartFSD'], self.callback, args=('fsd_start', None))
-            keyboard.add_hotkey(self.ed_ap.config['HotKey_StartSC'], self.callback, args=('sc_start', None))
 
     # callback from the EDAP, to configure GUI items
     def callback(self, msg, body=None):
@@ -295,20 +266,6 @@ class APGui:
             self.log_msg(body)
         elif msg == 'statusline':
             self.update_statusline(body)
-        elif msg == 'fsd_stop':
-            logger.debug("Detected 'fsd_stop' callback msg")
-            self.checkboxvar['FSD Route Assist'].set(0)
-            self.check_cb('FSD Route Assist')
-        elif msg == 'fsd_start':
-            self.checkboxvar['FSD Route Assist'].set(1)
-            self.check_cb('FSD Route Assist')
-        elif msg == 'sc_stop':
-            logger.debug("Detected 'sc_stop' callback msg")
-            self.checkboxvar['Supercruise Assist'].set(0)
-            self.check_cb('Supercruise Assist')
-        elif msg == 'sc_start':
-            self.checkboxvar['Supercruise Assist'].set(1)
-            self.check_cb('Supercruise Assist')
         elif msg == 'waypoint_stop':
             logger.debug("Detected 'waypoint_stop' callback msg")
             self.checkboxvar['Waypoint Assist'].set(0)
@@ -316,46 +273,10 @@ class APGui:
         elif msg == 'waypoint_start':
             self.checkboxvar['Waypoint Assist'].set(1)
             self.check_cb('Waypoint Assist')
-        elif msg == 'dss_start':
-            logger.debug("Detected 'dss_start' callback msg")
-            self.checkboxvar['DSS Assist'].set(1)
-            self.check_cb('DSS Assist')
-        elif msg == 'dss_stop':
-            logger.debug("Detected 'dss_stop' callback msg")
-            self.checkboxvar['DSS Assist'].set(0)
-            self.check_cb('DSS Assist')
-        elif msg == 'single_waypoint_stop':
-            logger.debug("Detected 'single_waypoint_stop' callback msg")
-            self.checkboxvar['Single Waypoint Assist'].set(0)
-            self.check_cb('Single Waypoint Assist')
-        elif msg == 'favorites_stop':
-            logger.debug("Detected 'favorites_stop' callback msg")
-            self.checkboxvar['Favorites Assist'].set(0)
-            self.check_cb('Favorites Assist')
-        elif msg == 'favorites_start':
-            self.checkboxvar['Favorites Assist'].set(1)
-            self.check_cb('Favorites Assist')
-
         elif msg == 'stop_all_assists':
             logger.debug("Detected 'stop_all_assists' callback msg")
-
-            self.checkboxvar['FSD Route Assist'].set(0)
-            self.check_cb('FSD Route Assist')
-
-            self.checkboxvar['Supercruise Assist'].set(0)
-            self.check_cb('Supercruise Assist')
-
             self.checkboxvar['Waypoint Assist'].set(0)
             self.check_cb('Waypoint Assist')
-
-            self.checkboxvar['DSS Assist'].set(0)
-            self.check_cb('DSS Assist')
-
-            self.checkboxvar['Single Waypoint Assist'].set(0)
-            self.check_cb('Single Waypoint Assist')
-
-            self.checkboxvar['Favorites Assist'].set(0)
-            self.check_cb('Favorites Assist')
 
         elif msg == 'jumpcount':
             self.update_jumpcount(body)
@@ -365,26 +286,16 @@ class APGui:
     def update_ship_cfg(self):
         # load up the display with what we read from ED_AP for the current ship
         self.entries['ship']['PitchRate'].delete(0, tk.END)
-        self.entries['ship']['RollRate'].delete(0, tk.END)
         self.entries['ship']['YawRate'].delete(0, tk.END)
         self.entries['ship']['SunPitchUp+Time'].delete(0, tk.END)
         self.entries['ship']['PitchFactor'].delete(0, tk.END)
-        self.entries['ship']['RollFactor'].delete(0, tk.END)
         self.entries['ship']['YawFactor'].delete(0, tk.END)
 
         self.entries['ship']['PitchRate'].insert(0, self.ed_ap.pitchrate)
-        self.entries['ship']['RollRate'].insert(0, self.ed_ap.rollrate)
         self.entries['ship']['YawRate'].insert(0, self.ed_ap.yawrate)
         self.entries['ship']['SunPitchUp+Time'].insert(0, self.ed_ap.sunpitchuptime)
         self.entries['ship']['PitchFactor'].insert(0, self.ed_ap.pitchfactor)
-        self.entries['ship']['RollFactor'].insert(0, self.ed_ap.rollfactor)
         self.entries['ship']['YawFactor'].insert(0, self.ed_ap.yawfactor)
-
-    def calibrate_callback(self):
-        self.ed_ap.calibrate_target()
-
-    def calibrate_compass_callback(self):
-        self.ed_ap.calibrate_compass()
 
     def quit(self):
         logger.debug("Entered: quit")
@@ -403,32 +314,6 @@ class APGui:
         logger.debug("Entered: stop_all_assists")
         self.callback('stop_all_assists')
 
-    def start_fsd(self):
-        logger.debug("Entered: start_fsd")
-        self.ed_ap.set_fsd_assist(True)
-        self.FSD_A_running = True
-        self.log_msg("FSD Route Assist start")
-
-    def stop_fsd(self):
-        logger.debug("Entered: stop_fsd")
-        self.ed_ap.set_fsd_assist(False)
-        self.FSD_A_running = False
-        self.log_msg("FSD Route Assist stop")
-        self.update_statusline("Idle")
-
-    def start_sc(self):
-        logger.debug("Entered: start_sc")
-        self.ed_ap.set_sc_assist(True)
-        self.SC_A_running = True
-        self.log_msg("SC Assist start")
-
-    def stop_sc(self):
-        logger.debug("Entered: stop_sc")
-        self.ed_ap.set_sc_assist(False)
-        self.SC_A_running = False
-        self.log_msg("SC Assist stop")
-        self.update_statusline("Idle")
-
     def start_waypoint(self):
         logger.debug("Entered: start_waypoint")
         self.ed_ap.set_waypoint_assist(True)
@@ -440,51 +325,6 @@ class APGui:
         self.ed_ap.set_waypoint_assist(False)
         self.WP_A_running = False
         self.log_msg("Waypoint Assist stop")
-        self.update_statusline("Idle")
-
-    def start_dss(self):
-        logger.debug("Entered: start_dss")
-        self.ed_ap.set_dss_assist(True)
-        self.DSS_A_running = True
-        self.log_msg("DSS Assist start")
-
-    def stop_dss(self):
-        logger.debug("Entered: stop_dss")
-        self.ed_ap.set_dss_assist(False)
-        self.DSS_A_running = False
-        self.log_msg("DSS Assist stop")
-        self.update_statusline("Idle")
-
-    def start_single_waypoint_assist(self):
-        """ The debug command to go to a system or station or both."""
-        logger.debug("Entered: start_single_waypoint_assist")
-        system = self.single_waypoint_system.get()
-        station = self.single_waypoint_station.get()
-
-        if system != "" or station != "":
-            self.ed_ap.set_single_waypoint_assist(system, station, True)
-            self.SWP_A_running = True
-            self.log_msg("Single Waypoint Assist start")
-
-    def stop_single_waypoint_assist(self):
-        """ The debug command to go to a system or station or both."""
-        logger.debug("Entered: stop_single_waypoint_assist")
-        self.ed_ap.set_single_waypoint_assist("", "", False)
-        self.SWP_A_running = False
-        self.log_msg("Single Waypoint Assist stop")
-        self.update_statusline("Idle")
-
-    def start_favorites(self):
-        logger.debug("Entered: start_favorites")
-        self.ed_ap.set_favorites_assist(True)
-        self.FAV_A_running = True
-        self.log_msg("Favorites Assist start")
-
-    def stop_favorites(self):
-        logger.debug("Entered: stop_favorites")
-        self.ed_ap.set_favorites_assist(False)
-        self.FAV_A_running = False
-        self.log_msg("Favorites Assist stop")
         self.update_statusline("Idle")
 
     def about(self):
@@ -629,7 +469,6 @@ class APGui:
         self.entry_update(None)
         self.ed_ap.update_config()
         self.ed_ap.update_ship_configs()
-        self.save_ocr_calibration_data()
         self.log_msg("Saved all settings.")
 
     def load_settings(self):
@@ -639,11 +478,9 @@ class APGui:
     def entry_update(self, event):
         try:
             self.ed_ap.pitchrate = float(self.entries['ship']['PitchRate'].get())
-            self.ed_ap.rollrate = float(self.entries['ship']['RollRate'].get())
             self.ed_ap.yawrate = float(self.entries['ship']['YawRate'].get())
             self.ed_ap.sunpitchuptime = float(self.entries['ship']['SunPitchUp+Time'].get())
             self.ed_ap.pitchfactor = float(self.entries['ship']['PitchFactor'].get())
-            self.ed_ap.rollfactor = float(self.entries['ship']['RollFactor'].get())
             self.ed_ap.yawfactor = float(self.entries['ship']['YawFactor'].get())
 
             self.ed_ap.config['SunBrightThreshold'] = int(self.entries['autopilot']['Sun Bright Threshold'].get())
@@ -675,83 +512,13 @@ class APGui:
 
     # ckbox.state:(ACTIVE | DISABLED)
 
-    # ('FSD Route Assist', 'Supercruise Assist', 'Enable CV View')
     def check_cb(self, field):
-        # print("got event:",  checkboxvar['FSD Route Assist'].get(), " ", str(FSD_A_running))
-        if field == 'FSD Route Assist':
-            if self.checkboxvar['FSD Route Assist'].get() == 1 and self.FSD_A_running == False:
-                self.lab_ck['Supercruise Assist'].config(state='disabled')
-                self.lab_ck['Waypoint Assist'].config(state='disabled')
-                self.lab_ck['DSS Assist'].config(state='disabled')
-                self.lab_ck['Favorites Assist'].config(state='disabled')
-                self.start_fsd()
-
-            elif self.checkboxvar['FSD Route Assist'].get() == 0 and self.FSD_A_running == True:
-                self.stop_fsd()
-                self.lab_ck['Supercruise Assist'].config(state='active')
-                self.lab_ck['Waypoint Assist'].config(state='active')
-                self.lab_ck['DSS Assist'].config(state='active')
-                self.lab_ck['Favorites Assist'].config(state='active')
-
-        if field == 'Supercruise Assist':
-            if self.checkboxvar['Supercruise Assist'].get() == 1 and self.SC_A_running == False:
-                self.lab_ck['FSD Route Assist'].config(state='disabled')
-                self.lab_ck['Waypoint Assist'].config(state='disabled')
-                self.lab_ck['DSS Assist'].config(state='disabled')
-                self.lab_ck['Favorites Assist'].config(state='disabled')
-                self.start_sc()
-
-            elif self.checkboxvar['Supercruise Assist'].get() == 0 and self.SC_A_running == True:
-                self.stop_sc()
-                self.lab_ck['FSD Route Assist'].config(state='active')
-                self.lab_ck['Waypoint Assist'].config(state='active')
-                self.lab_ck['DSS Assist'].config(state='active')
-                self.lab_ck['Favorites Assist'].config(state='active')
-
         if field == 'Waypoint Assist':
             if self.checkboxvar['Waypoint Assist'].get() == 1 and self.WP_A_running == False:
-                self.lab_ck['FSD Route Assist'].config(state='disabled')
-                self.lab_ck['Supercruise Assist'].config(state='disabled')
-                self.lab_ck['DSS Assist'].config(state='disabled')
-                self.lab_ck['Favorites Assist'].config(state='disabled')
                 self.start_waypoint()
 
             elif self.checkboxvar['Waypoint Assist'].get() == 0 and self.WP_A_running == True:
                 self.stop_waypoint()
-                self.lab_ck['FSD Route Assist'].config(state='active')
-                self.lab_ck['Supercruise Assist'].config(state='active')
-                self.lab_ck['DSS Assist'].config(state='active')
-                self.lab_ck['Favorites Assist'].config(state='active')
-
-        if field == 'DSS Assist':
-            if self.checkboxvar['DSS Assist'].get() == 1:
-                self.lab_ck['FSD Route Assist'].config(state='disabled')
-                self.lab_ck['Supercruise Assist'].config(state='disabled')
-                self.lab_ck['Waypoint Assist'].config(state='disabled')
-                self.lab_ck['Favorites Assist'].config(state='disabled')
-                self.start_dss()
-
-            elif self.checkboxvar['DSS Assist'].get() == 0:
-                self.stop_dss()
-                self.lab_ck['FSD Route Assist'].config(state='active')
-                self.lab_ck['Supercruise Assist'].config(state='active')
-                self.lab_ck['Waypoint Assist'].config(state='active')
-                self.lab_ck['Favorites Assist'].config(state='active')
-
-        if field == 'Favorites Assist':
-            if self.checkboxvar['Favorites Assist'].get() == 1 and self.FAV_A_running == False:
-                self.lab_ck['FSD Route Assist'].config(state='disabled')
-                self.lab_ck['Supercruise Assist'].config(state='disabled')
-                self.lab_ck['Waypoint Assist'].config(state='disabled')
-                self.lab_ck['DSS Assist'].config(state='disabled')
-                self.start_favorites()
-
-            elif self.checkboxvar['Favorites Assist'].get() == 0 and self.FAV_A_running == True:
-                self.stop_favorites()
-                self.lab_ck['FSD Route Assist'].config(state='active')
-                self.lab_ck['Supercruise Assist'].config(state='active')
-                self.lab_ck['Waypoint Assist'].config(state='active')
-                self.lab_ck['DSS Assist'].config(state='active')
 
         if self.checkboxvar['Enable Randomness'].get():
             self.ed_ap.set_randomness(True)
@@ -775,11 +542,6 @@ class APGui:
         else:
             self.ed_ap.set_overlay(False)
 
-        if self.checkboxvar['ELW Scanner'].get():
-            self.ed_ap.set_fss_scan(True)
-        else:
-            self.ed_ap.set_fss_scan(False)
-
         if self.checkboxvar['Enable CV View'].get() == 1:
             self.cv_view = True
             x = self.root.winfo_x() + self.root.winfo_width() + 4
@@ -797,12 +559,6 @@ class APGui:
             self.ed_ap.set_log_debug(True)
         elif self.radiobuttonvar['debug_mode'].get() == "Info":
             self.ed_ap.set_log_info(True)
-
-        if field == 'Single Waypoint Assist':
-            if self.checkboxvar['Single Waypoint Assist'].get() == 1 and self.SWP_A_running == False:
-                self.start_single_waypoint_assist()
-            elif self.checkboxvar['Single Waypoint Assist'].get() == 0 and self.SWP_A_running == True:
-                self.stop_single_waypoint_assist()
 
         if field == 'Debug Overlay':
             if self.checkboxvar['Debug Overlay'].get():
@@ -848,8 +604,8 @@ class APGui:
 
     def gui_gen(self, win):
 
-        modes_check_fields = ('FSD Route Assist', 'Supercruise Assist', 'Waypoint Assist', 'DSS Assist', 'Favorites Assist')
-        ship_entry_fields = ('RollRate', 'PitchRate', 'YawRate', 'RollFactor', 'PitchFactor', 'YawFactor')
+        modes_check_fields = ('Waypoint Assist',)
+        ship_entry_fields = ('PitchRate', 'YawRate', 'PitchFactor', 'YawFactor')
         autopilot_entry_fields = ('Sun Bright Threshold', 'Nav Align Tries', 'Jump Tries', 'Docking Retries', 'Wait For Autodock')
         buttons_entry_fields = ('Start FSD', 'Start SC', 'Stop All')
         refuel_entry_fields = ('Refuel Threshold', 'Scoop Timeout', 'Fuel Threshold Abort')
@@ -885,15 +641,6 @@ class APGui:
         page2.grid_columnconfigure([0, 1], weight=1)
         nb.add(page2, text="Debug/Test")  # debug/test page
 
-        # === Calibration Tab ===
-        page_calibration = ttk.Frame(nb)
-        page_calibration.grid_columnconfigure(0, weight=1)
-        nb.add(page_calibration, text="Calibration")
-        # self.create_calibration_tab(page_calibration)
-        self.calibration_tab = Calibration(self.ed_ap, self.callback)
-        self.calibration_tab.create_calibration_tab(page_calibration)
-        # self.calibration_tab.frame.pack(fill="both", expand=True)
-
         # === Waypoint Editor Tab ===
         page_waypoint_editor = ttk.Frame(nb)
         page_waypoint_editor.grid_columnconfigure(0, weight=1)
@@ -926,27 +673,20 @@ class APGui:
         self.entries['ship'] = self.makeform(blk_ship, FORM_TYPE_SPINBOX, ship_entry_fields, 1, 0.5)
 
         lbl_sun_pitch_up = ttk.Label(blk_ship, text='SunPitchUp +/- Time:')
-        lbl_sun_pitch_up.grid(row=6, column=0, pady=3, sticky=tk.W)
+        lbl_sun_pitch_up.grid(row=5, column=0, pady=3, sticky=tk.W)
         spn_sun_pitch_up = ttk.Spinbox(blk_ship, width=10, from_=-100, to=100, increment=0.5, justify=tk.RIGHT)
-        spn_sun_pitch_up.grid(row=6, column=1, padx=2, pady=2, sticky=tk.E)
+        spn_sun_pitch_up.grid(row=5, column=1, padx=2, pady=2, sticky=tk.E)
         spn_sun_pitch_up.bind('<FocusOut>', self.entry_update)
         self.entries['ship']['SunPitchUp+Time'] = spn_sun_pitch_up
 
-        lbl_calibrate_note = ttk.Label(blk_ship, text="Calibrate Roll:\n1. Set speed: Supercruise 50%\n"
+        lbl_calibrate_note = ttk.Label(blk_ship, text="Calibrate Pitch & Yaw:\n1. Set speed: Supercruise 50%\n"
                                                       "2. Target remote System\n"
-                                                      "3. Maneuver target to 12 o'clock on compass.")
-        lbl_calibrate_note.grid(row=7, columnspan=2, pady=5, sticky=tk.W)
-        btn_tst_roll = ttk.Button(blk_ship, text='Calibrate Roll Rate', command=self.ship_tst_roll)
-        btn_tst_roll.grid(row=8, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
-
-        lbl_calibrate_note2 = ttk.Label(blk_ship, text="Calibrate Pitch & Yaw:\n1. Set speed: Supercruise 50%\n"
-                                                       "2. Target remote System\n"
-                                                       "3. Maneuver target to center of screen (and compass).")
-        lbl_calibrate_note2.grid(row=9, columnspan=2, pady=5, sticky=tk.W)
+                                                      "3. Maneuver target to center of screen (and compass).")
+        lbl_calibrate_note.grid(row=6, columnspan=2, pady=5, sticky=tk.W)
         btn_tst_pitch = ttk.Button(blk_ship, text='Calibrate Pitch Rate', command=self.ship_tst_pitch)
-        btn_tst_pitch.grid(row=10, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
+        btn_tst_pitch.grid(row=7, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
         btn_tst_yaw = ttk.Button(blk_ship, text='Calibrate Yaw Rate', command=self.ship_tst_yaw)
-        btn_tst_yaw.grid(row=11, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
+        btn_tst_yaw.grid(row=8, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
 
         # log window
         log = ttk.LabelFrame(page0, text="LOG", padding=(10, 5))
@@ -1017,13 +757,6 @@ class APGui:
         cb_activate_elite.grid(row=0, column=0, columnspan=2, sticky=tk.W)
         self.entries['keys'] = self.makeform(blk_keys, FORM_TYPE_SPINBOX, keys_entry_fields, 1, 0.01)
 
-        # ELW Scanner settings block
-        blk_elw = ttk.LabelFrame(blk_settings, text="ELW SCANNER", padding=(10, 5))
-        blk_elw.grid(row=3, column=0, padx=2, pady=2, sticky="NSEW")
-        self.checkboxvar['ELW Scanner'] = tk.BooleanVar()
-        cb_enable = ttk.Checkbutton(blk_elw, text='Enable', variable=self.checkboxvar['ELW Scanner'], command=(lambda field='ELW Scanner': self.check_cb(field)))
-        cb_enable.grid(row=0, column=0, columnspan=2, sticky=tk.W)
-
         # settings button block
         blk_settings_buttons = ttk.Frame(page1)
         blk_settings_buttons.grid(row=5, column=0, padx=10, pady=5, sticky="NSEW")
@@ -1073,24 +806,6 @@ class APGui:
         rb_debug_error.grid(row=2, column=1, columnspan=2, sticky=tk.W)
         btn_open_logfile = ttk.Button(blk_debug_settings, text='Open Log File', command=self.open_logfile)
         btn_open_logfile.grid(row=3, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
-
-        # Single Waypoint Assist frame
-        blk_single_waypoint_asst = ttk.LabelFrame(page2, text="Single Waypoint Assist", padding=(10, 5))
-        blk_single_waypoint_asst.grid(row=1, column=1, padx=10, pady=5, sticky="NSEW")
-        blk_single_waypoint_asst.columnconfigure(0, weight=1, minsize=10)
-        blk_single_waypoint_asst.columnconfigure(1, weight=3, minsize=10)
-
-        lbl_system = ttk.Label(blk_single_waypoint_asst, text='System:')
-        lbl_system.grid(row=0, column=0, padx=2, pady=2, columnspan=1, sticky="NSEW")
-        txt_system = ttk.Entry(blk_single_waypoint_asst, textvariable=self.single_waypoint_system)
-        txt_system.grid(row=0, column=1, padx=2, pady=2, columnspan=1, sticky="NSEW")
-        lbl_station = ttk.Label(blk_single_waypoint_asst, text='Station:')
-        lbl_station.grid(row=1, column=0, padx=2, pady=2, columnspan=1, sticky="NSEW")
-        txt_station = ttk.Entry(blk_single_waypoint_asst, textvariable=self.single_waypoint_station)
-        txt_station.grid(row=1, column=1, padx=2, pady=2, columnspan=1, sticky="NSEW")
-        self.checkboxvar['Single Waypoint Assist'] = tk.BooleanVar()
-        cb_single_waypoint = ttk.Checkbutton(blk_single_waypoint_asst, text='Single Waypoint Assist', variable=self.checkboxvar['Single Waypoint Assist'], command=(lambda field='Single Waypoint Assist': self.check_cb(field)))
-        cb_single_waypoint.grid(row=2, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
 
         blk_debug_buttons = ttk.Frame(page2)
         blk_debug_buttons.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="NSEW")
