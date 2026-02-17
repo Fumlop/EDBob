@@ -1092,23 +1092,16 @@ class EDAutopilot:
         fail_safe_timeout = (120/self.pitchrate)+3
         starttime = time.time()
 
-        # if sun in front of us, then keep pitching up until it is below us
+        # if sun in front of us, pitch up in 15deg steps until clear
+        step_time = 15.0 / self.pitchrate
         while self.is_sun_dead_ahead(scr_reg):
-            self.keys.send('PitchUpButton', state=1)
-
-            # check if we are being interdicted
-            interdicted = self.interdiction_check()
-            if interdicted:
-                # Continue journey after interdiction
-                self.set_speed_0()
-
-            # if we are pitching more than N seconds break, may be in high density area star area (close to core)
-            if ((time.time()-starttime) > fail_safe_timeout):
+            logger.info(f"Sun ahead, pitching up {step_time:.1f}s (30deg)")
+            self.keys.send('PitchUpButton', hold=step_time)
+            sleep(0.3)
+            if (time.time() - starttime) > fail_safe_timeout:
                 logger.debug('sun avoid failsafe timeout')
-                print("sun avoid failsafe timeout")
                 break
 
-        self.keys.send('PitchUpButton', state=0)  # release pitch key
         self.set_speed_50()
 
     @staticmethod
@@ -2269,10 +2262,11 @@ class EDAutopilot:
         self.sc_engage(False)
         self.jn.ship_state()['interdicted'] = False
 
-        # Verify we are actually in supercruise before proceeding
-        if self.jn.ship_state()['status'] != 'in_supercruise':
+        # Verify we are actually in supercruise before proceeding (use status.json flag,
+        # journal status can be stale if FSDJump line was corrupted during read)
+        if not self.status.get_flag(FlagsSupercruise):
             self.ap_ckb('log', 'SC Assist aborted - not in supercruise')
-            logger.warning(f"sc_assist: not in supercruise, status={self.jn.ship_state()['status']}")
+            logger.warning(f"sc_assist: not in supercruise (flag), journal status={self.jn.ship_state()['status']}")
             return
 
         # Sun avoidance first (pitch up if sun ahead after FSD drop)
@@ -2321,24 +2315,39 @@ class EDAutopilot:
                 self.stop_sco_monitoring()
                 break
 
+            # Body proximity check -- ApproachBody journal event
+            approach_body = self.jn.ship_state().get('approach_body')
+            if approach_body:
+                self.jn.ship['approach_body'] = None  # clear so we don't re-trigger
+                sc_assist_cruising = False
+                self.ap_ckb('log+vce', f'Approaching body: {approach_body} -- evading')
+                logger.info(f"sc_assist: ApproachBody detected: {approach_body}")
+                self.keys.send('SetSpeed25')  # deactivate SC Assist
+                pitch_time = 90.0 / self.pitchrate
+                self.keys.send('PitchUpButton', hold=pitch_time)
+                self.set_speed_100()
+                self.start_sco_monitoring()
+                sleep(5)  # SCO burst
+                self.set_speed_0()
+                self.compass_align(scr_reg)
+                self.keys.send('SetSpeed75')  # re-engage SC Assist
+                sleep(5)
+                sc_assist_cruising = True
+                continue
+
             # Only check occlusion when SC Assist is cruising at 75%
             if sc_assist_cruising and self.is_target_occluded(scr_reg):
                 sc_assist_cruising = False
                 self.ap_ckb('log', 'Target obscured by body -- evading')
                 logger.info("sc_assist: occlusion warning text detected")
-                # Deactivate SC Assist
-                self.keys.send('SetSpeed25')
-                # Pitch up to clear the body
+                self.keys.send('SetSpeed25')  # deactivate SC Assist
                 pitch_time = 45.0 / self.pitchrate
                 self.keys.send('PitchUpButton', hold=pitch_time)
-                # Fly past the body
                 self.set_speed_100()
                 sleep(15)
-                # Slow down for realign
                 self.set_speed_25()
                 self.compass_align(scr_reg)
-                # Re-engage SC Assist
-                self.keys.send('SetSpeed75')
+                self.keys.send('SetSpeed75')  # re-engage SC Assist
                 sc_assist_cruising = True
                 continue
 

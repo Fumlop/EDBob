@@ -219,6 +219,7 @@ class EDJournal:
             'mission_completed': 0,
             'mission_redirected': 0,
             'body': None,
+            'approach_body': None,
             'dist_jumped': 0,
             'jumps_remains': 0,
             'fuel_capacity': None,
@@ -313,6 +314,7 @@ class EDJournal:
 
             elif log_event == 'SupercruiseEntry' or log_event == 'FSDJump':
                 self.ship['status'] = 'in_supercruise'
+                self.ship['approach_body'] = None
 
             elif log_event == "DockingGranted":
                 self.ship['status'] = 'dockinggranted'
@@ -327,6 +329,11 @@ class EDJournal:
 
             elif log_event == 'SupercruiseDestinationDrop':
                 self.ship['SupercruiseDestinationDrop_type'] = log['Type']
+
+            elif log_event == 'ApproachBody':
+                self.ship['approach_body'] = log['Body']
+            elif log_event == 'LeaveBody':
+                self.ship['approach_body'] = None
 
             elif log_event == 'DockingCancelled':
                 self.ship['status'] = 'in_space'
@@ -583,22 +590,26 @@ class EDJournal:
 
         cnt = 0
         while True:
+            pos = self.log_file.tell()
             line = self.log_file.readline()
             # if end of file then break from while True
             if not line:
                 break
-            else:
-                try:
-                    log = loads(line)
-                except (json.JSONDecodeError, ValueError):
-                    logger.warning(f"Skipping corrupt journal line: {line[:80]}...")
-                    continue
-                cnt = cnt + 1
-                current_jrnl = self.ship.copy()
-                self.parse_line(log)
+            # Incomplete line (no newline) -- game is mid-write, seek back and retry next call
+            if not line.endswith('\n'):
+                self.log_file.seek(pos)
+                break
+            try:
+                log = loads(line)
+            except (json.JSONDecodeError, ValueError):
+                logger.warning(f"Skipping corrupt journal line: {line[:80]}...")
+                continue
+            cnt = cnt + 1
+            current_jrnl = self.ship.copy()
+            self.parse_line(log)
 
-                if self.ship != current_jrnl:
-                    logger.debug('Journal*.log: read: '+str(cnt)+' ship: '+str(self.ship))
+            if self.ship != current_jrnl:
+                logger.debug('Journal*.log: read: '+str(cnt)+' ship: '+str(self.ship))
 
         self.last_mod_time = self.get_file_modified_time()
         return self.ship
