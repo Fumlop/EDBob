@@ -804,6 +804,22 @@ class EDAutopilot:
 
         return result
 
+    def is_target_occluded(self, scr_reg) -> bool:
+        """Detect occlusion warning text in center of screen.
+        Only call during SC Assist AFTER speed is set (throttle text gone).
+        @return: True if orange warning text detected in center band.
+        """
+        filtered = scr_reg.capture_region_filtered(self.scr, 'center_text')
+        if filtered is None:
+            return False
+        pixel_count = cv2.countNonZero(filtered)
+        total_pixels = filtered.shape[0] * filtered.shape[1]
+        ratio = pixel_count / total_pixels if total_pixels > 0 else 0
+        if ratio > 0.005:
+            logger.info(f"is_target_occluded: orange text detected (ratio={ratio:.4f})")
+            return True
+        return False
+
     def _find_target_circle(self, image_bgr):
         """Find the orange target circle in an image using color detection.
         @return: (center_x, center_y) or None if no orange circle found.
@@ -1168,10 +1184,10 @@ class EDAutopilot:
                 'YawLeftButton': 'YawRightButton', 'YawRightButton': 'YawLeftButton',
             }
             key = key_map[key]
-            rate = max(abs(moved) / cal_time, 5.0)  # floor at 5 deg/s to avoid div-by-zero
+            rate = max(abs(moved) / cal_time, 1.0)  # floor at 1 deg/s to avoid div-by-zero
             logger.info(f"Align {axis}: wrong way, reversed to {key}, rate={rate:.1f}deg/s")
         else:
-            rate = max(moved / cal_time, 5.0)  # floor at 5 deg/s to avoid div-by-zero
+            rate = max(moved / cal_time, 1.0)  # floor at 1 deg/s to avoid div-by-zero
             logger.info(f"Align {axis}: rate={rate:.1f}deg/s (moved {moved:.1f}deg in {cal_time:.1f}s)")
 
         remaining = new_dist
@@ -1347,7 +1363,7 @@ class EDAutopilot:
           3) Yaw + Pitch for fine alignment (reliable, no overshoot)
         @return: True if aligned, else False.
         """
-        close = 3.0  # degrees -- tight tolerance for yaw+pitch alignment
+        close = 2.0  # degrees -- tight tolerance, SC Assist needs accurate alignment
         if not (self.jn.ship_state()['status'] == 'in_supercruise' or self.jn.ship_state()['status'] == 'in_space'):
             logger.error('align=err1, nav_align not in super or space')
             raise Exception('nav_align not in super or space')
@@ -1737,11 +1753,8 @@ class EDAutopilot:
     # position() happens after a refuel and performs
     #   - accelerate past sun
     #   - perform Discovery scan
-    def position(self, scr_reg, did_refuel=True):
+    def position(self, scr_reg):
         logger.debug('position')
-
-        # Sun avoidance first -- pitch away from star before accelerating
-        self.sun_avoid(scr_reg)
 
         self.set_speed_100()
 
@@ -1976,21 +1989,6 @@ class EDAutopilot:
             return False
 
         is_star_scoopable = self.jn.ship_state()['star_class'] in scoopable_stars
-
-        # if the sun is not scoopable, then set a low low threshold so we can pick up the dull red
-        # sun types.  Since we won't scoop it doesn't matter how much we pitch up
-        # if scoopable we know white/yellow stars are bright, so set higher threshold, this will allow us to
-        #  mast out the galaxy edge (which is bright) and not pitch up too much and avoid scooping
-        if is_star_scoopable == False or not has_fuel_scoop:
-            scr_reg.set_sun_threshold(25)
-        else:
-            scr_reg.set_sun_threshold(self.config['SunBrightThreshold'])
-
-        # Lets avoid the sun, shall we
-        logger.info("Avoiding star")
-        self.update_ap_status("Avoiding star")
-        self.ap_ckb('log', 'Avoiding star')
-        self.sun_avoid(scr_reg)
 
         if self.jn.ship_state()['fuel_percent'] < self.config['RefuelThreshold'] and is_star_scoopable and has_fuel_scoop:
             logger.debug('refuel= start refuel')
@@ -2240,11 +2238,11 @@ class EDAutopilot:
         self.honk_thread = threading.Thread(target=self.honk, daemon=True)
         self.honk_thread.start()
 
-        # Refuel
-        refueled = self.refuel(scr_reg)
+        # Sun avoidance
+        self.sun_avoid(scr_reg)
 
         self.update_ap_status("Maneuvering")
-        self.position(scr_reg, refueled)
+        self.position(scr_reg)
         self.set_speed_0()
 
     def supercruise_to_station(self, scr_reg, station_name: str) -> bool:
@@ -2326,11 +2324,13 @@ class EDAutopilot:
         self.nav_panel.activate_sc_assist()
         sleep(0.5)
         self.keys.send('SetSpeed75')
+        sc_assist_cruising = False  # wait for throttle text to clear first
 
         # Wait for SC Assist to fly us there and drop us out
-        # Check every 2.5s if target is obscured by a body
         self.ap_ckb('log', 'Waiting for SC Assist to reach destination...')
         self.start_sco_monitoring()
+        sleep(5)  # let SC Assist settle and throttle text disappear
+        sc_assist_cruising = True
         while True:
             sleep(2.5)
 
@@ -2349,24 +2349,25 @@ class EDAutopilot:
                 self.stop_sco_monitoring()
                 break
 
-            # Check if target is obscured by a body
-            # If compass shows target in front but no orange circle visible = occluded
-            tar_off = self.get_target_offset(scr_reg)
-            nav_off = self.get_nav_offset(scr_reg)
-            target_occluded = (tar_off is None and nav_off is not None and nav_off['z'] > 0
-                               and abs(nav_off['pit']) < 30 and abs(nav_off['yaw']) < 30)
-            if target_occluded:
+            # Only check occlusion when SC Assist is cruising at 75%
+            if sc_assist_cruising and self.is_target_occluded(scr_reg):
+                sc_assist_cruising = False
                 self.ap_ckb('log', 'Target obscured by body -- evading')
-                logger.info("sc_assist: target occluded (compass forward, no orange circle)")
-                # Throttle to 25% deactivates SC Assist so we can maneuver
+                logger.info("sc_assist: occlusion warning text detected")
+                # Deactivate SC Assist
                 self.keys.send('SetSpeed25')
-                # Pitch up ~45deg to clear the body
+                # Pitch up to clear the body
                 pitch_time = 45.0 / self.pitchrate
                 self.keys.send('PitchUpButton', hold=pitch_time)
-                sleep(1)
-                # Re-align, then 75% throttle re-engages SC Assist
+                # Fly past the body
+                self.set_speed_100()
+                sleep(15)
+                # Slow down for realign
+                self.set_speed_25()
                 self.compass_align(scr_reg)
+                # Re-engage SC Assist
                 self.keys.send('SetSpeed75')
+                sc_assist_cruising = True
                 continue
 
             # check if we are being interdicted

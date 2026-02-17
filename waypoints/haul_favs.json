@@ -1,7 +1,7 @@
 {
     "GlobalShoppingList": {
         "BuyCommodities": {
-            "Steel": 54801
+            "Steel": 52237
         },
         "UpdateCommodityCount": true,
         "FleetCarrierTransfer": false,
@@ -21,7 +21,7 @@
         "UpdateCommodityCount": true,
         "FleetCarrierTransfer": false,
         "Skip": false,
-        "Completed": true
+        "Completed": false
     },
     "2": {
         "SystemName": "",
