@@ -577,7 +577,7 @@ class EDWayPoint:
 
                 # Check if construction is complete
                 depot = self.ap.jn.ship_state().get('ConstructionDepotDetails')
-                if depot and depot.get('ConstructionComplete', False):
+                if isinstance(depot, dict) and depot.get('ConstructionComplete', False):
                     self.ap.ap_ckb('log+vce', "Construction complete! Stopping waypoint assist.")
                     break
 

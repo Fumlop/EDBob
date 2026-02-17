@@ -216,8 +216,6 @@ class StatusParser:
                 try:
                     with open(self.file_path, 'r', encoding='utf-8') as file:
                         data = json.load(file)
-                        if attempt > 1:
-                            print(f"Status file attempt: {attempt}")
                         break
                 except Exception as e:
                     logger.debug('An error occurred reading Status.json file. File may be open.')

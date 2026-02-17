@@ -237,7 +237,7 @@ class EDJournal:
             'has_std_dock_comp': None,
             'has_sco_fsd': None,
             'StationServices': None,
-            'ConstructionDepotDetails': dict[str, any],
+            'ConstructionDepotDetails': None,
             'MarketID': 0,
             'last_market_buy': None,   # {'Type': str, 'Count': int, 'timestamp': str}
             'last_market_sell': None,   # {'Type': str, 'Count': int, 'timestamp': str}

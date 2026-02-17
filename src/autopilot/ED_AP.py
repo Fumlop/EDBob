@@ -1128,78 +1128,55 @@ class EDAutopilot:
             return self._roll_on_centerline(off['roll'], close)
         return abs(off[axis]) < close
 
+    def _axis_max_rate(self, axis):
+        """Return the known max rate for an axis (from calibration or config)."""
+        if axis == 'pit':
+            return self.pitchrate
+        elif axis == 'yaw':
+            return self.yawrate
+        return self.rollrate
+
+    def _axis_pick_key(self, axis, deg):
+        """Pick the correct key for moving an axis toward center."""
+        if axis == 'roll':
+            if abs(deg) <= 90:
+                return 'RollRightButton' if deg > 0 else 'RollLeftButton'
+            else:
+                return 'RollLeftButton' if deg > 0 else 'RollRightButton'
+        elif axis == 'pit':
+            if abs(deg) <= 90:
+                return 'PitchUpButton' if deg > 0 else 'PitchDownButton'
+            else:
+                return 'PitchDownButton' if deg > 0 else 'PitchUpButton'
+        else:
+            return 'YawRightButton' if deg > 0 else 'YawLeftButton'
+
     def _align_axis(self, scr_reg, axis, off, close=10.0, timeout=20.0):
-        """Align one axis using calibration pulse to measure rate, then calculated holds.
-        Reverses direction if moving wrong way. Works for roll, pitch, or yaw.
+        """Align one axis using configured rate and calculated holds.
         @return: Updated offset dict, or None if compass lost.
         """
         if self._is_aligned(axis, off, close):
             return off
 
         start = time.time()
-        deg = off[axis]
-        dist = self._get_dist(axis, off)
+        remaining = self._get_dist(axis, off)
+        rate = self._axis_max_rate(axis)
+        key = self._axis_pick_key(axis, off[axis])
 
-        # Determine key direction (shortest path to target)
-        if axis == 'roll':
-            if abs(deg) <= 90:
-                key = 'RollRightButton' if deg > 0 else 'RollLeftButton'
-            else:
-                key = 'RollLeftButton' if deg > 0 else 'RollRightButton'
-        elif axis == 'pit':
-            # Same logic as roll: if behind (>90), flip direction for shortest path
-            if abs(deg) <= 90:
-                key = 'PitchUpButton' if deg > 0 else 'PitchDownButton'
-            else:
-                key = 'PitchDownButton' if deg > 0 else 'PitchUpButton'
-        else:
-            key = 'YawRightButton' if deg > 0 else 'YawLeftButton'
-
-        logger.info(f"Align {axis}: {deg:.1f}deg, dist={dist:.1f}, key={key}")
-
-        # Calibration pulse to measure rate
-        cal_time = random.uniform(1.0, 1.5)
-        self.keys.send(key, hold=cal_time)
-        sleep(0.3)
-
-        new_off = self.get_nav_offset(scr_reg)
-        if new_off is None:
-            sleep(0.5)
-            new_off = self.get_nav_offset(scr_reg)
-            if new_off is None:
-                return off
-
-        if self._is_aligned(axis, new_off, close):
-            logger.info(f"Align {axis}: aligned after cal pulse at {new_off[axis]:.1f}deg")
-            return new_off
-
-        new_dist = self._get_dist(axis, new_off)
-        moved = dist - new_dist
-
-        if moved <= 0:
-            # Wrong direction -- flip key, use measured rate
-            key_map = {
-                'RollLeftButton': 'RollRightButton', 'RollRightButton': 'RollLeftButton',
-                'PitchUpButton': 'PitchDownButton', 'PitchDownButton': 'PitchUpButton',
-                'YawLeftButton': 'YawRightButton', 'YawRightButton': 'YawLeftButton',
-            }
-            key = key_map[key]
-            rate = max(abs(moved) / cal_time, 1.0)  # floor at 1 deg/s to avoid div-by-zero
-            logger.info(f"Align {axis}: wrong way, reversed to {key}, rate={rate:.1f}deg/s")
-        else:
-            rate = max(moved / cal_time, 1.0)  # floor at 1 deg/s to avoid div-by-zero
-            logger.info(f"Align {axis}: rate={rate:.1f}deg/s (moved {moved:.1f}deg in {cal_time:.1f}s)")
-
-        remaining = new_dist
-        off = new_off
+        logger.info(f"Align {axis}: {off[axis]:.1f}deg, dist={remaining:.1f}, rate={rate:.1f}, key={key}")
 
         # Correction loop with calculated holds
-        max_hold = 2.0  # cap hold time to prevent massive overshoots
         while remaining > close and (time.time() - start) < timeout:
-            # More conservative as we get closer, but not too timid
-            approach_pct = 0.7 if remaining < 10 else 0.85
+            # Progressive approach: aggressive far out, gentle close in
+            if remaining < 5:
+                approach_pct = 0.5
+            elif remaining < 15:
+                approach_pct = 0.7
+            else:
+                approach_pct = 0.85
+
             hold_time = (remaining * approach_pct) / rate
-            hold_time = max(0.10, min(max_hold, hold_time))
+            hold_time = max(0.20, min(2.0, hold_time))
 
             logger.info(f"Align {axis}: remaining={remaining:.1f}deg, hold={hold_time:.2f}s, rate={rate:.1f}")
             self.keys.send(key, hold=hold_time)
@@ -1218,29 +1195,16 @@ class EDAutopilot:
 
             new_dist = self._get_dist(axis, new_off)
             if new_dist > remaining + 5:
-                # Overshot -- recalculate direction from new position
-                logger.info(f"Align {axis}: overshot {remaining:.1f}->{new_dist:.1f}, recalculating")
-                deg = new_off[axis]
-                if axis == 'roll':
-                    if abs(deg) <= 90:
-                        key = 'RollRightButton' if deg > 0 else 'RollLeftButton'
-                    else:
-                        key = 'RollLeftButton' if deg > 0 else 'RollRightButton'
-                elif axis == 'pit':
-                    if abs(deg) <= 90:
-                        key = 'PitchUpButton' if deg > 0 else 'PitchDownButton'
-                    else:
-                        key = 'PitchDownButton' if deg > 0 else 'PitchUpButton'
-                else:
-                    key = 'YawRightButton' if deg > 0 else 'YawLeftButton'
-                # Halve rate and reduce max hold after each overshoot
-                rate = rate * 0.5
-                max_hold = max(0.5, max_hold * 0.6)
+                # Overshot -- recalculate direction
+                logger.info(f"Align {axis}: overshot {remaining:.1f}->{new_dist:.1f}, reversing")
+                key = self._axis_pick_key(axis, new_off[axis])
             else:
-                # Update rate from actual movement (only when NOT overshooting)
+                # Update rate from actual movement
                 actual_moved = remaining - new_dist
-                if actual_moved > 0 and hold_time > 0.15:
-                    rate = actual_moved / hold_time
+                if actual_moved > 0 and hold_time > 0.20:
+                    new_rate = actual_moved / hold_time
+                    rate = min((rate + new_rate) / 2, self._axis_max_rate(axis))
+                    rate = max(rate, 1.0)
 
             remaining = new_dist
             off = new_off
@@ -2064,10 +2028,13 @@ class EDAutopilot:
 
         # Store current location (on planet or in space)
         on_planet = self.status.get_flag(FlagsHasLatLong)
-        on_orbital_construction_site = (self.jn.ship_state()['exp_station_type'] == EDJournal.StationType.SpaceConstructionDepot or
-                                       self.jn.ship_state()['exp_station_type'] == EDJournal.StationType.ColonisationShip)
-        fleet_carrier = self.jn.ship_state()['exp_station_type'] == EDJournal.StationType.FleetCarrier
-        squadron_fleet_carrier = self.jn.ship_state()['exp_station_type'] == EDJournal.StationType.SquadronCarrier
+        station_type = self.jn.ship_state()['exp_station_type']
+        logger.info(f"Undock: exp_station_type={station_type}, station={self.jn.ship_state()['cur_station']}")
+        on_orbital_construction_site = (station_type == EDJournal.StationType.SpaceConstructionDepot or
+                                       station_type == EDJournal.StationType.ColonisationShip or
+                                       station_type == EDJournal.StationType.PlanetaryConstructionDepot)
+        fleet_carrier = station_type == EDJournal.StationType.FleetCarrier
+        squadron_fleet_carrier = station_type == EDJournal.StationType.SquadronCarrier
         starport_outpost = not on_planet and not on_orbital_construction_site and not fleet_carrier and not squadron_fleet_carrier
 
         # Leave starport or planetary port
@@ -2083,15 +2050,15 @@ class EDAutopilot:
                 # Undock from station
                 self.undock()
 
-                # need to wait until undock complete, that is when we are back in_space
-                while self.jn.ship_state()['status'] != 'in_space':
-                    sleep(1)
-
                 if on_orbital_construction_site:
-                    # Construction site: no autodock departure, just wait 4s then maneuver
+                    # Construction site: wait for autodock to finish (Music:Exploration/NoTrack)
+                    for _ in range(60):
+                        if self.jn.ship_state()['status'] == 'in_space':
+                            break
+                        sleep(1)
                     self.ap_ckb('log+vce', 'Maneuvering away from construction site')
                     sleep(4)
-                    self.set_speed_25()
+                    self.set_speed_25()  # break autodock control
                     self.keys.send('PitchUpButton', hold=3.0)
                     sleep(0.5)
                     self.keys.send('UseBoostJuice')
@@ -2107,6 +2074,9 @@ class EDAutopilot:
                     self.sc_engage(True)
 
                 else:
+                    # Stations with mail slots: wait for music events to signal in_space
+                    while self.jn.ship_state()['status'] != 'in_space':
+                        sleep(1)
                     # Station/outpost/FC: wait for autodock to finish departure
                     for _ in range(30):  # max 30s
                         if not self.status.get_flag(FlagsLandingGearDown):
