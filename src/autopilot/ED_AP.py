@@ -2327,7 +2327,6 @@ class EDAutopilot:
                 self.keys.send('PitchUpButton', hold=pitch_time)
                 self.set_speed_100()
                 sleep(30)  # fly past at full speed
-                self.keys.send('PitchDownButton', hold=pitch_time)  # pitch back toward target
                 self.set_speed_0()
                 self.compass_align(scr_reg)
                 self.keys.send('SetSpeed75')  # re-engage SC Assist
@@ -2345,7 +2344,6 @@ class EDAutopilot:
                 self.keys.send('PitchUpButton', hold=pitch_time)
                 self.set_speed_100()
                 sleep(30)  # fly past at full speed
-                self.keys.send('PitchDownButton', hold=pitch_time)  # pitch back toward target
                 self.set_speed_0()
                 self.compass_align(scr_reg)
                 self.keys.send('SetSpeed75')  # re-engage SC Assist
