@@ -21,3 +21,10 @@ configs/ocr_calibration.json
 configs/ship_configs.json
 test/match/
 debug-output/
+/example_screenshot/**
+/venv
+/lab/
+/docs/sessions/
+/docs/TODO.md
+*.log
+.claude/settings.local.json
