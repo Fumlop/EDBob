@@ -2324,10 +2324,10 @@ class EDAutopilot:
                 logger.info(f"sc_assist: ApproachBody detected: {approach_body}")
                 self.keys.send('SetSpeed25')  # deactivate SC Assist
                 pitch_time = 90.0 / self.pitchrate
-                self.keys.send('PitchDownButton', hold=pitch_time)
+                self.keys.send('PitchUpButton', hold=pitch_time)
                 self.keys.send('SetSpeed50')
                 sleep(30)  # fly past at normal SC speed
-                self.keys.send('PitchUpButton', hold=pitch_time)  # target now below
+                self.keys.send('PitchDownButton', hold=pitch_time)  # pitch back toward target
                 self.set_speed_0()
                 self.compass_align(scr_reg)
                 self.keys.send('SetSpeed75')  # re-engage SC Assist
@@ -2342,10 +2342,10 @@ class EDAutopilot:
                 logger.info("sc_assist: occlusion warning text detected")
                 self.keys.send('SetSpeed25')  # deactivate SC Assist
                 pitch_time = 90.0 / self.pitchrate
-                self.keys.send('PitchDownButton', hold=pitch_time)
+                self.keys.send('PitchUpButton', hold=pitch_time)
                 self.keys.send('SetSpeed50')
                 sleep(30)  # fly past at normal SC speed
-                self.keys.send('PitchUpButton', hold=pitch_time)  # target now below, compass_align finds it fast
+                self.keys.send('PitchDownButton', hold=pitch_time)  # pitch back toward target
                 self.set_speed_0()
                 self.compass_align(scr_reg)
                 self.keys.send('SetSpeed75')  # re-engage SC Assist
