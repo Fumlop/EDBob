@@ -352,18 +352,21 @@ class CommoditiesMarket:
             self._set_buy_sell_quantity(keys, act_qty, max_qty)
 
             keys.send('UI_Down')
+            self.ap.jn.ship['last_market_buy'] = None  # clear before buy so we detect the new event
             keys.send('UI_Select')  # Select Buy
-            sleep(0.5)
 
             # Cross-check with journal for actual quantity bought
             actual_qty = act_qty
-            ship = self.ap.jn.ship_state()
-            last_buy = ship.get('last_market_buy')
-            if last_buy and last_buy['Type'].upper() == name.upper():
-                actual_qty = last_buy['Count']
-                if actual_qty != act_qty:
-                    logger.warning(f"Buy {name}: journal says {actual_qty}, planned {act_qty}")
-                    self.ap_ckb('log', f"Buy mismatch: got {actual_qty}/{act_qty} {name}")
+            for _ in range(10):  # wait up to 2s for MarketBuy event
+                sleep(0.2)
+                ship = self.ap.jn.ship_state()
+                last_buy = ship.get('last_market_buy')
+                if last_buy and last_buy['Type'].upper() == name.upper():
+                    actual_qty = last_buy['Count']
+                    if actual_qty != act_qty:
+                        logger.warning(f"Buy {name}: journal says {actual_qty}, planned {act_qty}")
+                        self.ap_ckb('log', f"Buy mismatch: got {actual_qty}/{act_qty} {name}")
+                    break
 
             # After buying all stock, item disappears from list
             if buy_all:
@@ -452,18 +455,21 @@ class CommoditiesMarket:
             self._set_buy_sell_quantity(keys, min(act_qty, max_qty), max_qty)
 
             keys.send('UI_Down')  # Down to the Sell button
+            self.ap.jn.ship['last_market_sell'] = None  # clear before sell so we detect the new event
             keys.send('UI_Select')  # Select to Sell
-            sleep(0.5)
 
             # Cross-check with journal for actual quantity sold
             actual_qty = act_qty
-            ship = self.ap.jn.ship_state()
-            last_sell = ship.get('last_market_sell')
-            if last_sell and last_sell['Type'].upper() == name.upper():
-                actual_qty = last_sell['Count']
-                if actual_qty != act_qty:
-                    logger.warning(f"Sell {name}: journal says {actual_qty}, planned {act_qty}")
-                    self.ap_ckb('log', f"Sell mismatch: got {actual_qty}/{act_qty} {name}")
+            for _ in range(10):  # wait up to 2s for MarketSell event
+                sleep(0.2)
+                ship = self.ap.jn.ship_state()
+                last_sell = ship.get('last_market_sell')
+                if last_sell and last_sell['Type'].upper() == name.upper():
+                    actual_qty = last_sell['Count']
+                    if actual_qty != act_qty:
+                        logger.warning(f"Sell {name}: journal says {actual_qty}, planned {act_qty}")
+                        self.ap_ckb('log', f"Sell mismatch: got {actual_qty}/{act_qty} {name}")
+                    break
 
             # After selling all, item may disappear from list
             sell_all = (actual_qty >= qty_in_cargo)

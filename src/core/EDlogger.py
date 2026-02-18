@@ -1,3 +1,4 @@
+import os
 import sys
 
 import colorlog
@@ -5,12 +6,24 @@ import logging
 from logging.handlers import RotatingFileHandler
 
 _filename = 'autopilot.log'
+_max_backups = 5
 
-# Define the logging config -- rotate at 1MB, keep 5 backups
+# Rotate on app start: rename existing logs, keep max 5
+if os.path.exists(_filename):
+    # Shift autopilot.log.4 -> .5 (deleted), .3 -> .4, ... .1 -> .2, log -> .1
+    for i in range(_max_backups, 1, -1):
+        src = f'{_filename}.{i - 1}'
+        dst = f'{_filename}.{i}'
+        if os.path.exists(src):
+            if os.path.exists(dst):
+                os.remove(dst)
+            os.rename(src, dst)
+    os.rename(_filename, f'{_filename}.1')
+
 logging.basicConfig(level=logging.ERROR,
                     format='%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
                     datefmt='%H:%M:%S',
-                    handlers=[RotatingFileHandler(_filename, maxBytes=1_000_000, backupCount=5, encoding='utf-8')])
+                    handlers=[RotatingFileHandler(_filename, maxBytes=10_000_000, backupCount=0, encoding='utf-8')])
 
 logger = colorlog.getLogger('ed_log')
 

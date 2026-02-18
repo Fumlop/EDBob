@@ -1,7 +1,14 @@
 {
     "GlobalShoppingList": {
         "BuyCommodities": {
-            "Steel": 52237
+            "Aluminium": 40053,
+            "Copper": 0,
+            "Insulating Membrane": 0,
+            "Liquid oxygen": 9313,
+            "Polymers": 0,
+            "Steel": 47109,
+            "Titanium": 28974,
+            "Water": 0
         },
         "UpdateCommodityCount": true,
         "FleetCarrierTransfer": false,
@@ -21,7 +28,7 @@
         "UpdateCommodityCount": true,
         "FleetCarrierTransfer": false,
         "Skip": false,
-        "Completed": false
+        "Completed": true
     },
     "2": {
         "SystemName": "",

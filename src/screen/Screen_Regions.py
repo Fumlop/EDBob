@@ -217,6 +217,7 @@ class Screen_Regions:
         self.orange_2_color_range = [array([16, 165, 220]), array([98, 255, 255])]
         self.blue_color_range     = [array([0, 28, 170]), array([180, 100, 255])]
         self.blue_sco_color_range = [array([10, 0, 0]), array([100, 150, 255])]
+        self.cyan_sc_assist_range = [array([80, 80, 80]), array([110, 255, 255])]
 
         self.reg = {}
         # regions with associated filter and color ranges
@@ -231,7 +232,6 @@ class Screen_Regions:
         self.reg['missions']    = {'rect': [0.50, 0.78, 0.65, 0.85], 'width': 1, 'height': 1, 'filterCB': self.equalize, 'filter': None}
         self.reg['nav_panel']   = {'rect': [0.25, 0.36, 0.60, 0.85], 'width': 1, 'height': 1, 'filterCB': self.equalize, 'filter': None}
         self.reg['center_text'] = {'rect': [0.20, 0.33, 0.65, 0.42], 'width': 1, 'height': 1, 'filterCB': self.filter_by_color, 'filter': self.orange_color_range}
-
         # convert rect from percent of screen into pixel location, calc the width/height of the area
         for i, key in enumerate(self.reg):
             xx = self.reg[key]['rect']
@@ -239,6 +239,11 @@ class Screen_Regions:
                                      int(xx[2] * screen.screen_width), int(xx[3] * screen.screen_height)]
             self.reg[key]['width'] = self.reg[key]['rect'][2] - self.reg[key]['rect'][0]
             self.reg[key]['height'] = self.reg[key]['rect'][3] - self.reg[key]['rect'][1]
+
+        # Absolute pixel regions (1920x1080 fixed) -- added after percentage conversion loop
+        self.reg['sc_assist_ind'] = {'rect': [940, 350, 1000, 400], 'width': 60, 'height': 50, 'filterCB': self.filter_by_color, 'filter': self.cyan_sc_assist_range}
+        # Compass: center 724,826 radius 40px (includes margin). Ship: panthermkii
+        self.reg['compass_fixed'] = {'rect': [684, 786, 764, 866], 'width': 80, 'height': 80, 'filterCB': self.equalize, 'filter': None}
 
     def capture_region(self, screen, region_name, inv_col=True):
         """ Just grab the screen based on the region name/rect.

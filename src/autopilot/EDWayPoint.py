@@ -534,6 +534,7 @@ class EDWayPoint:
             old_step = self.step
             # Loop through waypoints to find next waypoint
             while True:
+                self.ap.check_stop()
                 skip_waypoint = False
                 # Get the waypoint details
                 dest_key, next_waypoint = self.get_waypoint()

@@ -140,58 +140,41 @@ def check_sco_fsd(modules: list[dict[str, any]] | None) -> bool:
     return False
 
 
-def check_station_type(station_type: str, station_name: str, station_services: list[str]) -> StationType:
-    """ Gets the station type.
-        @station_type:  The station type from the journal (i.e. 'Coriolis').
-        @station_name:  The station name from the journal (i.e. 'ColonisationShip').
-        @return: The station type:
-            Starport
-            Outpost
-            etc.
-    """
-    station_type_upper = station_type.upper()
-    station_name_upper = station_name.upper()
-    station_services_upper = [s.upper() for s in station_services]
+_STATION_TYPE_MAP = {
+    'coriolis':                   StationType.Starport,
+    'orbis':                      StationType.Starport,
+    'ocellus':                    StationType.Starport,
+    'bernal':                     StationType.Starport,
+    'dodec':                      StationType.Starport,
+    'asteroidbase':               StationType.Starport,
+    'outpost':                    StationType.Outpost,
+    'crateroutpost':              StationType.SurfaceStation,
+    'spaceconstructiondepot':     StationType.SpaceConstructionDepot,
+    'planetaryconstructiondepot': StationType.PlanetaryConstructionDepot,
+}
 
-    if station_type_upper == 'SurfaceStation'.upper():
-        # Special case, for some reason the colonisation ship is a SurfaceStation in the journal.
-        if 'ColonisationShip'.upper() in station_name_upper:
+
+def check_station_type(station_type: str, station_name: str, station_services: list[str]) -> StationType:
+    key = station_type.lower()
+
+    # Special cases that need extra context
+    if key == 'surfacestation':
+        if 'colonisationship' in station_name.lower():
             return StationType.ColonisationShip
-        else:
-            return StationType.SurfaceStation
-    elif station_type_upper == 'CraterOutpost'.upper():
         return StationType.SurfaceStation
 
-    elif station_type_upper == 'FleetCarrier'.upper():
-        if 'squadronBank'.upper() in station_services_upper:
+    if key == 'fleetcarrier':
+        if 'squadronbank' in [s.lower() for s in station_services]:
             return StationType.SquadronCarrier
-        else:
-            return StationType.FleetCarrier
+        return StationType.FleetCarrier
 
-    elif station_type_upper == 'SpaceConstructionDepot'.upper():
-        return StationType.SpaceConstructionDepot
-    elif station_type_upper == 'PlanetaryConstructionDepot'.upper():
-        return StationType.PlanetaryConstructionDepot
+    # Simple lookup
+    result = _STATION_TYPE_MAP.get(key)
+    if result is not None:
+        return result
 
-    elif station_type_upper == 'Coriolis'.upper():
-        return StationType.Starport
-    elif station_type_upper == 'Orbis'.upper():
-        return StationType.Starport
-    elif station_type_upper == 'Ocellus'.upper():
-        return StationType.Starport
-    elif station_type_upper == 'Bernal'.upper():  # Bernal (Sphere) is an Ocellus.
-        return StationType.Starport
-    elif station_type_upper == 'Dodec'.upper():
-        return StationType.Starport
-    elif station_type_upper == 'AsteroidBase'.upper():
-        return StationType.Starport
-
-    elif station_type_upper == 'Outpost'.upper():
-        return StationType.Outpost
-    else:
-        # Default to starport
-        print(f"Unknown station type: {station_type}. Please contact the developers for it to be added to 'check_station_type'.")
-        return StationType.Unknown
+    logger.warning(f"Unknown station type: {station_type}")
+    return StationType.Unknown
 
 
 class EDJournal:
@@ -275,6 +258,7 @@ class EDJournal:
 
         # open the latest journal
         self.log_file = open(log_name, encoding="utf-8")
+        self.current_log = log_name
         self.last_mod_time = None
 
     def parse_line(self, log):
@@ -447,9 +431,8 @@ class EDJournal:
             else:
                 self.ship['fuel_percent'] = 10
 
-            # parse scoop
-            # 
-            if log_event == 'FuelScoop' and self.ship['time'] < 10 and self.ship['fuel_percent'] < 100:
+            # parse scoop -- FuelScoop fires every 5 tons scooped
+            if log_event == 'FuelScoop' and self.ship['fuel_percent'] < 100:
                 self.ship['is_scooping'] = True
             else:
                 self.ship['is_scooping'] = False
@@ -578,17 +561,13 @@ class EDJournal:
                 write_construction(const, filepath)
 
     def ship_state(self):
-        latest_log = self.get_latest_log()
-
-        # open journal file if not open yet or there is a more recent journal
-        if self.current_log is None or self.current_log != latest_log:
-            self.open_journal(latest_log)
-
+        # Journal is opened once at init, just keep tailing it
         # Check if file changed
         if self.get_file_modified_time() == self.last_mod_time:
             return self.ship
 
         cnt = 0
+        partial = None  # buffered partial line from a split read
         while True:
             pos = self.log_file.tell()
             line = self.log_file.readline()
@@ -599,10 +578,37 @@ class EDJournal:
             if not line.endswith('\n'):
                 self.log_file.seek(pos)
                 break
+
+            # If we have a buffered partial, try joining with this line
+            if partial is not None:
+                joined = partial + line.strip()
+                partial = None
+                try:
+                    log = loads(joined)
+                except (json.JSONDecodeError, ValueError):
+                    logger.warning(f"Skipping corrupt journal line (joined): {joined[:100]}...")
+                    # Fall through to try parsing current line on its own
+                    if not line.strip().startswith('{'):
+                        continue
+                else:
+                    cnt += 1
+                    current_jrnl = self.ship.copy()
+                    self.parse_line(log)
+                    if self.ship != current_jrnl:
+                        logger.debug('Journal*.log: read: '+str(cnt)+' ship: '+str(self.ship))
+                    continue
+
+            # Line doesn't start with '{' -- tail half of a split read, skip
+            stripped = line.strip()
+            if stripped and not stripped.startswith('{'):
+                logger.debug(f"Skipping journal fragment (no opening brace): {stripped[:80]}...")
+                continue
+
             try:
                 log = loads(line)
             except (json.JSONDecodeError, ValueError):
-                logger.warning(f"Skipping corrupt journal line: {line[:80]}...")
+                # Might be the first half of a split line, buffer it
+                partial = line.strip()
                 continue
             cnt = cnt + 1
             current_jrnl = self.ship.copy()

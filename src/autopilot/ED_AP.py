@@ -1,4 +1,3 @@
-import ctypes
 import math
 import os
 import threading
@@ -118,6 +117,7 @@ class EDAutopilot:
         self.sc_assist_enabled = False
         self.waypoint_assist_enabled = False
         self.dss_assist_enabled = False
+        self._stop_event = threading.Event()  # safe interrupt signal for assist threads
 
         # Create instance of each of the needed Classes
         self.scr = Screen.Screen(cb)
@@ -805,20 +805,24 @@ class EDAutopilot:
         return result
 
     def is_target_occluded(self, scr_reg) -> bool:
-        """Detect occlusion warning text in center of screen.
-        Only call during SC Assist AFTER speed is set (throttle text gone).
-        @return: True if orange warning text detected in center band.
+        """Detect target occlusion during SC Assist.
+        When SC Assist is active, a blue triangle + 'SUPERCRUISE ASSIST ACTIVE' text
+        is visible on screen. When the target is occluded by a body, this indicator
+        disappears. Checking blue indicator absence is the reliable signal.
+        @return: True if target is occluded (blue SC Assist indicator gone).
         """
-        filtered = scr_reg.capture_region_filtered(self.scr, 'center_text')
-        if filtered is None:
+        blue = scr_reg.capture_region_filtered(self.scr, 'sc_assist_ind')
+        if blue is None:
             return False
-        pixel_count = cv2.countNonZero(filtered)
-        total_pixels = filtered.shape[0] * filtered.shape[1]
-        ratio = pixel_count / total_pixels if total_pixels > 0 else 0
-        if ratio > 0.005:
-            logger.info(f"is_target_occluded: orange text detected (ratio={ratio:.4f})")
-            return True
-        return False
+        blue_count = cv2.countNonZero(blue)
+        blue_total = blue.shape[0] * blue.shape[1]
+        blue_ratio = blue_count / blue_total if blue_total > 0 else 0
+
+        if blue_ratio > 0.05:
+            return False  # SC Assist indicator visible, not occluded
+
+        logger.info(f"is_target_occluded: blue indicator gone (ratio={blue_ratio:.4f})")
+        return True
 
     def _find_target_circle(self, image_bgr):
         """Find the orange target circle in an image using color detection.
@@ -1038,6 +1042,7 @@ class EDAutopilot:
             granted = True
         else:
             for i in range(tries):
+                self.check_stop()
                 if self.jn.ship_state()['no_dock_reason'] == "Distance":
                     self.set_speed_50()
                     sleep(5)
@@ -1065,6 +1070,7 @@ class EDAutopilot:
             # allow auto dock to take over
             for i in range(self.config['WaitForAutoDockTimer']):
                 sleep(1)
+                self.check_stop()
                 if self.jn.ship_state()['status'] == "in_station":
                     MenuNav.refuel_repair_rearm(self.keys, self.status)
                     return
@@ -1081,9 +1087,13 @@ class EDAutopilot:
     # then will pitch up until below threshold.
     #
     def sun_avoid(self, scr_reg):
+        """Pitch up away from sun if it's ahead. Returns True if sun avoidance was needed."""
         logger.debug('align= avoid sun')
 
         sleep(0.5)
+
+        if not self.is_sun_dead_ahead(scr_reg):
+            return False
 
         # close to core the 'sky' is very bright with close stars, if we are pitch due to a non-scoopable star
         #  which is dull red, the star field is 'brighter' than the sun, so our sun avoidance could pitch up
@@ -1102,7 +1112,14 @@ class EDAutopilot:
                 logger.debug('sun avoid failsafe timeout')
                 break
 
+        # Extra pitch up for safety margin -- if target is directly behind the sun
+        # we need clearance before turning back
+        extra_time = 15.0 / self.pitchrate
+        logger.info(f"Sun clear, extra pitch up {extra_time:.1f}s (15deg safety)")
+        self.keys.send('PitchUpButton', hold=extra_time)
+
         self.set_speed_100()
+        return True
 
     @staticmethod
     def _roll_on_centerline(roll_deg, close):
@@ -1148,6 +1165,10 @@ class EDAutopilot:
         """Align one axis using configured rate and calculated holds.
         @return: Updated offset dict, or None if compass lost.
         """
+        # Target behind -- don't try to align, let compass_align handle the flip
+        if off.get('z', 1) < 0:
+            return off
+
         if self._is_aligned(axis, off, close):
             return off
 
@@ -1160,6 +1181,7 @@ class EDAutopilot:
 
         # Correction loop with calculated holds
         while remaining > close and (time.time() - start) < timeout:
+            self.check_stop()
             # Progressive approach: aggressive far out, gentle close in
             if remaining < 5:
                 approach_pct = 0.5
@@ -1173,7 +1195,7 @@ class EDAutopilot:
 
             logger.info(f"Align {axis}: remaining={remaining:.1f}deg, hold={hold_time:.2f}s, rate={rate:.1f}")
             self.keys.send(key, hold=hold_time)
-            sleep(0.3)
+            sleep(0.75)  # settle time at zero speed
 
             new_off = self.get_nav_offset(scr_reg)
             if new_off is None:
@@ -1181,6 +1203,11 @@ class EDAutopilot:
                 new_off = self.get_nav_offset(scr_reg)
                 if new_off is None:
                     return off
+
+            # Target went behind during alignment -- abort, let compass_align handle the flip
+            if new_off.get('z', 1) < 0:
+                logger.info(f"Align {axis}: target went behind, aborting axis align")
+                return new_off
 
             if self._is_aligned(axis, new_off, close):
                 logger.info(f"Align {axis}: aligned at {new_off[axis]:.1f}deg ({time.time()-start:.1f}s)")
@@ -1317,18 +1344,21 @@ class EDAutopilot:
     def compass_align(self, scr_reg) -> bool:
         """ Align ship to compass nav target.
         Strategy:
-          1) If target behind: pitch flip
+          1) If target behind: pitch UP to flip (away from star)
           2) If roll > 45deg off centerline: coarse roll to get close
           3) Yaw + Pitch for fine alignment (reliable, no overshoot)
         @return: True if aligned, else False.
         """
         close = 2.0  # degrees -- tight tolerance, SC Assist needs accurate alignment
-        if not (self.jn.ship_state()['status'] == 'in_supercruise' or self.jn.ship_state()['status'] == 'in_space'):
-            logger.error('align=err1, nav_align not in super or space')
+        # Use status.json flags (reliable) instead of journal status (can be stale from corrupt lines)
+        in_sc = self.status.get_flag(FlagsSupercruise)
+        in_space = not self.status.get_flag(FlagsDocked) and not self.status.get_flag(FlagsLanded)
+        if not (in_sc or in_space):
+            logger.error(f'align=err1, not in super or space. journal={self.jn.ship_state()["status"]}')
             raise Exception('nav_align not in super or space')
 
         self.ap_ckb('log+vce', 'Compass Align')
-        self.set_speed_50()
+        self.set_speed_0()
         prev_off = None
 
         align_tries = 0
@@ -1336,6 +1366,7 @@ class EDAutopilot:
         max_total_loops = max_align_tries * 5  # safety cap to prevent infinite loop
 
         for loop in range(max_total_loops):
+            self.check_stop()
             if self.interdiction_check():
                 self.ap_ckb('log', 'Interdicted during align, restarting...')
                 self.set_speed_25()
@@ -1351,7 +1382,7 @@ class EDAutopilot:
 
             logger.info(f"Compass: roll={off['roll']:.1f} pit={off['pit']:.1f} yaw={off['yaw']:.1f} z={off['z']}")
 
-            # Target behind -- pitch flip
+            # Target behind -- always pitch UP to flip (away from star after jump)
             if off['z'] < 0:
                 if prev_off and prev_off.get('z', 1) < 0 and abs(prev_off['roll'] - off['roll']) < 5:
                     logger.warning("Compass: flip had no effect, waiting 3s.")
@@ -1360,9 +1391,9 @@ class EDAutopilot:
                     align_tries += 1  # stuck flips count
 
                 pitch_time = 180.0 / self.pitchrate
-                logger.info(f"Compass: target behind, pitching down {pitch_time:.1f}s")
-                self.ap_ckb('log', 'Target behind, flipping')
-                self.keys.send('PitchDownButton', hold=pitch_time)
+                logger.info(f"Compass: target behind, pitching up {pitch_time:.1f}s")
+                self.ap_ckb('log', 'Target behind, flipping up')
+                self.keys.send('PitchUpButton', hold=pitch_time)
                 sleep(0.5)
                 prev_off = off
                 continue  # flip itself doesn't count
@@ -1373,18 +1404,19 @@ class EDAutopilot:
                 self.ap_ckb('log', 'Compass Align complete')
                 return True
 
-            # Coarse roll if dot is far off the vertical centerline
+            # Coarse roll only if dot is far off centerline AND pit/yaw are far off
+            # If pit/yaw are close, target is nearly centered -- roll doesn't matter
             roll_off_centerline = min(abs(off['roll']), 180 - abs(off['roll']))
-            if roll_off_centerline > self.COARSE_ROLL_THRESHOLD:
+            if roll_off_centerline > self.COARSE_ROLL_THRESHOLD and (abs(off['pit']) > 10 or abs(off['yaw']) > 10):
                 logger.info(f"Compass: roll {roll_off_centerline:.1f}deg off centerline, coarse roll")
                 self.ap_ckb('log', 'Coarse roll')
                 off = self._roll_to_centerline(scr_reg, off, close=self.COARSE_ROLL_THRESHOLD)
                 if off is None:
                     continue
                 if off.get('z', 1) < 0:
-                    logger.info("Compass: target went behind during roll, flipping")
+                    logger.info("Compass: target went behind during roll, flipping up")
                     pitch_time = 180.0 / self.pitchrate
-                    self.keys.send('PitchDownButton', hold=pitch_time)
+                    self.keys.send('PitchUpButton', hold=pitch_time)
                     sleep(0.5)
                     continue
 
@@ -1431,7 +1463,7 @@ class EDAutopilot:
                     break
             sleep(1)  # extra settle time
 
-        self.sun_avoid(scr_reg)
+        sun_was_ahead = self.sun_avoid(scr_reg)
 
         res = self.compass_align(scr_reg)
 
@@ -1549,6 +1581,7 @@ class EDAutopilot:
         close_enough_lim = 3.0  # degrees -- accept if both axes under this
         while (abs(off['pit']) > target_align_outer_lim or
                abs(off.get('yaw', 0)) > target_align_outer_lim):
+            self.check_stop()
             align_iterations += 1
             if align_iterations > max_align_iterations:
                 self.ap_ckb('log', f'Target Align: max iterations ({max_align_iterations}), accepting')
@@ -1648,11 +1681,11 @@ class EDAutopilot:
         # We are aligned, so define the navigation correction as the current offset. This won't be 100% accurate, but
         # will be within a few degrees.
         if tar_off1 and nav_off1:
-            self._nav_cor_x = self._nav_cor_x + nav_off1['x']
-            self._nav_cor_y = self._nav_cor_y + nav_off1['y']
+            self._nav_cor_x = max(-5.0, min(5.0, self._nav_cor_x + nav_off1['x']))
+            self._nav_cor_y = max(-5.0, min(5.0, self._nav_cor_y + nav_off1['y']))
         elif tar_off2 and nav_off2:
-            self._nav_cor_x = self._nav_cor_x + nav_off2['x']
-            self._nav_cor_y = self._nav_cor_y + nav_off2['y']
+            self._nav_cor_x = max(-5.0, min(5.0, self._nav_cor_x + nav_off2['x']))
+            self._nav_cor_y = max(-5.0, min(5.0, self._nav_cor_y + nav_off2['y']))
 
         # self.ap_ckb('log', 'Target Align complete.')
         return ScTargetAlignReturn.Found
@@ -1720,7 +1753,7 @@ class EDAutopilot:
         logger.info("Passing star")
 
         # Need time to move past Sun for heat to dissipate
-        pause_time = 12
+        pause_time = 30
         if self.config["EnableRandomness"]:
             pause_time = pause_time + random.randint(0, 3)
         sleep(pause_time)
@@ -1743,7 +1776,7 @@ class EDAutopilot:
 
         jump_tries = self.config['JumpTries']
         for i in range(jump_tries):
-
+            self.check_stop()
             logger.debug('jump= try:'+str(i))
             if not (self.jn.ship_state()['status'] == 'in_supercruise' or self.jn.ship_state()['status'] == 'in_space'):
                 logger.error('Not ready to FSD jump. jump=err1')
@@ -1968,6 +2001,7 @@ class EDAutopilot:
             #if we don't scoop first 5 tons with 40 sec break, since not scooping or not fast enough or not at all, then abort
             startime = time.time()
             while not self.jn.ship_state()['is_scooping'] and not self.jn.ship_state()['fuel_percent'] == 100:
+                self.check_stop()
                 # check if we are being interdicted
                 interdicted = self.interdiction_check()
                 if interdicted:
@@ -1983,6 +2017,7 @@ class EDAutopilot:
             # We started fueling, so lets give it another timeout period to fuel up
             startime = time.time()
             while not self.jn.ship_state()['fuel_percent'] == 100:
+                self.check_stop()
                 # check if we are being interdicted
                 interdicted = self.interdiction_check()
                 if interdicted:
@@ -2175,9 +2210,6 @@ class EDAutopilot:
         self.set_speed_50()
         sleep(1)
 
-        # Calibrate actual turn rates in SC at 50% speed
-        self.calibrate_rates(self.scrReg)
-
         return True
 
     def waypoint_assist(self, keys, scr_reg):
@@ -2270,7 +2302,7 @@ class EDAutopilot:
             return
 
         # Sun avoidance first (pitch up if sun ahead after FSD drop)
-        self.sun_avoid(scr_reg)
+        sun_was_ahead = self.sun_avoid(scr_reg)
 
         # Align to target using compass
         aligned = self.compass_align(scr_reg)
@@ -2297,8 +2329,10 @@ class EDAutopilot:
         self.start_sco_monitoring()
         sleep(5)  # let SC Assist settle and throttle text disappear
         sc_assist_cruising = True
+        last_align_check = time.time()
         while True:
             sleep(2.5)
+            self.check_stop()
 
             if self.jn.ship_state()['status'] != 'in_supercruise':
                 # Dropped from supercruise (SC Assist completed or glide)
@@ -2334,8 +2368,8 @@ class EDAutopilot:
                 sc_assist_cruising = True
                 continue
 
-            # Only check occlusion when SC Assist is cruising at 75%
-            if sc_assist_cruising and self.is_target_occluded(scr_reg):
+            # TODO: occlusion detection disabled -- needs region/threshold fix
+            if False and sc_assist_cruising and self.is_target_occluded(scr_reg):
                 sc_assist_cruising = False
                 self.ap_ckb('log', 'Target obscured by body -- evading')
                 logger.info("sc_assist: occlusion warning text detected")
@@ -2350,6 +2384,30 @@ class EDAutopilot:
                 sleep(5)
                 sc_assist_cruising = True
                 continue
+
+            # Safety net: every 60s check if SC Assist is still active
+            # 2 out of 3 rapid checks must fail to confirm SC Assist is truly gone
+            if sc_assist_cruising and (time.time() - last_align_check) > 60:
+                last_align_check = time.time()
+                gone_count = 0
+                for _ in range(3):
+                    blue = scr_reg.capture_region_filtered(self.scr, 'sc_assist_ind')
+                    if blue is not None:
+                        blue_count = cv2.countNonZero(blue)
+                        blue_total = blue.shape[0] * blue.shape[1]
+                        blue_ratio = blue_count / blue_total if blue_total > 0 else 0
+                        if blue_ratio < 0.05:
+                            gone_count += 1
+                    sleep(1)
+                if gone_count >= 2:
+                    logger.warning(f"sc_assist: safety net -- SC Assist indicator gone ({gone_count}/3 checks), re-aligning")
+                    self.ap_ckb('log', 'SC Assist lost -- re-aligning')
+                    self.set_speed_0()
+                    self.compass_align(scr_reg)
+                    self.keys.send('SetSpeed75')
+                    sleep(10)  # wait for indicator to stabilize
+                    last_align_check = time.time()
+                    continue
 
             # check if we are being interdicted
             interdicted = self.interdiction_check()
@@ -2399,6 +2457,7 @@ class EDAutopilot:
     def dss_assist(self):
         while True:
             sleep(0.5)
+            self.check_stop()
             if self.jn.ship_state()['status'] == 'in_supercruise':
                 cur_star_system = self.jn.ship_state()['cur_star_system']
                 if cur_star_system != self._prev_star_system:
@@ -2411,46 +2470,28 @@ class EDAutopilot:
 
     # raising an exception to the engine loop thread, so we can terminate its execution
     #  if thread was in a sleep, the exception seems to not be delivered
-    def ctype_async_raise(self, thread_obj, exception):
-        found = False
-        target_tid = 0
-        for tid, tobj in threading._active.items():
-            if tobj is thread_obj:
-                found = True
-                target_tid = tid
-                break
-
-        if not found:
-            raise ValueError("Invalid thread object")
-
-        ret = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(target_tid),
-                                                         ctypes.py_object(exception))
-        # ref: http://docs.python.org/c-api/init.html#PyThreadState_SetAsyncExc
-        if ret == 0:
-            raise ValueError("Invalid thread ID")
-        elif ret > 1:
-            # Huh? Why would we notify more than one threads?
-            # Because we punch a hole into C level interpreter.
-            # So it is better to clean up the mess.
-            ctypes.pythonapi.PyThreadState_SetAsyncExc(target_tid, 0)
-            raise SystemError("PyThreadState_SetAsyncExc failed")
+    def check_stop(self):
+        """Check if stop was requested and raise EDAP_Interrupt if so.
+        Call this at the top of main loop iterations for safe interrupt points."""
+        if self._stop_event.is_set():
+            raise EDAP_Interrupt
 
     #
     # Setter routines for state variables
     #
     def set_sc_assist(self, enable=True):
-        if enable == False and self.sc_assist_enabled == True:
-            self.ctype_async_raise(self.ap_thread, EDAP_Interrupt)
+        if not enable and self.sc_assist_enabled:
+            self._stop_event.set()
         self.sc_assist_enabled = enable
 
     def set_waypoint_assist(self, enable=True):
-        if enable == False and self.waypoint_assist_enabled == True:
-            self.ctype_async_raise(self.ap_thread, EDAP_Interrupt)
+        if not enable and self.waypoint_assist_enabled:
+            self._stop_event.set()
         self.waypoint_assist_enabled = enable
 
     def set_dss_assist(self, enable=True):
-        if enable == False and self.dss_assist_enabled == True:
-            self.ctype_async_raise(self.ap_thread, EDAP_Interrupt)
+        if not enable and self.dss_assist_enabled:
+            self._stop_event.set()
         self.dss_assist_enabled = enable
 
     def set_cv_view(self, enable=True, x=0, y=0):
@@ -2531,6 +2572,7 @@ class EDAutopilot:
 
             if self.sc_assist_enabled == True:
                 logger.debug("Running sc_assist")
+                self._stop_event.clear()
                 set_focus_elite_window()
                 self.update_overlay()
                 try:
@@ -2551,7 +2593,7 @@ class EDAutopilot:
 
             elif self.waypoint_assist_enabled == True:
                 logger.debug("Running waypoint_assist")
-
+                self._stop_event.clear()
                 set_focus_elite_window()
                 self.update_overlay()
                 self.jump_cnt = 0
@@ -2574,6 +2616,7 @@ class EDAutopilot:
 
             elif self.dss_assist_enabled == True:
                 logger.debug("Running dss_assist")
+                self._stop_event.clear()
                 set_focus_elite_window()
                 self.update_overlay()
                 try:

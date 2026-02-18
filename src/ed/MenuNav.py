@@ -64,6 +64,8 @@ def refuel_repair_rearm(keys, status_parser: StatusParser):
     keys.send('UI_Right')    # move to Rearm
     keys.send('UI_Select')   # Rearm
     sleep(0.5)
+    keys.send('UI_Left', repeat=2)  # back to Refuel column before leaving
+    sleep(0.3)
     goto_cockpit(keys, status_parser)
 
 
