@@ -804,25 +804,25 @@ class EDAutopilot:
 
         return result
 
-    def is_target_occluded(self, scr_reg) -> bool:
-        """Detect target occlusion during SC Assist.
-        When SC Assist is active, a blue triangle + 'SUPERCRUISE ASSIST ACTIVE' text
-        is visible on screen. When the target is occluded by a body, this indicator
-        disappears. Checking blue indicator absence is the reliable signal.
-        @return: True if target is occluded (blue SC Assist indicator gone).
+    def is_sc_assist_gone(self, scr_reg) -> bool:
+        """2-of-3 check whether the blue SC Assist indicator has disappeared.
+        Used for both occlusion detection and safety-net re-alignment.
+        @return: True if indicator is confirmed gone (2+ of 3 checks fail).
         """
-        blue = scr_reg.capture_region_filtered(self.scr, 'sc_assist_ind')
-        if blue is None:
-            return False
-        blue_count = cv2.countNonZero(blue)
-        blue_total = blue.shape[0] * blue.shape[1]
-        blue_ratio = blue_count / blue_total if blue_total > 0 else 0
-
-        if blue_ratio > 0.05:
-            return False  # SC Assist indicator visible, not occluded
-
-        logger.info(f"is_target_occluded: blue indicator gone (ratio={blue_ratio:.4f})")
-        return True
+        gone_count = 0
+        for _ in range(3):
+            blue = scr_reg.capture_region_filtered(self.scr, 'sc_assist_ind')
+            if blue is not None:
+                blue_count = cv2.countNonZero(blue)
+                blue_total = blue.shape[0] * blue.shape[1]
+                blue_ratio = blue_count / blue_total if blue_total > 0 else 0
+                if blue_ratio < 0.05:
+                    gone_count += 1
+            sleep(1)
+        if gone_count >= 2:
+            logger.info(f"is_sc_assist_gone: confirmed gone ({gone_count}/3 checks)")
+            return True
+        return False
 
     def _find_target_circle(self, image_bgr):
         """Find the orange target circle in an image using color detection.
@@ -2368,44 +2368,32 @@ class EDAutopilot:
                 sc_assist_cruising = True
                 continue
 
-            # TODO: occlusion detection disabled -- needs region/threshold fix
-            if False and sc_assist_cruising and self.is_target_occluded(scr_reg):
-                sc_assist_cruising = False
-                self.ap_ckb('log', 'Target obscured by body -- evading')
-                logger.info("sc_assist: occlusion warning text detected")
-                self.keys.send('SetSpeed25')  # deactivate SC Assist
-                pitch_time = 90.0 / self.pitchrate
-                self.keys.send('PitchUpButton', hold=pitch_time)
-                self.set_speed_100()
-                sleep(30)  # fly past at full speed
-                self.set_speed_0()
-                self.compass_align(scr_reg)
-                self.keys.send('SetSpeed75')  # re-engage SC Assist
-                sleep(5)
-                sc_assist_cruising = True
-                continue
-
-            # Safety net: every 60s check if SC Assist is still active
-            # 2 out of 3 rapid checks must fail to confirm SC Assist is truly gone
-            if sc_assist_cruising and (time.time() - last_align_check) > 60:
+            # Every 30s check if SC Assist indicator is still visible (2-of-3 vote)
+            # If gone: re-align first. If still gone after re-align: target is occluded, evade.
+            if sc_assist_cruising and (time.time() - last_align_check) > 30:
                 last_align_check = time.time()
-                gone_count = 0
-                for _ in range(3):
-                    blue = scr_reg.capture_region_filtered(self.scr, 'sc_assist_ind')
-                    if blue is not None:
-                        blue_count = cv2.countNonZero(blue)
-                        blue_total = blue.shape[0] * blue.shape[1]
-                        blue_ratio = blue_count / blue_total if blue_total > 0 else 0
-                        if blue_ratio < 0.05:
-                            gone_count += 1
-                    sleep(1)
-                if gone_count >= 2:
-                    logger.warning(f"sc_assist: safety net -- SC Assist indicator gone ({gone_count}/3 checks), re-aligning")
+                if self.is_sc_assist_gone(scr_reg):
+                    logger.warning("sc_assist: blue indicator gone, attempting re-align")
                     self.ap_ckb('log', 'SC Assist lost -- re-aligning')
                     self.set_speed_0()
                     self.compass_align(scr_reg)
                     self.keys.send('SetSpeed75')
-                    sleep(10)  # wait for indicator to stabilize
+                    sleep(10)
+                    # Check again -- if still gone, target is occluded by a body
+                    if self.is_sc_assist_gone(scr_reg):
+                        logger.warning("sc_assist: still gone after re-align -- target occluded, evading")
+                        self.ap_ckb('log', 'Target occluded -- evading')
+                        sc_assist_cruising = False
+                        self.keys.send('SetSpeed25')
+                        pitch_time = 90.0 / self.pitchrate
+                        self.keys.send('PitchUpButton', hold=pitch_time)
+                        self.set_speed_100()
+                        sleep(30)
+                        self.set_speed_0()
+                        self.compass_align(scr_reg)
+                        self.keys.send('SetSpeed75')
+                        sleep(5)
+                        sc_assist_cruising = True
                     last_align_check = time.time()
                     continue
 
