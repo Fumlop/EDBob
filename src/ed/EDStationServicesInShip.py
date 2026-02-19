@@ -67,7 +67,7 @@ class EDStationServicesInShip:
         Same menu path as Station Services, just no GuiFocus wait.
         """
         MenuNav.goto_cockpit(self.keys, self.status_parser)
-        MenuNav.realign_cursor(self.keys, hold=3)
+        MenuNav.realign_cursor(self.keys)
         sleep(0.3)
         self.keys.send("UI_Select")  # select refuel line
         sleep(0.3)

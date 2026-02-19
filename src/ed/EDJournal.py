@@ -75,69 +75,35 @@ def get_ship_fullname(ship: str) -> str:
         return ''
 
 
-def check_fuel_scoop(modules: list[dict[str, any]] | None) -> bool:
-    """ Gets whether the ship has a fuel scoop.
+def _has_module(modules: list[dict[str, any]] | None, item_search: str, slot: str | None = None) -> bool:
+    """Check if ship has a module matching item_search (in Item field, case-insensitive).
+    If slot is given, only modules in that slot are checked.
+    Returns True if modules is None (assume fitted when data unavailable).
     """
-    # Default to fuel scoop fitted if modules is None
     if modules is None:
         return True
-
-    # Check all modules. Could just check the internals, but this is easier.
     for module in modules:
-        if "fuelscoop" in module['Item'].lower():
+        if slot and module['Slot'] != slot:
+            continue
+        if item_search in module['Item'].lower():
             return True
-
     return False
+
+
+def check_fuel_scoop(modules: list[dict[str, any]] | None) -> bool:
+    return _has_module(modules, "fuelscoop")
 
 
 def check_adv_docking_computer(modules: list[dict[str, any]] | None) -> bool:
-    """ Gets whether the ship has an advanced docking computer.
-    Advanced docking computer will dock and undock automatically.
-    """
-    # Default to docking computer fitted if modules is None
-    if modules is None:
-        return True
-
-    # Check all modules. Could just check the internals, but this is easier.
-    for module in modules:
-        if "dockingcomputer_advanced" in module['Item'].lower():
-            return True
-
-    return False
+    return _has_module(modules, "dockingcomputer_advanced")
 
 
 def check_std_docking_computer(modules: list[dict[str, any]] | None) -> bool:
-    """ Gets whether the ship has a standard docking computer.
-    Standard docking computer will dock automatically, but not undock.
-    """
-    # Default to docking computer fitted if modules is None
-    if modules is None:
-        return True
-
-    # Check all modules. Could just check the internals, but this is easier.
-    for module in modules:
-        if "dockingcomputer_standard" in module['Item'].lower():
-            return True
-
-    return False
+    return _has_module(modules, "dockingcomputer_standard")
 
 
 def check_sco_fsd(modules: list[dict[str, any]] | None) -> bool:
-    """ Gets whether the ship has an FSD with SCO.
-    """
-    # Default to SCO fitted if modules is None
-    if modules is None:
-        return True
-
-    # Check all modules. Could just check the internals, but this is easier.
-    for module in modules:
-        if module['Slot'] == "FrameShiftDrive":
-            if "overcharge" in module['Item'].lower():
-                #print("FrameShiftDrive has SCO!")
-                return True
-
-    #print("FrameShiftDrive has no SCO")
-    return False
+    return _has_module(modules, "overcharge", slot="FrameShiftDrive")
 
 
 _STATION_TYPE_MAP = {

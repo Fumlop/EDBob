@@ -16,35 +16,21 @@ Full method-by-method analysis of all major modules. Grouped by priority and eff
 
 ---
 
-### 1.2 Deduplicate Calibration Methods (ED_AP.py)
+### ~~1.2 Deduplicate Calibration Methods~~ PARTIALLY DONE
 
-`ship_tst_pitch_new`, `ship_tst_roll_new`, `ship_tst_yaw_new` are 3x ~70 lines of identical loops. Only differ in pulse timing, test angles, key names.
-
-Also `ship_tst_pitch`, `ship_tst_roll`, `ship_tst_yaw` (old versions) still exist -- dead code.
-
-**Action:** Single `calibrate_axis(axis, test_angles, pulse_start, increment)`. Delete old `ship_tst_*` methods. Delete `ship_tst_pitch_calc_power` (abandoned).
-
-**Files:** ED_AP.py (lines 2640-2982)
+`calibrate_rates()` and `_cal_recover()` deleted (dead code). `ship_tst_*` methods still exist for manual calibration UI.
 
 ---
 
-### 1.3 Deduplicate Speed Setters (ED_AP.py)
+### ~~1.3 Deduplicate Speed Setters~~ DONE
 
-`set_speed_0`, `set_speed_25`, `set_speed_50`, `set_speed_100` are 4x identical pattern.
-
-**Action:** Single `set_speed(percent, repeat=1)`.
-
-**Files:** ED_AP.py (lines 2984-3019)
+`_SPEED_CONFIG` dict + `_set_speed(percent, repeat)`. 4 original methods are one-liner wrappers. Fallback logic (25%->50%) preserved generically.
 
 ---
 
-### 1.4 Deduplicate Module Checkers (EDJournal.py)
+### ~~1.4 Deduplicate Module Checkers~~ DONE
 
-`check_fuel_scoop`, `check_adv_docking_computer`, `check_std_docking_computer`, `check_sco_fsd` -- 4 nearly identical functions searching modules list.
-
-**Action:** Single `_has_module(modules, search_string, slot=None)` with `None -> True` default behavior.
-
-**Files:** EDJournal.py (lines 78-140)
+`_has_module(modules, item_search, slot=None)` replaces 63 lines with 13. 4 original functions are one-liner wrappers. SCO slot filter preserved via `slot=` param.
 
 ---
 
@@ -115,13 +101,9 @@ Body approach evasion and occlusion evasion are nearly identical pitch-up-fly-pa
 
 ---
 
-### 2.5 Waypoint Validation Schema (EDWayPoint.py)
+### ~~2.5 Waypoint Validation Schema~~ DONE
 
-`_read_waypoints` has 50+ lines of manual key-exists checks. Verbose and fragile.
-
-**Action:** Schema-based validation, similar to config.
-
-**Files:** EDWayPoint.py (lines 57-134)
+Two field sets (`_GLOBAL_FIELDS`, `_WAYPOINT_FIELDS`) + 4-line loop replaces 50 lines of manual checks. Also fixed pre-existing bug where `s=None` would crash the validation loop.
 
 ---
 
@@ -216,47 +198,11 @@ Line 546: falls back to `dic.get('MarketID')` when station not found -- stores m
 
 ---
 
-## Priority 0 -- Replace YOLO with Fixed-Region Detection
+## ~~Priority 0 -- Replace YOLO with Fixed-Region Detection~~ DONE
 
-### 0.1 Fixed-Region Screen Detection (replace ML compass detection)
-
-**Goal:** Remove YOLO/ML dependency for compass and other UI element detection. Use fixed pixel regions + color filtering instead.
-
-**Why:** YOLO is overkill. The HUD elements are at fixed positions for a given ship and resolution. Color-based detection (HSV filtering) already works for the dot inside the compass -- we just need to skip the ML bounding box step.
-
-**Approach:**
-
-1. **Screenshot collection per ship:**
-   - User provides annotated screenshots (colored boxes drawn around key regions)
-   - One set per ship type (cockpit layouts differ)
-   - At 1920x1080 fixed resolution
-
-2. **Regions to capture (per ship):**
-   - Compass circle (currently YOLO-detected, replace with fixed crop)
-   - Target reticle area
-   - Sun detection zone
-   - SC Assist indicator (already done: [940,350]-[1000,400])
-   - Disengage/SCO text area
-   - Fuel scoop indicator area
-   - Any other ship-specific HUD elements
-
-3. **Config structure:**
-   - `configs/regions/<ship_type>.json` -- pixel coords per region per ship
-   - Fallback to a `default.json` for unknown ships
-   - Loaded at ship detection time (we already know ship type from journal)
-
-4. **Detection flow (new):**
-   - On ship change: load region config for that ship
-   - `get_nav_offset`: crop compass at fixed pixels -> HSV cyan dot detection -> angle math (existing code)
-   - No YOLO model loading, no inference, no ML dependencies
-
-5. **Migration:**
-   - Keep YOLO as optional fallback during transition (config flag `UseMLDetection: false`)
-   - Once all ships have region configs, remove YOLO entirely
-
-**Files:** ED_AP.py (get_nav_offset, get_target_offset), Screen_Regions.py, new configs/regions/*.json
-
-**Prep needed from user:** Annotated screenshots per ship with colored boxes around each HUD region. At least: compass, target reticle, sun zone.
+YOLO removed. Screen regions loaded from `configs/screen_regions/res_{w}_{h}/default.json`.
+`Screen_Regions` loads from JSON config, supports per-ship overrides via `reload_regions(ship_type)`.
+`get_nav_offset()` uses fixed compass region directly. `ultralytics` and `MachLearn` imports removed.
 
 ---
 
@@ -273,6 +219,15 @@ Line 546: falls back to `dic.get('MarketID')` when station not found -- stores m
 - **Refuel/repair nav** -- 2x UI_Left after rearm to return cursor before leaving
 - **Log rotation** -- fresh log per app start, rotate max 5 backups, 10MB cap
 - **Journal single open** -- only find newest journal at startup, tail it forever
+- ~~0.1 YOLO removal~~ -- fixed-region config, `Screen_Regions` loads from JSON, ML imports removed
+- **Sun avoid rework** -- 25% throttle, 45deg initial pull-up, 15deg steps, reserve, 100% fly-by, pitch-down recovery after position()
+- **Masslock clearing** -- unified `wait_masslock_clear()` method, boost every 5s, used in `sc_engage()`
+- **sc_engage simplified** -- removed `boost` param, always clears masslock, SCO burst 5s, speed 0 after
+- **Dead code removed** -- `refuel()`, `calibrate_rates()`, `_cal_recover()`, gear retract poll
+- **Dock simplified** -- single docking attempt + 30s retry, journal-based autodock wait, no distance retry loop
+- **Timing optimizations** -- undock polls (sleep 5 x12, sleep 3 x20), jump pre-FSD 0.2s, window focus removed, journal catch-up 4s->2s
+- **2-of-3 dot voting** -- compass dot detection in `sc_target_align` uses 2-of-3 vote instead of sleep retries
+- **MenuNav cleanup** -- `realign_cursor` 2x UI_Up, delays added between rapid key actions, request_docking 0.3s uniform
 
 ---
 

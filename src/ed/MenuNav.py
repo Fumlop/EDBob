@@ -39,11 +39,12 @@ def goto_cockpit(keys, status_parser: StatusParser, max_tries: int = 10) -> bool
     return False
 
 
-def realign_cursor(keys, hold: float = 3):
-    """Move cursor to the top of any menu list.
-    Uses UI_Up with a hold duration to ensure we're at position 0.
-    """
-    keys.send('UI_Up', hold=hold)
+def realign_cursor(keys):
+    """Move cursor to the top of any menu list. 2x UI_Up covers docked menu depth."""
+    keys.send('UI_Up')
+    sleep(0.2)
+    keys.send('UI_Up')
+    sleep(0.2)
 
 
 def refuel_repair_rearm(keys, status_parser: StatusParser):
@@ -55,13 +56,15 @@ def refuel_repair_rearm(keys, status_parser: StatusParser):
       Row 0 + Right: Repair
       Row 0 + Right + Right: Rearm
     """
-    realign_cursor(keys, hold=3)
+    realign_cursor(keys)
     keys.send('UI_Select')   # Refuel
     sleep(0.5)
     keys.send('UI_Right')    # move to Repair
+    sleep(0.25)
     keys.send('UI_Select')   # Repair
     sleep(0.5)
     keys.send('UI_Right')    # move to Rearm
+    sleep(0.25)
     keys.send('UI_Select')   # Rearm
     sleep(0.5)
     keys.send('UI_Left', repeat=2)  # back to Refuel column before leaving
@@ -79,9 +82,7 @@ def open_station_services(keys, status_parser: StatusParser) -> bool:
     """
     goto_cockpit(keys, status_parser)
 
-    realign_cursor(keys, hold=3)
-    sleep(0.3)
-    keys.send('UI_Select')   # select refuel line (enters that row)
+    realign_cursor(keys)
     sleep(0.3)
     keys.send('UI_Down')     # down to Station Services
     sleep(0.3)
@@ -100,9 +101,11 @@ def undock(keys, status_parser: StatusParser):
     """
     goto_cockpit(keys, status_parser)
 
-    realign_cursor(keys, hold=3)
+    realign_cursor(keys)
     keys.send('UI_Down')     # Station Services
+    sleep(0.2)
     keys.send('UI_Down')     # Auto Undock
+    sleep(0.2)
     keys.send('UI_Select')   # Launch
 
 
@@ -134,8 +137,7 @@ def activate_sc_assist(keys, status_parser: StatusParser, is_target_row_fn, cb=N
         return False
 
     # Go to top of list
-    realign_cursor(keys, hold=2)
-    sleep(1.0)
+    realign_cursor(keys)
 
     # Step down row by row, check for target bracket
     max_rows = 20
@@ -191,23 +193,23 @@ def request_docking(keys, status_parser: StatusParser) -> bool:
     # Navigation -> Contacts (2 tabs right)
     logger.info("request_docking: cycling to Contacts tab")
     keys.send('CycleNextPanel')
-    sleep(0.5)
+    sleep(0.3)
     keys.send('CycleNextPanel')
-    sleep(0.5)
+    sleep(0.3)
 
     # First entry is already selected (the target), UI_Right to action button
     logger.info("request_docking: selecting target action")
     keys.send('UI_Right')
-    sleep(0.5)
+    sleep(0.3)
     keys.send('UI_Select')
-    sleep(0.5)
+    sleep(0.3)
 
     # Back to Navigation tab so panel state is clean for later
     logger.info("request_docking: cycling back to Navigation tab")
     keys.send('CyclePreviousPanel')
-    sleep(0.5)
+    sleep(0.3)
     keys.send('CyclePreviousPanel')
-    sleep(0.5)
+    sleep(0.3)
 
     close_nav_panel(keys)
     return True
@@ -220,17 +222,24 @@ def transfer_all_to_colonisation(keys):
     Layout: table on left, buttons at bottom (RESET | CONFIRM TRANSFER | TRANSFER ALL).
     """
     keys.send('UI_Left', repeat=3)   # into table
+    sleep(0.2)
     keys.send('UI_Down', hold=2)     # bottom of table
+    sleep(0.2)
     keys.send('UI_Up')               # up to button row (RESET/CONFIRM/TRANSFER ALL)
+    sleep(0.2)
     keys.send('UI_Left', repeat=2)   # leftmost = RESET
+    sleep(0.2)
     keys.send('UI_Right', repeat=2)  # rightmost = TRANSFER ALL
+    sleep(0.2)
     keys.send('UI_Select')           # select TRANSFER ALL
     sleep(0.5)
 
     keys.send('UI_Left')             # CONFIRM TRANSFER
+    sleep(0.2)
     keys.send('UI_Select')           # confirm
     sleep(2)
 
     keys.send('UI_Down')             # EXIT
+    sleep(0.2)
     keys.send('UI_Select')           # select EXIT
     sleep(2)

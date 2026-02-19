@@ -72,57 +72,21 @@ class EDWayPoint:
                                f"It does not contain a 'GlobalShoppingList' waypoint.")
                 s = None
 
-            # Check the
+            # Validate required fields per entry type (skip if already invalid)
+            _GLOBAL_FIELDS = {'BuyCommodities', 'UpdateCommodityCount', 'Skip'}
+            _WAYPOINT_FIELDS = {
+                'SystemName', 'StationName', 'GalaxyBookmarkType', 'GalaxyBookmarkNumber',
+                'SystemBookmarkType', 'SystemBookmarkNumber', 'SellCommodities',
+                'BuyCommodities', 'UpdateCommodityCount', 'FleetCarrierTransfer',
+                'Skip', 'Completed',
+            }
+
             err = False
-            for key, value in s.items():
-                if key == 'GlobalShoppingList':
-                    # Special case
-                    if 'BuyCommodities' not in value:
-                        logger.warning(f"Waypoint file key '{key}' does not contain 'BuyCommodities'.")
-                        err = True
-                    if 'UpdateCommodityCount' not in value:
-                        logger.warning(f"Waypoint file key '{key}' does not contain 'UpdateCommodityCount'.")
-                        err = True
-                    if 'Skip' not in value:
-                        logger.warning(f"Waypoint file key '{key}' does not contain 'Skip'.")
-                        err = True
-                else:
-                    # All other cases
-                    if 'SystemName' not in value:
-                        logger.warning(f"Waypoint file key '{key}' does not contain 'SystemName'.")
-                        err = True
-                    if 'StationName' not in value:
-                        logger.warning(f"Waypoint file key '{key}' does not contain 'StationName'.")
-                        err = True
-                    if 'GalaxyBookmarkType' not in value:
-                        logger.warning(f"Waypoint file key '{key}' does not contain 'GalaxyBookmarkType'.")
-                        err = True
-                    if 'GalaxyBookmarkNumber' not in value:
-                        logger.warning(f"Waypoint file key '{key}' does not contain 'GalaxyBookmarkNumber'.")
-                        err = True
-                    if 'SystemBookmarkType' not in value:
-                        logger.warning(f"Waypoint file key '{key}' does not contain 'SystemBookmarkType'.")
-                        err = True
-                    if 'SystemBookmarkNumber' not in value:
-                        logger.warning(f"Waypoint file key '{key}' does not contain 'SystemBookmarkNumber'.")
-                        err = True
-                    if 'SellCommodities' not in value:
-                        logger.warning(f"Waypoint file key '{key}' does not contain 'SellCommodities'.")
-                        err = True
-                    if 'BuyCommodities' not in value:
-                        logger.warning(f"Waypoint file key '{key}' does not contain 'BuyCommodities'.")
-                        err = True
-                    if 'UpdateCommodityCount' not in value:
-                        logger.warning(f"Waypoint file key '{key}' does not contain 'UpdateCommodityCount'.")
-                        err = True
-                    if 'FleetCarrierTransfer' not in value:
-                        logger.warning(f"Waypoint file key '{key}' does not contain 'FleetCarrierTransfer'.")
-                        err = True
-                    if 'Skip' not in value:
-                        logger.warning(f"Waypoint file key '{key}' does not contain 'Skip'.")
-                        err = True
-                    if 'Completed' not in value:
-                        logger.warning(f"Waypoint file key '{key}' does not contain 'Completed'.")
+            for key, value in (s or {}).items():
+                required = _GLOBAL_FIELDS if key == 'GlobalShoppingList' else _WAYPOINT_FIELDS
+                for field in required:
+                    if field not in value:
+                        logger.warning(f"Waypoint file key '{key}' does not contain '{field}'.")
                         err = True
 
             if err:
@@ -245,6 +209,28 @@ class EDWayPoint:
         if updated:
             self.write_waypoints(data=None, filename='./waypoints/' + Path(self.filename).name)
             self.ap.ap_ckb('log', 'Synced commodity counts from construction depot')
+
+    def _buy_one(self, ap, name, qty, cargo_capacity):
+        """Buy one commodity, wait for status update. Returns (bought, full)."""
+        curr_cargo_qty = int(ap.status.get_cleaned_data()['Cargo'])
+        cargo_timestamp = ap.status.current_data['timestamp']
+
+        free_cargo = cargo_capacity - curr_cargo_qty
+        logger.info(f"Execute trade: Free cargo space: {free_cargo}")
+
+        if free_cargo == 0:
+            logger.info(f"Execute trade: No space for additional cargo")
+            return 0, True
+
+        logger.info(f"Execute trade: Shopping list requests {qty} units of {name}")
+        result, bought = self.ap.stn_svcs_in_ship.commodities_market.buy_commodity(
+            ap.keys, name, qty, free_cargo)
+        logger.info(f"Execute trade: Bought {bought} units of {name}")
+
+        if bought > 0:
+            ap.status.wait_for_file_change(cargo_timestamp, 5)
+
+        return bought, False
 
     def execute_trade(self, ap, dest_key):
         # Get trade commodities from waypoint
@@ -383,93 +369,28 @@ class EDWayPoint:
                 self.ap.stn_svcs_in_ship.commodities_market.select_buy(ap.keys)
 
                 # Go through buy commodities list (lowest quantity first to fit all)
-                for i, key in enumerate(sorted(buy_commodities, key=lambda k: buy_commodities[k])):
-                    # Check if we want to buy ALL commodities. Makes sense for buying from FCs.
+                for key in sorted(buy_commodities, key=lambda k: buy_commodities[k]):
                     if key == "ALL":
-                        # Go through all buyable items
                         buyable_items = self.market_parser.get_buyable_items()
                         if buyable_items is not None:
-                            for ii, value in enumerate(buyable_items):
-                                name = value['Name_Localised']
-
-                                # Buy the commodity
-                                curr_cargo_qty = int(ap.status.get_cleaned_data()['Cargo'])
-                                cargo_timestamp = ap.status.current_data['timestamp']
-
-                                free_cargo = cargo_capacity - curr_cargo_qty
-                                logger.info(f"Execute trade: Free cargo space: {free_cargo}")
-
-                                if free_cargo == 0:
-                                    logger.info(f"Execute trade: No space for additional cargo")
+                            for value in buyable_items:
+                                bought, full = self._buy_one(ap, value['Name_Localised'], buy_commodities[key], cargo_capacity)
+                                if full:
                                     break
-
-                                qty_to_buy = buy_commodities[key]
-                                logger.info(f"Execute trade: Shopping list requests {qty_to_buy} units of {key}")
-
-                                # Attempt to buy the commodity
-                                result, qty = self.ap.stn_svcs_in_ship.commodities_market.buy_commodity(ap.keys, name, qty_to_buy, free_cargo)
-                                logger.info(f"Execute trade: Bought {qty} units of {name}")
-
-                                # If we bought any goods, wait for status file to update with
-                                # new cargo count for next commodity
-                                if qty > 0:
-                                    ap.status.wait_for_file_change(cargo_timestamp, 5)
-
                     else:
-                        # Buy the commodity
-                        curr_cargo_qty = int(ap.status.get_cleaned_data()['Cargo'])
-                        cargo_timestamp = ap.status.current_data['timestamp']
-
-                        free_cargo = cargo_capacity - curr_cargo_qty
-                        logger.info(f"Execute trade: Free cargo space: {free_cargo}")
-
-                        if free_cargo == 0:
-                            logger.info(f"Execute trade: No space for additional cargo")
+                        bought, full = self._buy_one(ap, key, buy_commodities[key], cargo_capacity)
+                        if bought > 0 and self.waypoints[dest_key]['UpdateCommodityCount']:
+                            buy_commodities[key] -= bought
+                        if full:
                             break
 
-                        qty_to_buy = buy_commodities[key]
-                        logger.info(f"Execute trade: Shopping list requests {qty_to_buy} units of {key}")
-
-                        # Attempt to buy the commodity
-                        result, qty = self.ap.stn_svcs_in_ship.commodities_market.buy_commodity(ap.keys, key, qty_to_buy, free_cargo)
-                        logger.info(f"Execute trade: Bought {qty} units of {key}")
-
-                        # If we bought any goods, wait for status file to update with
-                        # new cargo count for next commodity
-                        if qty > 0:
-                            ap.status.wait_for_file_change(cargo_timestamp, 5)
-
-                        # Update counts if necessary
-                        if qty > 0 and self.waypoints[dest_key]['UpdateCommodityCount']:
-                            buy_commodities[key] = qty_to_buy - qty
-
                 # Go through global buy commodities list (lowest quantity first)
-                for i, key in enumerate(sorted(global_buy_commodities, key=lambda k: global_buy_commodities[k])):
-                    curr_cargo_qty = int(ap.status.get_cleaned_data()['Cargo'])
-                    cargo_timestamp = ap.status.current_data['timestamp']
-
-                    free_cargo = cargo_capacity - curr_cargo_qty
-                    logger.info(f"Execute trade: Free cargo space: {free_cargo}")
-
-                    if free_cargo == 0:
-                        logger.info(f"Execute trade: No space for additional cargo")
+                for key in sorted(global_buy_commodities, key=lambda k: global_buy_commodities[k]):
+                    bought, full = self._buy_one(ap, key, global_buy_commodities[key], cargo_capacity)
+                    if bought > 0 and self.waypoints['GlobalShoppingList']['UpdateCommodityCount']:
+                        global_buy_commodities[key] -= bought
+                    if full:
                         break
-
-                    qty_to_buy = global_buy_commodities[key]
-                    logger.info(f"Execute trade: Global shopping list requests {qty_to_buy} units of {key}")
-
-                    # Attempt to buy the commodity
-                    result, qty = self.ap.stn_svcs_in_ship.commodities_market.buy_commodity(ap.keys, key, qty_to_buy, free_cargo)
-                    logger.info(f"Execute trade: Bought {qty} units of {key}")
-
-                    # If we bought any goods, wait for status file to update with
-                    # new cargo count for next commodity
-                    if qty > 0:
-                        ap.status.wait_for_file_change(cargo_timestamp, 5)
-
-                    # Update counts if necessary
-                    if qty > 0 and self.waypoints['GlobalShoppingList']['UpdateCommodityCount']:
-                        global_buy_commodities[key] = qty_to_buy - qty
 
                 # Save changes
                 self.write_waypoints(data=None, filename='./waypoints/' + Path(self.filename).name)

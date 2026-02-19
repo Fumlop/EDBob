@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from copy import copy
 from typing import TypedDict
@@ -6,6 +7,8 @@ from typing import TypedDict
 import numpy as np
 from numpy import array, sum
 import cv2
+
+logger = logging.getLogger('Screen_Regions')
 """
 File:Screen_Regions.py    
 
@@ -207,12 +210,27 @@ def load_ocr_calibration_data() -> dict[str, MyRegion]:
 
 
 class Screen_Regions:
-    def __init__(self, screen):
+    # Map region names to their filter callback and color range
+    _REGION_FILTERS = {
+        'compass':       ('equalize',       None),
+        'target':        ('filter_by_color', 'orange_2_color_range'),
+        'sun':           ('filter_sun',      None),
+        'disengage':     ('filter_by_color', 'blue_sco_color_range'),
+        'sco':           ('filter_by_color', 'blue_sco_color_range'),
+        'sc_assist_ind': ('filter_by_color', 'cyan_sc_assist_range'),
+        'mission_dest':  ('equalize',        None),
+        'missions':      ('equalize',        None),
+        'nav_panel':     ('equalize',        None),
+        'center_text':   ('filter_by_color', 'orange_color_range'),
+    }
+
+    def __init__(self, screen, ship_type=None):
         self.screen = screen
+        self.regions_loaded = False
 
         self.sun_threshold = 125
 
-        # array is in HSV order which represents color ranges for filtering
+        # HSV color ranges for filtering
         self.orange_color_range   = [array([0, 130, 123]),  array([25, 235, 220])]
         self.orange_2_color_range = [array([16, 165, 220]), array([98, 255, 255])]
         self.blue_color_range     = [array([0, 28, 170]), array([180, 100, 255])]
@@ -220,30 +238,63 @@ class Screen_Regions:
         self.cyan_sc_assist_range = [array([80, 80, 80]), array([110, 255, 255])]
 
         self.reg = {}
-        # regions with associated filter and color ranges
-        # The rect is [L, T, R, B] top left x, y, and bottom right x, y in fraction of screen resolution
-        self.reg['compass']   = {'rect': [0.33, 0.65, 0.46, 1.0], 'width': 1, 'height': 1, 'filterCB': self.equalize,                                'filter': None}
-        self.reg['target']    = {'rect': [0.33, 0.25, 0.66, 0.75], 'width': 1, 'height': 1, 'filterCB': self.filter_by_color, 'filter': self.orange_2_color_range}  # also called destination
-        # self.reg['target']    = {'rect': [0.0, 0.1, 0.99, 0.9], 'width': 1, 'height': 1, 'filterCB': self.filter_by_color, 'filter': self.orange_2_color_range}   # also called destination
-        self.reg['sun']       = {'rect': [0.30, 0.30, 0.70, 0.68], 'width': 1, 'height': 1, 'filterCB': self.filter_sun, 'filter': None}
-        self.reg['disengage'] = {'rect': [0.42, 0.65, 0.60, 0.80], 'width': 1, 'height': 1, 'filterCB': self.filter_by_color, 'filter': self.blue_sco_color_range}
-        self.reg['sco']       = {'rect': [0.42, 0.65, 0.60, 0.80], 'width': 1, 'height': 1, 'filterCB': self.filter_by_color, 'filter': self.blue_sco_color_range}
-        self.reg['mission_dest']  = {'rect': [0.46, 0.38, 0.65, 0.86], 'width': 1, 'height': 1, 'filterCB': self.equalize, 'filter': None}
-        self.reg['missions']    = {'rect': [0.50, 0.78, 0.65, 0.85], 'width': 1, 'height': 1, 'filterCB': self.equalize, 'filter': None}
-        self.reg['nav_panel']   = {'rect': [0.25, 0.36, 0.60, 0.85], 'width': 1, 'height': 1, 'filterCB': self.equalize, 'filter': None}
-        self.reg['center_text'] = {'rect': [0.20, 0.33, 0.65, 0.42], 'width': 1, 'height': 1, 'filterCB': self.filter_by_color, 'filter': self.orange_color_range}
-        # convert rect from percent of screen into pixel location, calc the width/height of the area
-        for i, key in enumerate(self.reg):
-            xx = self.reg[key]['rect']
-            self.reg[key]['rect'] = [int(xx[0] * screen.screen_width), int(xx[1] * screen.screen_height),
-                                     int(xx[2] * screen.screen_width), int(xx[3] * screen.screen_height)]
-            self.reg[key]['width'] = self.reg[key]['rect'][2] - self.reg[key]['rect'][0]
-            self.reg[key]['height'] = self.reg[key]['rect'][3] - self.reg[key]['rect'][1]
+        self._load_regions(ship_type)
 
-        # Absolute pixel regions (1920x1080 fixed) -- added after percentage conversion loop
-        self.reg['sc_assist_ind'] = {'rect': [940, 350, 1000, 400], 'width': 60, 'height': 50, 'filterCB': self.filter_by_color, 'filter': self.cyan_sc_assist_range}
-        # Compass: center 724,826 radius 40px (includes margin). Ship: panthermkii
-        self.reg['compass_fixed'] = {'rect': [684, 786, 764, 866], 'width': 80, 'height': 80, 'filterCB': self.equalize, 'filter': None}
+    def _load_regions(self, ship_type=None):
+        """Load screen regions from JSON config file.
+        Tries ship-specific config first, falls back to default.json.
+        """
+        w = self.screen.screen_width
+        h = self.screen.screen_height
+        base_dir = f'configs/screen_regions/res_{w}_{h}'
+
+        config_data = None
+        # Try ship-specific config, then default
+        candidates = []
+        if ship_type:
+            candidates.append(os.path.join(base_dir, f'{ship_type}.json'))
+        candidates.append(os.path.join(base_dir, 'default.json'))
+
+        for path in candidates:
+            if os.path.exists(path):
+                with open(path, 'r') as f:
+                    config_data = json.load(f)
+                logger.info(f"Loaded screen regions from {path}")
+                break
+
+        if not config_data:
+            logger.warning(f"No screen region config found for resolution {w}x{h}")
+            self.regions_loaded = False
+            return
+
+        # Build reg dict from config + filter definitions
+        self.reg = {}
+        for name, region_info in config_data['regions'].items():
+            rect = region_info['rect']
+            width = rect[2] - rect[0]
+            height = rect[3] - rect[1]
+
+            filter_cb = None
+            filter_range = None
+            if name in self._REGION_FILTERS:
+                cb_name, range_name = self._REGION_FILTERS[name]
+                filter_cb = getattr(self, cb_name)
+                if range_name:
+                    filter_range = getattr(self, range_name)
+
+            self.reg[name] = {
+                'rect': rect,
+                'width': width,
+                'height': height,
+                'filterCB': filter_cb,
+                'filter': filter_range,
+            }
+
+        self.regions_loaded = True
+
+    def reload_regions(self, ship_type=None):
+        """Reload regions, e.g. when ship changes."""
+        self._load_regions(ship_type)
 
     def capture_region(self, screen, region_name, inv_col=True):
         """ Just grab the screen based on the region name/rect.

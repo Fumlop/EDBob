@@ -5,7 +5,28 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git mv:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(where:*)",
+      "Bash(pip show:*)",
+      "Bash(pip install:*)",
+      "Bash(python3:*)",
+      "WebSearch",
+      "Bash(git reset:*)",
+      "Bash(git push:*)",
+      "Bash(if [ -f venv/Scripts/python.exe ])",
+      "Bash(then venv/Scripts/python.exe -c \"import src.gui.EDAPGui\")",
+      "Bash(else echo \"No venv found\")",
+      "Bash(fi)",
+      "Bash(./venv/Scripts/pip install:*)",
+      "Bash(./venv/Scripts/python:*)",
+      "Bash(\"D:/Apps/EDAPGui/venv/Scripts/python.exe\":*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(/tmp/test_compass_detection.py:*)",
+      "Bash(/tmp/analyze_compass_colors.py:*)",
+      "Bash(/tmp/test_compass_detection_v2.py:*)",
+      "Bash(/tmp/debug_compass.py:*)",
+      "Bash(/tmp/recheck_images.py:*)",
+      "Bash(/tmp/test_compass_final.py:*)"
     ]
   }
 }
