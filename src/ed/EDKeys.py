@@ -248,8 +248,8 @@ class EDKeys:
                         if hold is not None:
                             binding['hold'] = True
                 except KeyError:
-                    print("Unrecognised key '" + (
-                        json.dumps(binding) if binding else '?') + "' for bind '" + item.tag + "'")
+                    logger.warning("Unrecognised key '%s' for bind '%s'",
+                                   json.dumps(binding) if binding else '?', item.tag)
                 if binding is not None:
                     direct_input_keys[item.tag] = binding
 

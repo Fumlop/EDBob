@@ -1094,7 +1094,7 @@ class WaypointEditorTab:
     def load_fleetcarrier_file(self):
         """ Load the fleet carrier commodity data. """
         parser = FleetCarrierMonitorDataParser()
-        parser.file_path = r"C:\Users\shuttle\AppData\Local\EDMarketConnector\plugins\fleetcarriermonitor\FleetCarrier.V2V-65W.json"
+        parser.file_path = self.ed_waypoint.ap.config.get('FleetCarrierMonitorCAPIDataPath', '')
         parser.get_fleetcarrier_data()
         if parser.current_data:
             self._fleetcarrier_cargo = parser.get_consolidated_cargo_dict()

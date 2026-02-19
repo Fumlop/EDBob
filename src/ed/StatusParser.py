@@ -30,30 +30,6 @@ class StatusParser:
         self.current_data = self.get_cleaned_data()
         self.last_data = self.current_data
 
-    #     self.watch_thread = threading.Thread(target=self._watch_file_thread, daemon=True)
-    #     self.watch_thread.start()
-    #     self.status_queue = queue.Queue()
-    #
-    # def _watch_file_thread(self):
-    #     backoff = 1
-    #     while True:
-    #         try:
-    #             self._watch_file()
-    #         except Exception as e:
-    #             logger.debug('An error occurred when reading status file')
-    #             sleep(backoff)
-    #             logger.debug('Attempting to restart status file reader after failure')
-    #             backoff *= 2
-    #
-    # def _watch_file(self):
-    #     """Detects changes in the Status.json file."""
-    #     while True:
-    #         status = self.get_cleaned_data()
-    #         if status != self.current_data:
-    #             self.status_queue.put(status)
-    #             self.current_data = status
-    #         sleep(1)
-
     def get_file_modified_time(self) -> float:
         return os.path.getmtime(self.file_path)
 
@@ -75,87 +51,46 @@ class StatusParser:
 
         return False
 
-    def translate_flags(self, flags_value):
-        """Translates flags integer to a dictionary of only True flags."""
-        all_flags = {
-            "Docked": bool(flags_value & 1),
-            "Landed": bool(flags_value & 2),
-            "Landing Gear Down": bool(flags_value & 4),
-            "Shields Up": bool(flags_value & 8),
-            "Supercruise": bool(flags_value & 16),
-            "FlightAssist Off": bool(flags_value & 32),
-            "Hardpoints Deployed": bool(flags_value & 64),
-            "In Wing": bool(flags_value & 128),
-            "Lights On": bool(flags_value & 256),
-            "Cargo Scoop Deployed": bool(flags_value & 512),
-            "Silent Running": bool(flags_value & 1024),
-            "Scooping Fuel": bool(flags_value & 2048),
-            "Srv Handbrake": bool(flags_value & 4096),
-            "Srv using Turret view": bool(flags_value & 8192),
-            "Srv Turret retracted (close to ship)": bool(flags_value & 16384),
-            "Srv DriveAssist": bool(flags_value & 32768),
-            "Fsd MassLocked": bool(flags_value & 65536),
-            "Fsd Charging": bool(flags_value & 131072),
-            "Fsd Cooldown": bool(flags_value & 262144),
-            "Low Fuel (< 25%)": bool(flags_value & 524288),
-            "Over Heating (> 100%)": bool(flags_value & 1048576),
-            "Has Lat Long": bool(flags_value & 2097152),
-            "IsInDanger": bool(flags_value & 4194304),
-            "Being Interdicted": bool(flags_value & 8388608),
-            "In MainShip": bool(flags_value & 16777216),
-            "In Fighter": bool(flags_value & 33554432),
-            "In SRV": bool(flags_value & 67108864),
-            "Hud in Analysis mode": bool(flags_value & 134217728),
-            "Night Vision": bool(flags_value & 268435456),
-            "Altitude from Average radius": bool(flags_value & 536870912),
-            "Fsd Jump": bool(flags_value & 1073741824),
-            "Srv HighBeam": bool(flags_value & 2147483648),
-        }
+    _FLAGS1_DEFS = [
+        (1, "Docked"), (2, "Landed"), (4, "Landing Gear Down"), (8, "Shields Up"),
+        (16, "Supercruise"), (32, "FlightAssist Off"), (64, "Hardpoints Deployed"),
+        (128, "In Wing"), (256, "Lights On"), (512, "Cargo Scoop Deployed"),
+        (1024, "Silent Running"), (2048, "Scooping Fuel"), (4096, "Srv Handbrake"),
+        (8192, "Srv using Turret view"), (16384, "Srv Turret retracted (close to ship)"),
+        (32768, "Srv DriveAssist"), (65536, "Fsd MassLocked"), (131072, "Fsd Charging"),
+        (262144, "Fsd Cooldown"), (524288, "Low Fuel (< 25%)"), (1048576, "Over Heating (> 100%)"),
+        (2097152, "Has Lat Long"), (4194304, "IsInDanger"), (8388608, "Being Interdicted"),
+        (16777216, "In MainShip"), (33554432, "In Fighter"), (67108864, "In SRV"),
+        (134217728, "Hud in Analysis mode"), (268435456, "Night Vision"),
+        (536870912, "Altitude from Average radius"), (1073741824, "Fsd Jump"),
+        (2147483648, "Srv HighBeam"),
+    ]
 
-        # Return only flags that are True
-        true_flags = {key: value for key, value in all_flags.items() if value}
-        return true_flags
+    _FLAGS2_DEFS = [
+        (1, "OnFoot"), (2, "InTaxi"), (4, "InMulticrew"), (8, "OnFootInStation"),
+        (16, "OnFootOnPlanet"), (32, "AimDownSight"), (64, "LowOxygen"), (128, "LowHealth"),
+        (256, "Cold"), (512, "Hot"), (1024, "VeryCold"), (2048, "VeryHot"),
+        (4096, "Glide Mode"), (8192, "OnFootInHangar"), (16384, "OnFootSocialSpace"),
+        (32768, "OnFootExterior"), (65536, "BreathableAtmosphere"),
+        (131072, "Telepresence Multicrew"), (262144, "Physical Multicrew"),
+        (524288, "Fsd hyperdrive charging"), (1048576, "FSD SCO Active"),
+        (2097152, "Flags2Future21"), (4194304, "Flags2Future22"), (8388608, "Flags2Future23"),
+        (16777216, "Flags2Future24"), (33554432, "Flags2Future25"), (67108864, "Flags2Future26"),
+        (134217728, "Flags2Future27"), (268435456, "Flags2Future28"),
+        (536870912, "Flags2Future29"), (1073741824, "Flags2Future30"),
+        (2147483648, "Flags2Future31"),
+    ]
+
+    @staticmethod
+    def _translate_flags(value, flag_defs):
+        """Translates a flags integer to a dictionary of only True flags."""
+        return {name: True for bit, name in flag_defs if value & bit}
+
+    def translate_flags(self, flags_value):
+        return self._translate_flags(flags_value, self._FLAGS1_DEFS)
 
     def translate_flags2(self, flags2_value):
-        """Translates Flags2 integer to a dictionary of only True flags."""
-        all_flags2 = {
-            "OnFoot": bool(flags2_value & 1),
-            "InTaxi": bool(flags2_value & 2),
-            "InMulticrew": bool(flags2_value & 4),
-            "OnFootInStation": bool(flags2_value & 8),
-            "OnFootOnPlanet": bool(flags2_value & 16),
-            "AimDownSight": bool(flags2_value & 32),
-            "LowOxygen": bool(flags2_value & 64),
-            "LowHealth": bool(flags2_value & 128),
-            "Cold": bool(flags2_value & 256),
-            "Hot": bool(flags2_value & 512),
-            "VeryCold": bool(flags2_value & 1024),
-            "VeryHot": bool(flags2_value & 2048),
-            "Glide Mode": bool(flags2_value & 4096),
-            "OnFootInHangar": bool(flags2_value & 8192),
-            "OnFootSocialSpace": bool(flags2_value & 16384),
-            "OnFootExterior": bool(flags2_value & 32768),
-            "BreathableAtmosphere": bool(flags2_value & 65536),
-            "Telepresence Multicrew": bool(flags2_value & 131072),
-            "Physical Multicrew": bool(flags2_value & 262144),
-            "Fsd hyperdrive charging": bool(flags2_value & 524288),
-            "FSD SCO Active": bool(flags2_value & 1048576),
-            "Flags2Future21": bool(flags2_value & 2097152),
-            "Flags2Future22": bool(flags2_value & 4194304),
-            "Flags2Future23": bool(flags2_value & 8388608),
-            "Flags2Future24": bool(flags2_value & 16777216),
-            "Flags2Future25": bool(flags2_value & 33554432),
-            "Flags2Future26": bool(flags2_value & 67108864),
-            "Flags2Future27": bool(flags2_value & 134217728),
-            "Flags2Future28": bool(flags2_value & 268435456),
-            "Flags2Future29": bool(flags2_value & 536870912),
-            "Flags2Future30": bool(flags2_value & 1073741824),
-            "Flags2Future31": bool(flags2_value & 2147483648),
-        }
-
-        # Return only flags that are True
-        true_flags2 = {key: value for key, value in all_flags2.items() if value}
-        return true_flags2
+        return self._translate_flags(flags2_value, self._FLAGS2_DEFS)
 
     def transform_pips(self, pips_list):
         """Transforms the pips list to a dictionary and halves each value."""
@@ -265,13 +200,13 @@ class StatusParser:
         if 'Flags2' in data:
             cleaned_data['Flags2'] = data['Flags2']
         if 'Pips' in data:
-            cleaned_data['pips'] = self.transform_pips(data['Pips'])
+            cleaned_data['Pips'] = self.transform_pips(data['Pips'])
         if 'GuiFocus' in data:
             cleaned_data['GuiFocus'] = data['GuiFocus']
         if 'Cargo' in data:
             cleaned_data['Cargo'] = data['Cargo']
         if 'LegalState' in data:
-            cleaned_data['legalState'] = data['LegalState']
+            cleaned_data['LegalState'] = data['LegalState']
         if 'Latitude' in data:
             cleaned_data['Latitude'] = data['Latitude']
         if 'Longitude' in data:
@@ -283,7 +218,7 @@ class StatusParser:
         if 'PlanetRadius' in data:
             cleaned_data['PlanetRadius'] = data['PlanetRadius']
         if 'Balance' in data:
-            cleaned_data['balance'] = data['Balance']
+            cleaned_data['Balance'] = data['Balance']
         if 'Destination' in data:
             # Destination is the current destination, NOT the final destination.
             cleaned_data['Destination_System'] = data['Destination']['System']  # System ID of next system.
@@ -318,12 +253,12 @@ class StatusParser:
         flags_on = new_flags & ~ old_flags
         flag_array = self.translate_flags(flags_on)
         for item in flag_array:
-            print(f"Status Flags: '{item}' is ON")
+            logger.debug(f"Status Flags: '{item}' is ON")
 
         flags_off = ~ new_flags & old_flags
         flag_array = self.translate_flags(flags_off)
         for item in flag_array:
-            print(f"Status Flags: '{item}' is OFF")
+            logger.debug(f"Status Flags: '{item}' is OFF")
 
         if self.last_data['Flags2'] is None:
             return
@@ -336,12 +271,12 @@ class StatusParser:
         flags_on2 = new_flags2 & ~ old_flags2
         flag_array2 = self.translate_flags2(flags_on2)
         for item in flag_array2:
-            print(f"Status Flags2: '{item}' is ON")
+            logger.debug(f"Status Flags2: '{item}' is ON")
 
         flags_off2 = ~ new_flags2 & old_flags2
         flag_array2 = self.translate_flags2(flags_off2)
         for item in flag_array2:
-            print(f"Status Flags2: '{item}' is OFF")
+            logger.debug(f"Status Flags2: '{item}' is OFF")
 
     def get_gui_focus(self) -> int:
         """ Gets the value of the GUI Focus flag.

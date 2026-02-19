@@ -2,7 +2,6 @@ import math
 import os
 import threading
 import time
-import traceback
 from copy import copy
 from datetime import datetime, timedelta
 from time import sleep
@@ -250,14 +249,12 @@ class EDAutopilot:
 
     def load_config(self):
         """ Load AP.Json Config File. """
-        # NOTE!!! When adding a new config value below, add the same after read_config() to set
-        # a default value or an error will occur reading the new value!
         self.config = {
             "DSSButton": "Primary",  # if anything other than "Primary", it will use the Secondary Fire button for DSS
             "JumpTries": 3,  #
             "NavAlignTries": 3,  #
             "RefuelThreshold": 65,  # if fuel level get below this level, it will attempt refuel
-            "FuelThreasholdAbortAP": 10, # level at which AP will terminate, because we are not scooping well
+            "FuelThresholdAbortAP": 10, # level at which AP will terminate, because we are not scooping well
             "WaitForAutoDockTimer": 240, # After docking granted, wait this amount of time for us to get docked with autodocking
             "SunBrightThreshold": 125, # The low level for brightness detection, range 0-255, want to mask out darker items
             "FuelScoopTimeOut": 35, # number of second to wait for full tank, might mean we are not scooping well or got a small scooper
@@ -308,69 +305,15 @@ class EDAutopilot:
             "PlanetDepartureSCOTime": 5.0,  # SCO boost time when leaving planet in secs
             "FleetCarrierMonitorCAPIDataPath": "",  # EDMC Fleet Carrier Monitor plugin data export path
         }
-        # NOTE!!! When adding a new config value above, add the same after read_config() to set
-        # a default value or an error will occur reading the new value!
-
         cnf = read_json_file(filepath='./configs/AP.json')
         # if we read it then point to it, otherwise use the default table above
         if cnf is not None:
-            # NOTE!!! Add default values for new entries below!
-            if 'SunBrightThreshold' not in cnf:
-                cnf['SunBrightThreshold'] = 125
-            if 'TargetScale' not in cnf:
-                cnf['TargetScale'] = 1.0
-            if 'ScreenScale' not in cnf:
-                cnf['ScreenScale'] = 1.0
-            if 'AutomaticLogout' not in cnf:
-                cnf['AutomaticLogout'] = False
-            if 'FCDepartureTime' not in cnf:
-                cnf['FCDepartureTime'] = 5.0
-            if 'Language' not in cnf:
-                cnf['Language'] = 'en'
-            if 'OCRLanguage' not in cnf:
-                cnf['OCRLanguage'] = 'en'
-            if 'EnableEDMesg' not in cnf:
-                cnf['EnableEDMesg'] = False
-            if 'EDMesgActionsPort' not in cnf:
-                cnf['EDMesgActionsPort'] = 15570
-            if 'EDMesgEventsPort' not in cnf:
-                cnf['EDMesgEventsPort'] = 15571
-            if 'DebugOverlay' not in cnf:
-                cnf['DebugOverlay'] = False
-            if 'HotkeysEnable' not in cnf:
-                cnf['HotkeysEnable'] = False
-            if 'WaypointFilepath' not in cnf:
-                cnf['WaypointFilepath'] = ""
-            if 'DebugOCR' not in cnf:
-                cnf['DebugOCR'] = False
-            if 'DebugImages' not in cnf:
-                cnf['DebugImages'] = False
-            if 'Key_ModDelay' not in cnf:
-                cnf['Key_ModDelay'] = 0.01
-            if 'Key_DefHoldTime' not in cnf:
-                cnf['Key_DefHoldTime'] = 0.2
-            if 'Key_RepeatDelay' not in cnf:
-                cnf['Key_RepeatDelay'] = 0.1
-            if 'DisengageUseMatch' not in cnf:
-                cnf['DisengageUseMatch'] = False
-            if 'target_align_outer_lim' not in cnf:
-                cnf['target_align_outer_lim'] = 1.0  # For test
-            if 'target_align_inner_lim' not in cnf:
-                cnf['target_align_inner_lim'] = 0.5  # For test
-            if 'Debug_ShowCompassOverlay' not in cnf:
-                cnf['Debug_ShowCompassOverlay'] = False  # For test
-            if 'Debug_ShowTargetOverlay' not in cnf:
-                cnf['Debug_ShowTargetOverlay'] = False  # For test
-            if 'GalMap_SystemSelectDelay' not in cnf:
-                cnf['GalMap_SystemSelectDelay'] = 0.5
-            if 'FCDepartureAngle' not in cnf:
-                cnf['FCDepartureAngle'] = 90.0
-            if 'OCDepartureAngle' not in cnf:
-                cnf['OCDepartureAngle'] = 90.0
-            if 'PlanetDepartureSCOTime' not in cnf:
-                cnf['PlanetDepartureSCOTime'] = 5.0
-            if 'FleetCarrierMonitorCAPIDataPath' not in cnf:
-                cnf['FleetCarrierMonitorCAPIDataPath'] = ""
+            # Fill missing keys from defaults
+            for key, value in self.config.items():
+                cnf.setdefault(key, value)
+            # Migrate old typo key
+            if 'FuelThreasholdAbortAP' in cnf:
+                cnf.setdefault('FuelThresholdAbortAP', cnf.pop('FuelThreasholdAbortAP'))
             self.config = cnf
             logger.debug("read AP json:" + str(cnf))
         else:
@@ -448,14 +391,6 @@ class EDAutopilot:
             self.yawrate = ship_defaults.get('YawRate', 8.0)
             self.sunpitchuptime = ship_defaults.get('SunPitchUp+Time', 0.0)
             logger.info(f"Loaded default configuration for {ship_type} from default ship cfg file")
-
-        # if ship_type in ship_rpy_factor_sc_50:
-        #     ship_defaults = ship_rpy_factor_sc_50[ship_type]
-        #     # Use default configuration - this means it's been modified and saved to ship_configs.json
-        #     self.rollfactor = ship_defaults.get('RollFactor', 20.0)
-        #     self.pitchfactor = ship_defaults.get('PitchFactor', 12.0)
-        #     self.yawfactor = ship_defaults.get('YawFactor', 12.0)
-        #     # return
 
         # Step 3: Check if we have custom config in ship_configs.json (skip if forcing defaults)
         if ship_type in self.ship_configs['Ship_Configs']:
@@ -646,13 +581,17 @@ class EDAutopilot:
 
         # Capture compass region directly (fixed bounding box from config)
         compass_image = scr_reg.capture_region(self.scr, 'compass', inv_col=False)
-        comp_h, comp_w = compass_image.shape[:2]
 
         c_left = scr_reg.reg['compass']['rect'][0]
         c_top = scr_reg.reg['compass']['rect'][1]
 
         _t1 = _time.perf_counter()
-        logger.debug(f"Compass capture: {comp_w}x{comp_h} capture={_t1-_t0:.3f}s")
+
+        # 2x upscale for sub-pixel centroid accuracy (~0.75 deg instead of ~1.5 deg)
+        compass_image = cv2.resize(compass_image, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
+        comp_h, comp_w = compass_image.shape[:2]
+
+        logger.debug(f"Compass capture: {comp_w}x{comp_h} (2x upscaled) capture={_t1-_t0:.3f}s")
 
         # Find nav dot by color instead of template matching
         # Convert to HSV for color-based detection
@@ -665,6 +604,47 @@ class EDAutopilot:
         # Mask out the orange compass ring (hue ~5-25, high saturation)
         orange_mask = cv2.inRange(compass_hsv, (5, 100, 100), (25, 255, 255))
 
+        # Detect compass ring center: 3-of-5 vote with HoughCircles
+        # Take 5 captures, keep results with hough_r >= 55, use median if 3+ valid
+        ring_r = 60.0  # Fixed: 30px real * 2x upscale
+        valid_centers = []
+        for _vote in range(5):
+            if _vote > 0:
+                sleep(0.01)
+                cap = scr_reg.capture_region(self.scr, 'compass', inv_col=False)
+                cap = cv2.resize(cap, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
+                if cap.shape[2] == 4:
+                    cap_bgr = cv2.cvtColor(cap, cv2.COLOR_BGRA2BGR)
+                else:
+                    cap_bgr = cap
+                cap_hsv = cv2.cvtColor(cap_bgr, cv2.COLOR_BGR2HSV)
+                omask = cv2.inRange(cap_hsv, (5, 100, 100), (25, 255, 255))
+            else:
+                omask = orange_mask  # reuse first capture
+            oblur = cv2.GaussianBlur(omask, (5, 5), 1)
+            circles = cv2.HoughCircles(oblur, cv2.HOUGH_GRADIENT, dp=1.2,
+                                       minDist=comp_w // 2,
+                                       param1=50, param2=20,
+                                       minRadius=comp_w // 5,
+                                       maxRadius=comp_w // 2)
+            if circles is not None:
+                best = min(circles[0], key=lambda c: (c[0] - comp_w/2)**2 + (c[1] - comp_h/2)**2)
+                if best[2] >= 55:
+                    valid_centers.append((float(best[0]), float(best[1]), float(best[2])))
+
+        ring_cx = comp_w / 2.0
+        ring_cy = comp_h / 2.0
+        if len(valid_centers) >= 3:
+            # Median of valid centers
+            valid_centers.sort(key=lambda c: c[0])
+            ring_cx = valid_centers[len(valid_centers) // 2][0]
+            valid_centers.sort(key=lambda c: c[1])
+            ring_cy = valid_centers[len(valid_centers) // 2][1]
+            avg_r = sum(c[2] for c in valid_centers) / len(valid_centers)
+            logger.info(f"Ring: center=({ring_cx:.1f},{ring_cy:.1f}) avg_r={avg_r:.1f} votes={len(valid_centers)}/5")
+        else:
+            logger.info(f"Ring: {len(valid_centers)}/5 valid, using ROI center ({ring_cx:.0f},{ring_cy:.0f})")
+
         # Look for cyan dot (front target): hue ~75-105, val 170+
         # Front dot is cyan (hue~90, sat~80, val~204)
         front_mask = cv2.inRange(compass_hsv, (75, 40, 170), (105, 255, 255))
@@ -672,7 +652,7 @@ class EDAutopilot:
 
         # Try front dot by color
         final_z_pct = 0.0
-        dot_cx, dot_cy = comp_w / 2, comp_h / 2  # default to center
+        dot_cx, dot_cy = ring_cx, ring_cy  # default to ring center
 
         contours, _ = cv2.findContours(front_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         all_areas = [cv2.contourArea(c) for c in contours]
@@ -688,22 +668,29 @@ class EDAutopilot:
                 _t3 = _time.perf_counter()
                 logger.debug(f"Dot: pos=({dot_cx:.1f},{dot_cy:.1f}) area={area:.1f} comp={comp_w}x{comp_h} contours={len(contours)} valid={len(valid)} total={_t3-_t0:.3f}s")
 
+        # Store debug data for saving after angle calc (so filename includes pit/yaw)
+        _dbg_compass_bgr = compass_bgr
+        _dbg_front_mask = front_mask
+        _dbg_valid = valid
+        _dbg_dot_cx = dot_cx
+        _dbg_dot_cy = dot_cy
+        _dbg_z = final_z_pct
+
         if final_z_pct == 0.0:
             # No cyan front dot = target is behind.
             _t3 = _time.perf_counter()
             logger.debug(f"Dot: BEHIND comp={comp_w}x{comp_h} contours={len(contours)} areas={all_areas[:5]} total={_t3-_t0:.3f}s")
             return {'x': 0, 'y': 0, 'z': -1, 'roll': 180.0, 'pit': 180.0, 'yaw': 0}
 
-        # Convert dot position to percentage (-1.0 to 1.0)
-        compass_x_max = comp_w
-        compass_y_max = comp_h
+        # Convert dot position relative to detected ring center (-1.0 to 1.0)
+        ring_radius = ring_r
 
-        # Continue calc -- dot_cx/dot_cy is the centroid of the nav dot
-        final_x_pct = 2 * (dot_cx / compass_x_max) - 1.0  # X as percent (-1.0 to 1.0, 0.0 in the center)
+        # Dot offset from ring center, normalized to ring radius
+        final_x_pct = (dot_cx - ring_cx) / ring_radius
         final_x_pct = final_x_pct - self._nav_cor_x
         final_x_pct = max(min(final_x_pct, 1.0), -1.0)
 
-        final_y_pct = -(2 * (dot_cy / compass_y_max) - 1.0)  # Y as percent (-1.0 to 1.0, 0.0 in the center), flip Y
+        final_y_pct = -(dot_cy - ring_cy) / ring_radius  # flip Y (screen Y is inverted)
         final_y_pct = final_y_pct - self._nav_cor_y
         final_y_pct = max(min(final_y_pct, 1.0), -1.0)
 
@@ -717,34 +704,22 @@ class EDAutopilot:
         elif final_y_pct < 0.0:
             final_roll_deg = 180.0
 
-        # 'longitudinal' radius of compass at given 'latitude'
-        lng_rad_at_lat = math.cos(math.asin(final_y_pct))
-        lng_rad_at_lat = max(lng_rad_at_lat, 0.001)  # Prevent div by zero
-
-        # 'Latitudinal' radius of compass at given 'longitude'
-        lat_rad_at_lng = math.sin(math.acos(final_x_pct))
-        lat_rad_at_lng = max(lat_rad_at_lng, 0.001)  # Prevent div by zero
-
-        # Pitch and yaw as a % of the max as defined by the compass circle
-        pit_pct = max(min(final_y_pct/lat_rad_at_lng, 1.0), -1.0)
-        yaw_pct = max(min(final_x_pct/lng_rad_at_lat, 1.0), -1.0)
-
+        # Linear angle mapping: dot position on the navball is proportional to angle.
+        # The navball is a sphere viewed flat -- no spherical decompression needed.
         if final_z_pct > 0:
-            # Front hemisphere: 0 = dead ahead, +90 = top edge, -90 = bottom edge
-            final_pit_deg = (-1 * degrees(math.acos(pit_pct))) + 90
-            final_yaw_deg = (-1 * degrees(math.acos(yaw_pct))) + 90
+            # Front hemisphere: 0 = dead ahead, +90 = top/right edge, -90 = bottom/left edge
+            final_pit_deg = final_y_pct * 90.0
+            final_yaw_deg = final_x_pct * 90.0
         else:
-            # Behind hemisphere: +90..+180 = behind above, -90..-180 = behind below
-            # +/-180 = dead behind center
+            # Behind hemisphere
             if final_y_pct > 0:
-                final_pit_deg = degrees(math.acos(pit_pct)) + 90   # +90 to +180
+                final_pit_deg = 90.0 + (1.0 - final_y_pct) * 90.0   # +90 to +180
             else:
-                final_pit_deg = degrees(math.acos(pit_pct)) - 270  # -90 to -180
-
+                final_pit_deg = -90.0 - (1.0 + final_y_pct) * 90.0  # -90 to -180
             if final_x_pct > 0:
-                final_yaw_deg = degrees(math.acos(yaw_pct)) + 90   # +90 to +180
+                final_yaw_deg = 90.0 + (1.0 - final_x_pct) * 90.0
             else:
-                final_yaw_deg = degrees(math.acos(yaw_pct)) - 270  # -90 to -180
+                final_yaw_deg = -90.0 - (1.0 + final_x_pct) * 90.0
 
         result = {'x': round(final_x_pct, 4), 'y': round(final_y_pct, 4), 'z': round(final_z_pct, 2),
                   'roll': round(final_roll_deg, 2), 'pit': round(final_pit_deg, 2), 'yaw': round(final_yaw_deg, 2)}
@@ -769,26 +744,163 @@ class EDAutopilot:
             cv2.moveWindow('compass', self.cv_view_x - 400, self.cv_view_y + 600)
             cv2.waitKey(30)
 
+        # Debug: save compass detection images with pit/yaw in filename
+        if False:  # set True for navball calibration
+            import os
+            dbg_dir = 'lab/compass_debug'
+            os.makedirs(dbg_dir, exist_ok=True)
+            _seq = getattr(self, '_dbg_compass_seq', 0)
+            self._dbg_compass_seq = _seq + 1
+            z_str = 'F' if _dbg_z > 0 else 'B'
+            tag = f"{_seq:03d}_p{final_pit_deg:+05.1f}_y{final_yaw_deg:+05.1f}_{z_str}"
+            cv2.imwrite(f'{dbg_dir}/{tag}_compass.png', _dbg_compass_bgr)
+            cv2.imwrite(f'{dbg_dir}/{tag}_cyan.png', _dbg_front_mask)
+            annotated = _dbg_compass_bgr.copy()
+            cv2.drawContours(annotated, _dbg_valid, -1, (0, 255, 0), 1)
+            if _dbg_z > 0:
+                cv2.drawMarker(annotated, (int(_dbg_dot_cx), int(_dbg_dot_cy)), (0, 0, 255), cv2.MARKER_CROSS, 8, 1)
+            # Yellow + = ROI center, Cyan x = detected ring center
+            cv2.drawMarker(annotated, (comp_w // 2, comp_h // 2), (0, 255, 255), cv2.MARKER_CROSS, 8, 1)
+            cv2.drawMarker(annotated, (int(ring_cx), int(ring_cy)), (255, 0, 0), cv2.MARKER_TILTED_CROSS, 10, 1)
+            cv2.imwrite(f'{dbg_dir}/{tag}_annotated.png', annotated)
+
         return result
 
-    def is_sc_assist_gone(self, scr_reg) -> bool:
-        """2-of-3 check whether the blue SC Assist indicator has disappeared.
-        Used for both occlusion detection and safety-net re-alignment.
-        @return: True if indicator is confirmed gone (2+ of 3 checks fail).
+    def is_target_arc_visible(self, scr_reg) -> bool:
+        """Check if the orange target circle/arc is visible on screen.
+        Uses the small 'target_arc' detection region -- when orange dominates,
+        the target circle is on screen and its center can be used for fine alignment.
+        @return: True if orange ratio > 10% in the detection box.
         """
+        if 'target_arc' not in scr_reg.reg:
+            return False
+        raw = scr_reg.capture_region(self.scr, 'target_arc', inv_col=False)
+        if raw is None:
+            return False
+        hsv = cv2.cvtColor(raw, cv2.COLOR_BGR2HSV)
+        orange_mask = cv2.inRange(hsv, (16, 165, 220), (98, 255, 255))
+        count = cv2.countNonZero(orange_mask)
+        total = orange_mask.shape[0] * orange_mask.shape[1]
+        ratio = count / total if total > 0 else 0
+        logger.info(f"target_arc: orange={ratio:.3f} ({count}/{total})")
+        return ratio > 0.10
+
+    def target_fine_align(self, scr_reg) -> bool:
+        """Use the on-screen target circle for precise fine alignment.
+        The target circle center = exact target position. Screen center (960,540) = aligned.
+        @return: True if fine alignment succeeded.
+        """
+        target_off = self.get_target_offset(scr_reg)
+        if target_off is None:
+            logger.info("target_fine_align: no target circle found")
+            return False
+
+        pit = target_off['pit']
+        yaw = target_off['yaw']
+        logger.info(f"target_fine_align: pit={pit:.1f} yaw={yaw:.1f}")
+
+        # Already close enough
+        if abs(pit) < 2.0 and abs(yaw) < 2.0:
+            logger.info("target_fine_align: already aligned")
+            return True
+
+        # Single correction per axis -- gentle, 50% approach
+        if abs(pit) > 2.0:
+            key = 'PitchUpButton' if pit > 0 else 'PitchDownButton'
+            hold = (abs(pit) * 0.5) / self.pitchrate
+            hold = max(0.10, min(1.0, hold))
+            logger.info(f"target_fine_align: pit correction {pit:.1f}deg, hold={hold:.2f}s, key={key}")
+            self.keys.send(key, hold=hold)
+            sleep(2.0)
+
+        if abs(yaw) > 2.0:
+            # Re-read after pitch correction
+            target_off = self.get_target_offset(scr_reg)
+            if target_off is None:
+                return False
+            yaw = target_off['yaw']
+            if abs(yaw) > 2.0:
+                key = 'YawRightButton' if yaw > 0 else 'YawLeftButton'
+                hold = (abs(yaw) * 0.5) / self.yawrate
+                hold = max(0.10, min(1.0, hold))
+                logger.info(f"target_fine_align: yaw correction {yaw:.1f}deg, hold={hold:.2f}s, key={key}")
+                self.keys.send(key, hold=hold)
+                sleep(2.0)
+
+        # Verify
+        target_off = self.get_target_offset(scr_reg)
+        if target_off:
+            logger.info(f"target_fine_align: final pit={target_off['pit']:.1f} yaw={target_off['yaw']:.1f}")
+            return abs(target_off['pit']) < 3.0 and abs(target_off['yaw']) < 3.0
+        return False
+
+    def is_sc_assist_gone(self, scr_reg) -> bool:
+        """3-of-3 check whether SC Assist has actually disappeared.
+        Uses BOTH the blue indicator dot AND the text region for robustness.
+        Only reports "gone" if both indicator AND text are absent.
+        @return: True if SC Assist is confirmed gone (all 3 checks fail).
+        """
+        import os
+        dbg_dir = 'lab/sc_assist_debug'
+        os.makedirs(dbg_dir, exist_ok=True)
+        _seq = getattr(self, '_dbg_sc_assist_seq', 0)
+
+        # Check if sc_assist_text region is available
+        has_text_region = 'sc_assist_text' in scr_reg.reg
+
         gone_count = 0
-        for _ in range(3):
+        for i in range(3):
+            sleep(0.5)  # let frame settle before capture
+
+            # --- Indicator dot check ---
+            raw = scr_reg.capture_region(self.scr, 'sc_assist_ind', inv_col=False)
             blue = scr_reg.capture_region_filtered(self.scr, 'sc_assist_ind')
+            ind_ratio = 0.0
             if blue is not None:
+                blue = cv2.resize(blue, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
                 blue_count = cv2.countNonZero(blue)
                 blue_total = blue.shape[0] * blue.shape[1]
-                blue_ratio = blue_count / blue_total if blue_total > 0 else 0
-                if blue_ratio < 0.05:
-                    gone_count += 1
+                ind_ratio = blue_count / blue_total if blue_total > 0 else 0
+
+            # --- Text region check (cyan text "SUPERCRUISE ASSIST") ---
+            txt_ratio = 0.0
+            txt_raw = None
+            if has_text_region:
+                txt_raw = scr_reg.capture_region(self.scr, 'sc_assist_text', inv_col=False)
+                if txt_raw is not None:
+                    txt_hsv = cv2.cvtColor(txt_raw, cv2.COLOR_BGR2HSV)
+                    # Same cyan filter as indicator: H=80-110, S=80+, V=80+
+                    txt_mask = cv2.inRange(txt_hsv, (80, 80, 80), (110, 255, 255))
+                    txt_count = cv2.countNonZero(txt_mask)
+                    txt_total = txt_mask.shape[0] * txt_mask.shape[1]
+                    txt_ratio = txt_count / txt_total if txt_total > 0 else 0
+
+            logger.info(f"sc_assist check {i+1}/3: ind={ind_ratio:.3f} txt={txt_ratio:.3f}")
+
+            # Debug images
+            tag = f"{_seq:03d}_chk{i+1}_ind{ind_ratio:.3f}_txt{txt_ratio:.3f}"
+            if raw is not None:
+                cv2.imwrite(f'{dbg_dir}/{tag}_raw.png', raw)
+            if blue is not None:
+                cv2.imwrite(f'{dbg_dir}/{tag}_mask.png', blue)
+            if txt_raw is not None:
+                cv2.imwrite(f'{dbg_dir}/{tag}_txt_raw.png', txt_raw)
+
+            # Both indicator AND text must be below threshold to count as gone
+            ind_gone = ind_ratio < 0.05
+            txt_gone = txt_ratio < 0.01  # text is larger area, lower ratio expected
+            if ind_gone and txt_gone:
+                gone_count += 1
+            elif ind_gone and not txt_gone:
+                logger.info(f"sc_assist check {i+1}/3: indicator gone but text still visible -- NOT gone")
+
             sleep(1)
-        if gone_count >= 2:
+
+        self._dbg_sc_assist_seq = _seq + 1
+        if gone_count >= 3:
             logger.info(f"is_sc_assist_gone: confirmed gone ({gone_count}/3 checks)")
             return True
+        logger.info(f"is_sc_assist_gone: still active ({gone_count}/3 gone)")
         return False
 
     def _find_target_circle(self, image_bgr):
@@ -947,7 +1059,7 @@ class EDAutopilot:
                     logger.info("SCO Aborting, < 25% fuel")
                     self.ap_ckb('log+vce', "SCO Aborting, < 25% fuel")
                     self.keys.send('UseBoostJuice')
-                elif self.jn.ship_state()['fuel_percent'] < self.config['FuelThreasholdAbortAP']:
+                elif self.jn.ship_state()['fuel_percent'] < self.config['FuelThresholdAbortAP']:
                     logger.info("SCO Aborting, < users low fuel threshold")
                     self.ap_ckb('log+vce', "SCO Aborting, < users low fuel threshold")
                     self.keys.send('UseBoostJuice')
@@ -1128,20 +1240,20 @@ class EDAutopilot:
         # Correction loop with calculated holds
         while remaining > close and (time.time() - start) < timeout:
             self.check_stop()
-            # Progressive approach: aggressive far out, gentle close in
-            if remaining < 5:
-                approach_pct = 0.5
-            elif remaining < 15:
-                approach_pct = 0.7
+            # Progressive approach: aggressive far out, gentle near center
+            if remaining < 10:
+                approach_pct = 0.4
+            elif remaining < 20:
+                approach_pct = 0.6
             else:
-                approach_pct = 0.85
+                approach_pct = 0.8
 
             hold_time = (remaining * approach_pct) / rate
-            hold_time = max(0.20, min(2.0, hold_time))
+            hold_time = max(0.10, min(2.0, hold_time))
 
-            logger.info(f"Align {axis}: remaining={remaining:.1f}deg, hold={hold_time:.2f}s, rate={rate:.1f}")
+            logger.info(f"Align {axis}: remaining={remaining:.1f}deg, hold={hold_time:.2f}s, rate={rate:.1f}, key={key}")
             self.keys.send(key, hold=hold_time)
-            sleep(0.75)  # settle time at zero speed
+            sleep(2.0)  # settle time -- SC inertia needs longer than normal space
 
             new_off = self.get_nav_offset(scr_reg)
             if new_off is None:
@@ -1160,17 +1272,13 @@ class EDAutopilot:
                 return new_off
 
             new_dist = self._get_dist(axis, new_off)
-            if new_dist > remaining + 5:
-                # Overshot -- recalculate direction
-                logger.info(f"Align {axis}: overshot {remaining:.1f}->{new_dist:.1f}, reversing")
-                key = self._axis_pick_key(axis, new_off[axis])
-            else:
-                # Update rate from actual movement
-                actual_moved = remaining - new_dist
-                if actual_moved > 0 and hold_time > 0.20:
-                    new_rate = actual_moved / hold_time
-                    rate = min((rate + new_rate) / 2, self._axis_max_rate(axis))
-                    rate = max(rate, 1.0)
+
+            # Always re-pick key from current position -- prevents runaway when
+            # a small overshoot flips the sign
+            old_key = key
+            key = self._axis_pick_key(axis, new_off[axis])
+            if key != old_key:
+                logger.info(f"Align {axis}: direction changed {remaining:.1f}->{new_dist:.1f}, key={key}")
 
             remaining = new_dist
             off = new_off
@@ -1202,7 +1310,7 @@ class EDAutopilot:
           3) Yaw + Pitch for fine alignment (reliable, no overshoot)
         @return: True if aligned, else False.
         """
-        close = 2.0  # degrees -- tight tolerance, SC Assist needs accurate alignment
+        close = 3.0  # degrees -- compass dot is ~6px on 60px ROI (~3 deg/px), no point going tighter
         # Use status.json flags (reliable) instead of journal status (can be stale from corrupt lines)
         in_sc = self.status.get_flag(FlagsSupercruise)
         in_space = not self.status.get_flag(FlagsDocked) and not self.status.get_flag(FlagsLanded)
@@ -1238,9 +1346,7 @@ class EDAutopilot:
             # Target behind -- always pitch UP to flip (away from star after jump)
             if off['z'] < 0:
                 if prev_off and prev_off.get('z', 1) < 0 and abs(prev_off['roll'] - off['roll']) < 5:
-                    logger.warning("Compass: flip had no effect, waiting 3s.")
-                    self.ap_ckb('log', 'Flip had no effect, waiting...')
-                    sleep(3)
+                    logger.warning("Compass: flip had no effect, retrying immediately")
                     align_tries += 1  # stuck flips count
 
                 pitch_time = 180.0 / self.pitchrate
@@ -1257,10 +1363,9 @@ class EDAutopilot:
                 self.ap_ckb('log', 'Compass Align complete')
                 return True
 
-            # Coarse roll only if dot is far off centerline AND pit/yaw are far off
-            # If pit/yaw are close, target is nearly centered -- roll doesn't matter
+            # Coarse roll to vertical centerline when dot is diagonal AND far enough from center
             roll_off_centerline = min(abs(off['roll']), 180 - abs(off['roll']))
-            if roll_off_centerline > self.COARSE_ROLL_THRESHOLD and (abs(off['pit']) > 10 or abs(off['yaw']) > 10):
+            if roll_off_centerline > self.COARSE_ROLL_THRESHOLD and (abs(off['pit']) > 8 or abs(off['yaw']) > 8):
                 logger.info(f"Compass: roll {roll_off_centerline:.1f}deg off centerline, coarse roll")
                 self.ap_ckb('log', 'Coarse roll')
                 off = self._roll_to_centerline(scr_reg, off, close=self.COARSE_ROLL_THRESHOLD)
@@ -1273,21 +1378,35 @@ class EDAutopilot:
                     sleep(0.5)
                     continue
 
-            # Fine alignment: yaw then pitch -- THIS counts as an alignment try
+            # Fine alignment -- THIS counts as an alignment try
+            # Do the larger-offset axis first: when pitch is large, the dot is near
+            # the circle edge where yaw has reduced effectiveness (spherical projection).
+            # Pitching first brings the dot closer to center so yaw becomes effective.
             align_tries += 1
             logger.info(f"Compass: alignment attempt {align_tries}/{max_align_tries}")
 
-            off = self._yaw_to_center(scr_reg, off, close)
-            if off is None:
-                continue
-
-            off = self._pitch_to_center(scr_reg, off, close)
-            if off is None:
-                continue
+            if abs(off['pit']) > abs(off['yaw']):
+                off = self._pitch_to_center(scr_reg, off, close)
+                if off is None:
+                    continue
+                off = self._yaw_to_center(scr_reg, off, close)
+                if off is None:
+                    continue
+            else:
+                off = self._yaw_to_center(scr_reg, off, close)
+                if off is None:
+                    continue
+                off = self._pitch_to_center(scr_reg, off, close)
+                if off is None:
+                    continue
 
             # Verify
             logger.info(f"Compass after align: pit={off['pit']:.1f} yaw={off['yaw']:.1f}")
             if abs(off['pit']) < close and abs(off['yaw']) < close:
+                # Try target circle fine alignment if visible
+                if self.is_target_arc_visible(scr_reg):
+                    logger.info("Compass close enough, switching to target circle fine align")
+                    self.target_fine_align(scr_reg)
                 self.ap_ckb('log', 'Compass Align complete')
                 return True
 
@@ -1310,26 +1429,11 @@ class EDAutopilot:
 
         res = self.compass_align(scr_reg)
 
-        # After compass align, check if target reticle is visible for fine alignment.
-        # If only compass is available, compass align is good enough for FSD -- just go.
-        tar_off = self.get_target_offset(scr_reg)
-        if tar_off:
-            self.ap_ckb('log+vce', 'Target Align')
-            for i in range(5):
-                self.set_speed_25()
-                align_res = self.sc_target_align(scr_reg)
-                if align_res == ScTargetAlignReturn.Lost:
-                    self.set_speed_25()
-                    self.compass_align(scr_reg)
-
-                elif align_res == ScTargetAlignReturn.Found:
-                    break
-
-                elif align_res == ScTargetAlignReturn.Disengage:
-                    break
-        else:
-            logger.info('mnvr_to_target: no target reticle, compass align is sufficient for FSD')
-            self.ap_ckb('log', 'Compass aligned, proceeding to FSD')
+        # Compass align to ~3 degrees is sufficient for FSD jump.
+        # Skip sc_target_align -- its open-loop roll/pitch corrections fight
+        # with the compass alignment and make things worse.
+        logger.info('mnvr_to_target: compass align done, proceeding to FSD')
+        self.ap_ckb('log', 'Compass aligned, proceeding to FSD')
 
         # Throttle zero briefly after alignment, then full speed for FSD
         self.set_speed_0()
@@ -1591,13 +1695,12 @@ class EDAutopilot:
 
         self.set_speed_100()
 
-        logger.info("Passing star")
+        logger.info("Passing star with SCO boost")
 
-        # Need time to move past Sun for heat to dissipate
-        pause_time = 30
-        if self.config["EnableRandomness"]:
-            pause_time = pause_time + random.randint(0, 3)
-        sleep(pause_time)
+        # SCO burst to quickly clear the star instead of 30s crawl
+        self.keys.send('UseBoostJuice')
+        sleep(5)
+        self.keys.send('UseBoostJuice')  # disable SCO
 
         logger.info("Maneuvering")
 
@@ -2022,7 +2125,7 @@ class EDAutopilot:
                 sc_assist_cruising = True
                 continue
 
-            # Every 30s check if SC Assist indicator is still visible (2-of-3 vote)
+            # Every 30s check if SC Assist is still active (3-of-3 vote, indicator + text)
             # If gone: re-align first. If still gone after re-align: target is occluded, evade.
             if sc_assist_cruising and (time.time() - last_align_check) > 30:
                 last_align_check = time.time()
@@ -2237,9 +2340,7 @@ class EDAutopilot:
                 except EDAP_Interrupt:
                     logger.debug("Caught stop exception")
                 except Exception as e:
-                    print("Trapped generic:"+str(e))
-                    logger.debug("SC Assist trapped generic:"+str(e))
-                    traceback.print_exc()
+                    logger.exception("SC Assist trapped generic")
 
                 self.stop_sco_monitoring()
                 logger.debug("Completed sc_assist")
@@ -2261,9 +2362,7 @@ class EDAutopilot:
                 except EDAP_Interrupt:
                     logger.debug("Caught stop exception")
                 except Exception as e:
-                    print("Trapped generic:"+str(e))
-                    logger.debug("Waypoint Assist trapped generic:"+str(e))
-                    traceback.print_exc()
+                    logger.exception("Waypoint Assist trapped generic")
 
                 self.stop_sco_monitoring()
                 self.waypoint_assist_enabled = False
@@ -2280,9 +2379,7 @@ class EDAutopilot:
                 except EDAP_Interrupt:
                     logger.debug("Stopping DSS Assist")
                 except Exception as e:
-                    print("Trapped generic:" + str(e))
-                    logger.debug("DSS Assist trapped generic:" + str(e))
-                    traceback.print_exc()
+                    logger.exception("DSS Assist trapped generic")
 
                 self.dss_assist_enabled = False
                 self.ap_ckb('dss_stop')
@@ -2329,349 +2426,126 @@ class EDAutopilot:
             cv2.waitKey(10)
             sleep(1)
 
-    def ship_tst_pitch(self, angle: float):
-        """ Performs a ship pitch test by pitching 360 degrees.
-        If the ship does not rotate enough, decrease the pitch value.
-        If the ship rotates too much, increase the pitch value.
-        """
-        # if not self.status.get_flag(FlagsSupercruise):
-        #     self.ap_ckb('log', "Enter Supercruise and try again.")
-        #     return
-        #
-        # if self.jn.ship_state()['target'] is None:
-        #     self.ap_ckb('log', "Select a target system and try again.")
-        #     return
+    _AXIS_CAL_CONFIG = {
+        'pitch': {
+            'rate_key': 'PitchRate', 'offset_key': 'pit', 'offset_fn': 'get_target_offset',
+            'pos_key': 'PitchUpButton', 'neg_key': 'PitchDownButton',
+            'rate_attr': 'pitchrate', 'targ_angles': [5, 10, 20, 40, 80, 160],
+            'init_time': 0.05, 'time_mult': 1.04, 'default_angle': 300,
+            'overlay_keys': [('rect', 'target'), ('text', 'target'), ('text', 'target_occ'), ('text', 'target_rpy')],
+            'move_fn': 'pitch_up_down',
+        },
+        'roll': {
+            'rate_key': 'RollRate', 'offset_key': 'roll', 'offset_fn': 'get_nav_offset',
+            'pos_key': 'RollRightButton', 'neg_key': 'RollLeftButton',
+            'rate_attr': 'rollrate', 'targ_angles': [40, 80, 160, 320],
+            'init_time': 0.05, 'time_mult': 1.03, 'default_angle': 450,
+            'overlay_keys': [('rect', 'compass'), ('text', 'compass'), ('text', 'nav'), ('text', 'nav_beh'), ('text', 'compass_rpy')],
+            'move_fn': 'roll_clockwise_anticlockwise',
+        },
+        'yaw': {
+            'rate_key': 'YawRate', 'offset_key': 'yaw', 'offset_fn': 'get_target_offset',
+            'pos_key': 'YawRightButton', 'neg_key': 'YawLeftButton',
+            'rate_attr': 'yawrate', 'targ_angles': [5, 10, 20, 40, 80, 160],
+            'init_time': 0.07, 'time_mult': 1.05, 'default_angle': 300,
+            'overlay_keys': [('rect', 'target'), ('text', 'target'), ('text', 'target_occ'), ('text', 'target_rpy')],
+            'move_fn': 'yaw_right_left',
+        },
+    }
 
-        set_focus_elite_window()
-        sleep(0.25)
-        # self.set_speed_50()
-        self.pitch_up_down(angle)
+    def _ship_tst_axis_calibrate(self, axis: str):
+        """Generic axis calibration. axis must be 'pitch', 'roll', or 'yaw'."""
+        cfg = self._AXIS_CAL_CONFIG[axis]
+        name = axis.capitalize()
+        self.ap_ckb('log', f"Starting {name} Calibration.")
 
-    def ship_tst_pitch_new(self, angle: float):
-        """ Performs a ship pitch test by pitching 360 degrees.
-        If the ship does not rotate enough, decrease the pitch value.
-        If the ship rotates too much, increase the pitch value.
-        """
-        self.ap_ckb('log', "Starting Pitch Calibration.")
-        if not self.speed_demand == 'SCSpeed50':
+        if self.speed_demand != 'SCSpeed50':
             self.set_speed_50()
-            # sleep(10)
 
         ship_type = self.ship_configs['Ship_Configs'][self.current_ship_type]
         if self.speed_demand not in ship_type:
             ship_type[self.speed_demand] = dict()
 
-        # Clear existing data
-        ship_type[self.speed_demand]['PitchRate'] = dict()
+        ship_type[self.speed_demand][cfg['rate_key']] = dict()
 
-        test_time = 0.05
+        test_time = cfg['init_time']
         delta_int = 0.0
-        for targ_ang in [5, 10, 20, 40, 80, 160]:
+        offset_fn = getattr(self, cfg['offset_fn'])
+        default_rate = getattr(self, cfg['rate_attr'])
+
+        for targ_ang in cfg['targ_angles']:
             while 1:
                 set_focus_elite_window()
-                off = self.get_target_offset(self.scrReg)
+                off = offset_fn(self.scrReg)
                 if not off:
-                    print(f"Target lost")
+                    logger.debug(f"{name} target lost")
                     break
 
-                # Clear the overlays before moving
                 if self.debug_overlay:
-                    self.overlay.overlay_remove_rect('target')
-                    self.overlay.overlay_remove_floating_text('target')
-                    self.overlay.overlay_remove_floating_text('target_occ')
-                    self.overlay.overlay_remove_floating_text('target_rpy')
+                    for kind, key in cfg['overlay_keys']:
+                        if kind == 'rect':
+                            self.overlay.overlay_remove_rect(key)
+                        else:
+                            self.overlay.overlay_remove_floating_text(key)
                     self.overlay.overlay_paint()
 
-                if off['pit'] > 0:
-                    self.keys.send('PitchUpButton', hold=test_time)
+                if off[cfg['offset_key']] > 0:
+                    self.keys.send(cfg['pos_key'], hold=test_time)
                 else:
-                    self.keys.send('PitchDownButton', hold=test_time)
+                    self.keys.send(cfg['neg_key'], hold=test_time)
 
                 sleep(1)
 
-                off2 = self.get_target_offset(self.scrReg)
+                off2 = offset_fn(self.scrReg)
                 if not off2:
-                    print(f"Target lost")
+                    logger.debug(f"{name} target lost")
                     break
 
-                delta = abs(off2['pit'] - off['pit'])
+                delta = abs(off2[cfg['offset_key']] - off[cfg['offset_key']])
                 delta_int_lst = delta_int
                 delta_int = int(round(delta * 10, 0))
 
-                test_time = test_time * 1.04
+                test_time = test_time * cfg['time_mult']
                 rate = round(delta / test_time, 2)
-                rate = min(rate, self.pitchrate)  # Limit rate to no higher than the default
+                rate = min(rate, default_rate)
                 if delta_int >= targ_ang and delta_int > delta_int_lst:
-                    ship_type[self.speed_demand]['PitchRate'][delta_int] = rate
-
-                    print(f"Pitch Angle: {round(delta, 2)}: Time: {round(test_time, 2)} Rate: {rate}")
-                    self.ap_ckb('log', f"Pitch Angle: {round(delta, 2)}: Time: {round(test_time, 2)} Rate: {rate}")
+                    ship_type[self.speed_demand][cfg['rate_key']][delta_int] = rate
+                    logger.info(f"{name} Angle: {round(delta, 2)}: Time: {round(test_time, 2)} Rate: {rate}")
+                    self.ap_ckb('log', f"{name} Angle: {round(delta, 2)}: Time: {round(test_time, 2)} Rate: {rate}")
                     break
                 else:
-                    print(f"Ignored Pitch Angle: {round(delta, 2)}: Time: {round(test_time, 2)} Rate: {rate}")
+                    logger.info(f"Ignored {name} Angle: {round(delta, 2)}: Time: {round(test_time, 2)} Rate: {rate}")
 
-        # If we have logged values, add the ship default rate at 30 deg
-        if len(ship_type[self.speed_demand]['PitchRate']) > 0:
-            ship_type[self.speed_demand]['PitchRate'][300] = self.pitchrate
-            self.ap_ckb('log', f"Default: Pitch Angle: 30: Rate: {self.pitchrate}")
+        if len(ship_type[self.speed_demand][cfg['rate_key']]) > 0:
+            ship_type[self.speed_demand][cfg['rate_key']][cfg['default_angle']] = default_rate
+            self.ap_ckb('log', f"Default: {name} Angle: {cfg['default_angle'] // 10}: Rate: {default_rate}")
 
-        self.ap_ckb('log', "Completed Pitch Calibration.")
+        self.ap_ckb('log', f"Completed {name} Calibration.")
         self.ap_ckb('log', "Remember to Save if you wish to keep these values!")
 
-    def ship_tst_pitch_calc_power(self, angle: float):
-        """ Performs a ship pitch test by pitching 360 degrees.
-        If the ship does not rotate enough, decrease the pitch value.
-        If the ship rotates too much, increase the pitch value.
-        """
-        # if not self.status.get_flag(FlagsSupercruise):
-        #     self.ap_ckb('log', "Enter Supercruise and try again.")
-        #     return
-        #
-        # if self.jn.ship_state()['target'] is None:
-        #     self.ap_ckb('log', "Select a target system and try again.")
-        #     return
-
-        set_focus_elite_window()
-        # sleep(0.25)
-        # # self.set_speed_50()
-        # self.pitch_up_down(angle)
-
-        target_align_outer_lim = 1.0
-        target_align_inner_lim = 0.5
-
-        off = None
-        tar_off1 = None
-        tar_off2 = None
-
-        # Try to get the target 5 times before quiting
-        for i in range(5):
-            # Check Target and Compass
-            tar_off1 = self.get_target_offset(self.scrReg)
-            if tar_off1:
-                # Target detected
-                off = tar_off1
-
-            # Quit loop if we found Target or Compass
-            if off:
-                break
-
-        # We have Target or Compass. Are we close to Target?
-        while (abs(off['pit']) > target_align_outer_lim):
-
-            target_align_outer_lim = target_align_inner_lim  # Keep aligning until we are within this lower range.
-
-            # Clear the overlays before moving
-            if self.debug_overlay:
-                self.overlay.overlay_remove_rect('target')
-                self.overlay.overlay_remove_floating_text('target')
-                self.overlay.overlay_remove_floating_text('target_occ')
-                self.overlay.overlay_remove_floating_text('target_rpy')
-                self.overlay.overlay_paint()
-
-            # Calc pitch time based on nav point location
-            logger.debug(f"sc_target_align before: pit: {off['pit']} roll: {off['roll']} ")
-
-            p_deg = 0.0
-            if abs(off['pit']) > target_align_outer_lim:
-                p_deg = off['pit']
-                self.pitch_up_down(p_deg)
-
-            # Wait for ship to finish moving and picture to stabilize
-            sleep(2.0)
-
-            # Check Target and Compass
-            tar_off2 = self.get_target_offset(self.scrReg)
-            if tar_off2:
-                off = tar_off2
-                logger.debug(f"sc_target_align after: pit:{off['pit']} roll: {off['roll']}")
-
-            if tar_off1 and tar_off2:
-                # Check diff from before and after movement
-                pit_delta = tar_off2['pit'] - tar_off1['pit']
-                if ((tar_off1['pit'] < 0.0 and tar_off2['pit'] > target_align_outer_lim) or
-                        (tar_off1['pit'] > 0.0 and tar_off2['pit'] < -target_align_outer_lim)):
-                    self.ap_ckb('log', f"TEST - Pitch correction gone too far {round(abs(pit_delta),2)} > {round(abs(tar_off1['pit']),2) + target_align_outer_lim}. Reducing Pitch Factor.")
-                    self.ap_ckb('update_ship_cfg')
-
-            if tar_off2:
-                # Store current offsets
-                tar_off1 = tar_off2.copy()
+    def ship_tst_pitch_new(self, angle: float):
+        self._ship_tst_axis_calibrate('pitch')
 
     def ship_tst_roll(self, angle: float):
-        """ Performs a ship roll test by pitching 360 degrees.
-        If the ship does not rotate enough, decrease the roll value.
-        If the ship rotates too much, increase the roll value.
-        """
-        # if not self.status.get_flag(FlagsSupercruise):
-        #     self.ap_ckb('log', "Enter Supercruise and try again.")
-        #     return
-        #
-        # if self.jn.ship_state()['target'] is None:
-        #     self.ap_ckb('log', "Select a target system and try again.")
-        #     return
-
         set_focus_elite_window()
         sleep(0.25)
-        # self.set_speed_50()
         self.roll_clockwise_anticlockwise(angle)
 
     def ship_tst_roll_new(self, angle: float):
-        """ Performs a ship roll test by pitching 360 degrees.
-        If the ship does not rotate enough, decrease the roll value.
-        If the ship rotates too much, increase the roll value.
-        """
-        self.ap_ckb('log', "Starting Roll Calibration.")
-        if not self.speed_demand == 'SCSpeed50':
-            self.set_speed_50()
-            #sleep(10)
-
-        ship_type = self.ship_configs['Ship_Configs'][self.current_ship_type]
-        if self.speed_demand not in ship_type:
-            ship_type[self.speed_demand] = dict()
-
-        # Clear existing data
-        ship_type[self.speed_demand]['RollRate'] = dict()
-
-        test_time = 0.05
-        delta_int = 0.0
-        for targ_ang in [40, 80, 160, 320]:
-            while 1:
-                set_focus_elite_window()
-                off = self.get_nav_offset(self.scrReg)
-                if not off:
-                    break
-
-                # Clear the overlays before moving
-                if self.debug_overlay:
-                    self.overlay.overlay_remove_rect('compass')
-                    self.overlay.overlay_remove_floating_text('compass')
-                    self.overlay.overlay_remove_floating_text('nav')
-                    self.overlay.overlay_remove_floating_text('nav_beh')
-                    self.overlay.overlay_remove_floating_text('compass_rpy')
-                    self.overlay.overlay_paint()
-
-                if off['roll'] > 0:
-                    self.keys.send('RollRightButton', hold=test_time)
-                else:
-                    self.keys.send('RollLeftButton', hold=test_time)
-
-                sleep(1)
-
-                off2 = self.get_nav_offset(self.scrReg)
-                if not off2:
-                    break
-
-                delta = abs(off2['roll'] - off['roll'])
-                delta_int_lst = delta_int
-                delta_int = int(round(delta * 10, 0))
-
-                test_time = test_time * 1.03
-                rate = round(delta / test_time, 2)
-                rate = min(rate, self.rollrate)  # Limit rate to no higher than the default
-                if delta_int >= targ_ang and delta_int > delta_int_lst:
-                    ship_type[self.speed_demand]['RollRate'][delta_int] = rate
-
-                    print(f"Roll Angle: {round(delta, 2)}: Time: {round(test_time, 2)} Rate: {rate}")
-                    self.ap_ckb('log', f"Roll Angle: {round(delta, 2)}: Time: {round(test_time, 2)} Rate: {rate}")
-                    break
-                else:
-                    print(f"Ignored Roll Angle: {round(delta, 2)}: Time: {round(test_time, 2)} Rate: {rate}")
-
-        # If we have logged values, add the ship default rate at 45 deg
-        if len(ship_type[self.speed_demand]['RollRate']) > 0:
-            ship_type[self.speed_demand]['RollRate'][450] = self.rollrate
-            self.ap_ckb('log', f"Default: Roll Angle: 45: Rate: {self.rollrate}")
-
-        self.ap_ckb('log', "Completed Roll Calibration.")
-        self.ap_ckb('log', "Remember to Save if you wish to keep these values!")
+        self._ship_tst_axis_calibrate('roll')
 
     def ship_tst_yaw(self, angle: float):
-        """ Performs a ship yaw test by pitching 360 degrees.
-        If the ship does not rotate enough, decrease the yaw value.
-        If the ship rotates too much, increase the yaw value.
-        """
-        # if not self.status.get_flag(FlagsSupercruise):
-        #     self.ap_ckb('log', "Enter Supercruise and try again.")
-        #     return
-        #
-        # if self.jn.ship_state()['target'] is None:
-        #     self.ap_ckb('log', "Select a target system and try again.")
-        #     return
-
         set_focus_elite_window()
         sleep(0.25)
-        # self.set_speed_50()
         self.yaw_right_left(angle)
 
     def ship_tst_yaw_new(self, angle: float):
-        """ Performs a ship yaw test by pitching 360 degrees.
-        If the ship does not rotate enough, decrease the yaw value.
-        If the ship rotates too much, increase the yaw value.
-        """
-        self.ap_ckb('log', "Starting Yaw Calibration.")
+        self._ship_tst_axis_calibrate('yaw')
 
-        if not self.speed_demand == 'SCSpeed50':
-            self.set_speed_50()
-            # sleep(10)
-
-        ship_type = self.ship_configs['Ship_Configs'][self.current_ship_type]
-        if self.speed_demand not in ship_type:
-            ship_type[self.speed_demand] = dict()
-
-        # Clear existing data
-        ship_type[self.speed_demand]['YawRate'] = dict()
-
-        test_time = 0.07
-        delta_int = 0.0
-        for targ_ang in [5, 10, 20, 40, 80, 160]:
-            while 1:
-                set_focus_elite_window()
-                off = self.get_target_offset(self.scrReg)
-                if not off:
-                    break
-
-                # Clear the overlays before moving
-                if self.debug_overlay:
-                    self.overlay.overlay_remove_rect('target')
-                    self.overlay.overlay_remove_floating_text('target')
-                    self.overlay.overlay_remove_floating_text('target_occ')
-                    self.overlay.overlay_remove_floating_text('target_rpy')
-                    self.overlay.overlay_paint()
-
-                if off['yaw'] > 0:
-                    self.keys.send('YawRightButton', hold=test_time)
-                else:
-                    self.keys.send('YawLeftButton', hold=test_time)
-
-                sleep(1)
-
-                off2 = self.get_target_offset(self.scrReg)
-                if not off2:
-                    break
-
-                delta = abs(off2['yaw'] - off['yaw'])
-                delta_int_lst = delta_int
-                delta_int = int(round(delta * 10, 0))
-
-                test_time = test_time * 1.05
-                rate = round(delta / test_time, 2)
-                rate = min(rate, self.yawrate)  # Limit rate to no higher than the default
-                if delta_int >= targ_ang and delta_int > delta_int_lst:
-                    ship_type[self.speed_demand]['YawRate'][delta_int] = rate
-
-                    print(f"Yaw Angle: {round(delta, 2)}: Time: {round(test_time, 2)} Rate: {rate}")
-                    self.ap_ckb('log', f"Yaw Angle: {round(delta, 2)}: Time: {round(test_time, 2)} Rate: {rate}")
-                    break
-                else:
-                    print(f"Ignored Yaw Angle: {round(delta, 2)}: Time: {round(test_time, 2)} Rate: {rate}")
-
-        # If we have logged values, add the ship default rate at 30 deg
-        if len(ship_type[self.speed_demand]['YawRate']) > 0:
-            ship_type[self.speed_demand]['YawRate'][300] = self.yawrate
-            self.ap_ckb('log', f"Default: Yaw Angle: 30: Rate: {self.yawrate}")
-
-        self.ap_ckb('log', "Completed Yaw Calibration.")
-        self.ap_ckb('log', "Remember to Save if you wish to keep these values!")
+    def ship_tst_pitch(self, angle: float):
+        set_focus_elite_window()
+        sleep(0.25)
+        self.pitch_up_down(angle)
 
     _SPEED_CONFIG = {
         0:   {'demand': 'Speed0',   'sc_demand': 'SCSpeed0',   'key': 'SetSpeedZero'},
@@ -2722,7 +2596,7 @@ def delete_old_log_files():
             if filename.endswith('.log'):
                 file_time = os.path.getmtime(file_path)
                 if file_time < current_time - day * n:
-                    print(f"Deleting file: '{file_path}'")
+                    logger.debug(f"Deleting file: '{file_path}'")
                     os.remove(file_path)
 
 

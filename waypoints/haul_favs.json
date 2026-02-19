@@ -1,14 +1,21 @@
 {
     "GlobalShoppingList": {
         "BuyCommodities": {
-            "Aluminium": 40053,
+            "Computer Components": 0,
             "Copper": 0,
+            "Food Cartridges": 0,
+            "Fruit and Vegetables": 0,
             "Insulating Membrane": 0,
-            "Liquid oxygen": 9313,
-            "Polymers": 0,
-            "Steel": 47109,
-            "Titanium": 28974,
-            "Water": 0
+            "Liquid oxygen": 2,
+            "Medical Diagnostic Equipment": 0,
+            "Non-Lethal Weapons": 13,
+            "Power Generators": 0,
+            "Semiconductors": 0,
+            "Steel": 5588,
+            "Superconductors": 0,
+            "Titanium": 4118,
+            "Water": 0,
+            "Water Purifiers": 0
         },
         "UpdateCommodityCount": true,
         "FleetCarrierTransfer": false,
@@ -28,7 +35,7 @@
         "UpdateCommodityCount": true,
         "FleetCarrierTransfer": false,
         "Skip": false,
-        "Completed": true
+        "Completed": false
     },
     "2": {
         "SystemName": "",

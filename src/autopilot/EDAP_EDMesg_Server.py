@@ -2,6 +2,7 @@ import os
 import sys
 import threading
 
+from src.core.EDlogger import logger
 from EDMesg.EDMesgBase import EDMesgWelcomeAction
 from src.autopilot.EDAP_EDMesg_Interface import (
     create_edap_provider,
@@ -39,13 +40,13 @@ class EDMesgServer:
         try:
             self._provider = create_edap_provider(self.actions_port, self.events_port)  # Factory method for EDCoPilot
             self.ap_ckb('log', "Starting EDMesg Server.")
-            print("Server starting.")
+            logger.info("EDMesg Server starting.")
 
             self._server_loop_thread = threading.Thread(target=self._server_loop, daemon=True)
             self._server_loop_thread.start()
         except Exception as e:
             self.ap_ckb('log', f"EDMesg Server failed to start: {e}")
-            print(f"EDMesg Server failed to start: {e}")
+            logger.error(f"EDMesg Server failed to start: {e}")
 
     def _server_loop(self):
         """ A loop for the server.
@@ -56,7 +57,7 @@ class EDMesgServer:
                 if not self._provider.pending_actions.empty():
                     action = self._provider.pending_actions.get()
                     if isinstance(action, EDMesgWelcomeAction):
-                        print("new client connected")
+                        logger.info("EDMesg: new client connected")
                     if isinstance(action, GetEDAPLocationAction):
                         self._get_edap_location(self._provider)
                     if isinstance(action, LoadWaypointFileAction):
@@ -77,20 +78,20 @@ class EDMesgServer:
                         self._generic_action(action.name)
 
                 sleep(0.1)
-        except:
-            print("Shutting down provider.")
+        except Exception:
+            logger.info("Shutting down EDMesg provider.")
         finally:
             self._provider.close()
 
     def _get_edap_location(self, provider):
         self.ap_ckb('log', "Received EDMesg Action: GetEDAPLocationAction")
-        print("Received EDMesg Action: GetEDAPLocationAction")
+        logger.debug("Received EDMesg Action: GetEDAPLocationAction")
 
         # Get the absolute path of the running script
         pathname = os.path.dirname(sys.argv[0])
         abspath = os.path.abspath(pathname)
 
-        print(f"Sending Event: EDAPLocationEvent")
+        logger.debug("Sending Event: EDAPLocationEvent")
         provider.publish(
             EDAPLocationEvent(
                 path=abspath
@@ -99,30 +100,30 @@ class EDMesgServer:
 
     def _load_waypoint_file(self, filepath: str):
         self.ap_ckb('log', "Received EDMesg Action: LoadWaypointFileAction")
-        print("Received EDMesg Action: LoadWaypointFileAction")
+        logger.debug("Received EDMesg Action: LoadWaypointFileAction")
         self.ap.waypoint.load_waypoint_file(filepath)
 
     def _start_waypoint_assist(self):
         self.ap_ckb('log', "Received EDMesg Action: StartWaypointAssistAction")
-        print("Received EDMesg Action: StartWaypointAssistAction")
+        logger.debug("Received EDMesg Action: StartWaypointAssistAction")
         # Start the waypoint assist using callback
         self.ap_ckb('waypoint_start')
 
     def _stop_all_assists(self):
         self.ap_ckb('log', "Received EDMesg Action: StopAllAssistsAction")
-        print("Received EDMesg Action: StopAllAssistsAction")
+        logger.debug("Received EDMesg Action: StopAllAssistsAction")
         # Stop all assists using callback
         self.ap_ckb('stop_all_assists')
 
     def _launch(self, provider):
         self.ap_ckb('log', "Received EDMesg Action: LaunchAction")
-        print("Received EDMesg Action: LaunchAction")
+        logger.debug("Received EDMesg Action: LaunchAction")
         # Request
         #self.ap.waypoint_undock_seq()
 
         sleep(1)
         self.ap_ckb('log', "Sending EDMesg Event: LaunchCompleteEvent")
-        print(f"Sending Event: LaunchCompleteEvent")
+        logger.debug("Sending Event: LaunchCompleteEvent")
         provider.publish(
             LaunchCompleteEvent()
         )

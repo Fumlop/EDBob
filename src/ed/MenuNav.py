@@ -40,11 +40,9 @@ def goto_cockpit(keys, status_parser: StatusParser, max_tries: int = 10) -> bool
 
 
 def realign_cursor(keys):
-    """Move cursor to the top of any menu list. 2x UI_Up covers docked menu depth."""
-    keys.send('UI_Up')
-    sleep(0.2)
-    keys.send('UI_Up')
-    sleep(0.2)
+    """Move cursor to the top of any menu list. Hold UI_Up for 2s to reliably reach top."""
+    keys.send('UI_Up', hold=2)
+    sleep(0.3)
 
 
 def refuel_repair_rearm(keys, status_parser: StatusParser):

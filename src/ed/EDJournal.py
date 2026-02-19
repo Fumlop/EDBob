@@ -227,6 +227,19 @@ class EDJournal:
         self.current_log = log_name
         self.last_mod_time = None
 
+    def _update_location(self, log, services_optional=False):
+        """Update common location fields from a journal event."""
+        self.ship['location'] = log['StarSystem']
+        self.ship['cur_star_system'] = log['StarSystem']
+        self.ship['cur_station'] = log['StationName']
+        self.ship['cur_station_type'] = log['StationType']
+        if services_optional:
+            self.ship['StationServices'] = log.get('StationServices', [])
+        else:
+            self.ship['StationServices'] = log['StationServices']
+        self.ship['exp_station_type'] = check_station_type(log['StationType'], log['StationName'], self.ship['StationServices'])
+        self.ship['MarketID'] = log['MarketID']
+
     def parse_line(self, log):
         # parse data
         try:
@@ -235,14 +248,10 @@ class EDJournal:
 
             # If fileheader, pull whether running Odyssey or Horizons
             if log_event == 'Fileheader':
-                #self.ship['odyssey'] = log['Odyssey']
                 self.ship['odyssey'] = True   # hardset to true for ED 4.0 since menus now same for Horizon
 
             elif log_event == 'ShieldState':
-                if log['ShieldsUp'] == True:
-                    self.ship['shieldsup'] = True
-                else:
-                    self.ship['shieldsup'] = False
+                self.ship['shieldsup'] = log['ShieldsUp']
 
             elif  log_event == 'UnderAttack':
                 self.ship['under_attack'] = True
@@ -325,26 +334,11 @@ class EDJournal:
                 #     {"Name": "$economy_Refinery;", "Name_Localised": "Refinery", "Proportion": 0.200000}],
                 #  "DistFromStarLS": 6.950547, "LandingPads": {"Small": 6, "Medium": 12, "Large": 7}}
                 self.ship['status'] = 'in_station'
-                self.ship['location'] = log['StarSystem']
-                self.ship['cur_star_system'] = log['StarSystem']
-                self.ship['cur_station'] = log['StationName']
-                self.ship['cur_station_type'] = log['StationType']
-                self.ship['StationServices'] = log['StationServices']
-                self.ship['exp_station_type'] = check_station_type(log['StationType'], log['StationName'], self.ship['StationServices'])
-                self.ship['MarketID'] = log['MarketID']
+                self._update_location(log)
 
                 # parse location
             elif log_event == 'Location':
-                self.ship['location'] = log['StarSystem']
-                self.ship['cur_star_system'] = log['StarSystem']
-                self.ship['cur_station'] = log['StationName']
-                self.ship['cur_station_type'] = log['StationType']
-                if 'StationServices' in log:
-                    self.ship['StationServices'] = log['StationServices']
-                else:
-                    self.ship['StationServices'] = []
-                self.ship['exp_station_type'] = check_station_type(log['StationType'], log['StationName'], self.ship['StationServices'])
-                self.ship['MarketID'] = log['MarketID']
+                self._update_location(log, services_optional=True)
                 if log['Docked'] == True:
                     self.ship['status'] = 'in_station'
 
@@ -388,7 +382,7 @@ class EDJournal:
             if 'FuelCapacity' in log and self.ship['type'] != 'TestBuggy':
                     try:
                         self.ship['fuel_capacity'] = log['FuelCapacity']['Main']
-                    except:
+                    except (KeyError, TypeError):
                         self.ship['fuel_capacity'] = log['FuelCapacity']
             if log_event == 'FuelScoop' and 'Total' in log:
                 self.ship['fuel_level'] = log['Total']
@@ -406,8 +400,8 @@ class EDJournal:
             if log_event == 'FSDJump':
                 self.ship['location'] = log['StarSystem']
                 self.ship['cur_star_system'] = log['StarSystem']
-#TODO                if 'StarClass' in log:
-#TODO                    self.ship['star_class'] = log['StarClass']
+                if 'StarClass' in log:
+                    self.ship['star_class'] = log['StarClass']
 
             # parse target
             if log_event == 'FSDTarget':
@@ -418,11 +412,8 @@ class EDJournal:
                     self.ship['target'] = log['Name']
                     try:
                             self.ship['jumps_remains'] = log['RemainingJumpsInRoute']
-                    except:
+                    except KeyError:
                         pass
-                            #
-                            #    'Log did not have jumps remaining. This happens most if you have less than .' +
-                            #    '3 jumps remaining. Jumps remaining will be inaccurate for this jump.')
 
 
             elif log_event == 'FSDJump':
@@ -440,13 +431,7 @@ class EDJournal:
                 self.ship['nav_route_cleared'] = False
 
             elif log_event == 'CarrierJump':
-                self.ship['location'] = log['StarSystem']
-                self.ship['cur_star_system'] = log['StarSystem']
-                self.ship['cur_station'] = log['StationName']
-                self.ship['cur_station_type'] = log['StationType']
-                self.ship['StationServices'] = log['StationServices']
-                self.ship['exp_station_type'] = check_station_type(log['StationType'], log['StationName'], self.ship['StationServices'])
-                self.ship['MarketID'] = log['MarketID']
+                self._update_location(log)
 
             elif log_event == 'ColonisationConstructionDepot':
                 # {"timestamp": "2025-06-24T02:20:26Z", "event": "ColonisationConstructionDepot",
@@ -469,17 +454,15 @@ class EDJournal:
 
         # exceptions
         except Exception as e:
-            #logger.exception("Exception occurred")
-            print(e)
+            logger.exception("Error processing journal")
 
     def process_construction_depot_details(self):
         # TODO - save this construction data to a construction.json with multiple markets and update it
         #  locally and from Inara in case other commanders deliver goods.
         if self._prev_const_depot_details != self.ship['ConstructionDepotDetails']:
             # Load construction dict
-            filepath = './configs/construction.json'
-            if os.path.exists(filepath):
-                const = read_construction(filepath)
+            if os.path.exists('./configs/construction.json'):
+                const = read_construction()
             else:
                 const = {}
 
@@ -492,7 +475,7 @@ class EDJournal:
                 if mrk == self.ship['MarketID']:
                     stn = self.ship['cur_station']
                 else:
-                    stn = dic.get('MarketID')
+                    stn = dic.get('StationName', str(mrk))
 
                 # Check if market in construction dict
                 if str_mrk not in const:
@@ -523,8 +506,7 @@ class EDJournal:
                             self.ap_ckb('log', f"   Need {need} of {good['Name_Localised']}.")
 
                 # Save file
-                filepath = './configs/construction.json'
-                write_construction(const, filepath)
+                write_construction(const)
 
     def ship_state(self):
         # Journal is opened once at init, just keep tailing it

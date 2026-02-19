@@ -33,8 +33,14 @@ class EDWayPoint:
         self.waypoints = {}
         self.num_waypoints = 0
         self.step = 0
+        self._last_bookmark_set = None
         self.market_parser = MarketParser()
         self.cargo_parser = CargoParser()
+
+    @property
+    def _waypoint_path(self):
+        """Path to the current waypoint file."""
+        return './waypoints/' + Path(self.filename).name
 
     def load_waypoint_file(self, filename='./waypoints/waypoints.json') -> bool:
         if not os.path.exists(filename):
@@ -109,7 +115,7 @@ class EDWayPoint:
 
     def mark_waypoint_complete(self, key):
         self.waypoints[key]['Completed'] = True
-        self.write_waypoints(data=None, filename='./waypoints/' + Path(self.filename).name)
+        self.write_waypoints(data=None, filename=self._waypoint_path)
 
     def get_waypoint(self) -> tuple[str, dict] | tuple[None, None]:
         """ Returns the next waypoint list or None if we are at the end of the waypoints.
@@ -153,7 +159,7 @@ class EDWayPoint:
                 # Or log a warning if the structure is unexpected
                 logger.warning(f"Waypoint {tkey} missing 'Completed' key during reset.")
             self.step = 0
-        self.write_waypoints(data=None, filename='./waypoints/' + Path(self.filename).name)
+        self.write_waypoints(data=None, filename=self._waypoint_path)
         self.log_stats()
 
     def log_stats(self):
@@ -207,7 +213,7 @@ class EDWayPoint:
                         updated = True
 
         if updated:
-            self.write_waypoints(data=None, filename='./waypoints/' + Path(self.filename).name)
+            self.write_waypoints(data=None, filename=self._waypoint_path)
             self.ap.ap_ckb('log', 'Synced commodity counts from construction depot')
 
     def _buy_one(self, ap, name, qty, cargo_capacity):
@@ -359,7 +365,7 @@ class EDWayPoint:
                             sell_commodities[key] = sell_commodities[key] - qty
 
                 # Save changes
-                self.write_waypoints(data=None, filename='./waypoints/' + Path(self.filename).name)
+                self.write_waypoints(data=None, filename=self._waypoint_path)
 
             sleep(1)
 
@@ -393,7 +399,7 @@ class EDWayPoint:
                         break
 
                 # Save changes
-                self.write_waypoints(data=None, filename='./waypoints/' + Path(self.filename).name)
+                self.write_waypoints(data=None, filename=self._waypoint_path)
 
             sleep(1.5)  # give time to popdown
             # Go to ship view
@@ -456,13 +462,9 @@ class EDWayPoint:
             # Loop through waypoints to find next waypoint
             while True:
                 self.ap.check_stop()
-                skip_waypoint = False
                 # Get the waypoint details
                 dest_key, next_waypoint = self.get_waypoint()
-
-                # End loop if we are not skipping this waypoint, or we are at the end
-                if (not skip_waypoint) or (dest_key is None):
-                    break
+                break
 
             if dest_key is None:
                 self.ap.ap_ckb('log+vce', "Waypoint list has been completed.")
@@ -529,7 +531,7 @@ class EDWayPoint:
 
                 # Undock and fly to next target
                 self.ap.waypoint_undock_seq()
-                self.ap.sc_engage(False)
+                self.ap.sc_engage()
 
                 # Different system? Jump
                 nav_dest = self.ap.nav_route.get_last_system().upper()
@@ -564,7 +566,7 @@ class EDWayPoint:
             # Different system? Jump there
             nav_dest = self.ap.nav_route.get_last_system().upper()
             if nav_dest != "" and nav_dest != cur_star_system:
-                self.ap.sc_engage(False)
+                self.ap.sc_engage()
                 keys.send('TargetNextRouteSystem')
                 self.ap.ap_ckb('log+vce', f"Jumping to {nav_dest}.")
                 self.ap.do_route_jump(scr_reg)

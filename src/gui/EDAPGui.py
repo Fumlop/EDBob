@@ -1,13 +1,13 @@
 # import queue
 # import sys
 # import os
-# import threading
+import threading
 # import kthread
 # from datetime import datetime
 # from time import sleep
 # import cv2
 # import json
-# from pathlib import Path
+from pathlib import Path
 from datetime import datetime
 import os
 import queue
@@ -30,11 +30,9 @@ import sys  # Do not delete - prevents a 'super' error from tktoolip.
 from time import sleep
 from tktooltip import ToolTip  # In requirements.txt as 'tkinter-tooltip'.
 
-from src.gui.EDAPColonizeEditor import ColonizeEditorTab
 from src.core.MousePt import MousePoint
 
 from src.autopilot import ED_AP
-from src.gui.EDAPWaypointEditor import WaypointEditorTab
 
 from src.core.EDlogger import logger
 
@@ -150,10 +148,6 @@ class APGui:
         self.radiobuttonvar = {}
         self.entries = {}
         self.lab_ck = {}
-        self._global_shopping_list_tab = None
-        self.waypoint_editor_tab = None
-        self.colonize_tab = None
-
         self.WP_A_running = False
 
         self.cv_view = False
@@ -211,7 +205,7 @@ class APGui:
         self.entries['autopilot']['Wait For Autodock'].insert(0, int(self.ed_ap.config['WaitForAutoDockTimer']))
         self.entries['refuel']['Refuel Threshold'].insert(0, int(self.ed_ap.config['RefuelThreshold']))
         self.entries['refuel']['Scoop Timeout'].insert(0, int(self.ed_ap.config['FuelScoopTimeOut']))
-        self.entries['refuel']['Fuel Threshold Abort'].insert(0, int(self.ed_ap.config['FuelThreasholdAbortAP']))
+        self.entries['refuel']['Fuel Threshold Abort'].insert(0, int(self.ed_ap.config['FuelThresholdAbortAP']))
         self.entries['overlay']['X Offset'].insert(0, int(self.ed_ap.config['OverlayTextXOffset']))
         self.entries['overlay']['Y Offset'].insert(0, int(self.ed_ap.config['OverlayTextYOffset']))
         self.entries['overlay']['Font Size'].insert(0, int(self.ed_ap.config['OverlayTextFontSize']))
@@ -342,17 +336,17 @@ class APGui:
 
             # Compare the commit hashes
             if local_hash != remote_hash:
-                print("The repository has been updated. Please clone it again to get the latest version.")
+                logger.info("The repository has been updated. Please clone it again to get the latest version.")
                 return True
             else:
-                print("The repository is up to date.")
+                logger.debug("The repository is up to date.")
                 return False
 
         except subprocess.CalledProcessError as e:
-            print(f"Error checking for updates: {e}")
+            logger.debug(f"Error checking for updates: {e}")
             return False
         except FileNotFoundError:
-            print("Git command not found. Please ensure Git is installed and in your system's PATH.")
+            logger.debug("Git command not found. Please ensure Git is installed and in your system's PATH.")
             return False
 
     def check_updates(self):
@@ -405,7 +399,7 @@ class APGui:
                 self.msgList.insert(tk.END, message)
                 self.msgList.yview(tk.END)
                 logger.info(msg)
-        except:
+        except Exception:
             # Store message in queue
             self.log_buffer.put(message)
             logger.info(msg)
@@ -434,6 +428,60 @@ class APGui:
         # self.ed_ap.ship_tst_yaw(360)
         # self.ed_ap.ship_tst_yaw_new(360)
         self.ed_ap.ship_tst_yaw_enabled = True
+
+    def start_region_picker(self):
+        """Launch background thread to pick two screen corners via right-click."""
+        self.log_msg("Region Picker: RIGHT-click first corner on ED window...")
+        threading.Thread(target=self._region_picker_thread, daemon=True).start()
+
+    @staticmethod
+    def _wait_for_rightclick():
+        """Block until right mouse button is pressed, return (x, y)."""
+        from pynput.mouse import Listener, Button
+        result = {}
+
+        def on_click(x, y, button, pressed):
+            if button == Button.right and pressed:
+                result['x'] = x
+                result['y'] = y
+                return False  # stop listener
+
+        with Listener(on_click=on_click) as ls:
+            ls.join()
+        return result['x'], result['y']
+
+    def _region_picker_thread(self):
+        from src.screen.Screen import Screen
+
+        ed_rect = Screen.get_elite_client_rect()
+        if not ed_rect or ed_rect == (0, 0, 0, 0):
+            self.root.after(0, lambda: self.log_msg("Region Picker: Elite Dangerous window not found."))
+            return
+
+        ed_left, ed_top = ed_rect[0], ed_rect[1]
+
+        abs_x1, abs_y1 = self._wait_for_rightclick()
+        gx1 = abs_x1 - ed_left
+        gy1 = abs_y1 - ed_top
+        self.root.after(0, lambda: self.log_msg(f"Corner 1: ({gx1}, {gy1}) -- RIGHT-click second corner..."))
+
+        abs_x2, abs_y2 = self._wait_for_rightclick()
+        gx2 = abs_x2 - ed_left
+        gy2 = abs_y2 - ed_top
+
+        x1, x2 = min(gx1, gx2), max(gx1, gx2)
+        y1, y2 = min(gy1, gy2), max(gy1, gy2)
+        w = x2 - x1
+        h = y2 - y1
+
+        self.ed_ap.overlay.overlay_rect('picker', (x1, y1), (x2, y2), (255, 255, 0), 2, duration=10.0)
+        self.ed_ap.overlay.overlay_floating_text('picker_info',
+            f'[{x1}, {y1}, {x2}, {y2}]  {w}x{h}px', x1, y1 - 20, (255, 255, 0), duration=10.0)
+        self.ed_ap.overlay.overlay_paint()
+
+        result = f"[{x1}, {y1}, {x2}, {y2}]  ({w}x{h})"
+        self.root.after(0, lambda: self.region_result_label.config(text=result))
+        self.root.after(0, lambda: self.log_msg(f"Region Picker result: {result}"))
 
     def ship_tst_pitch_30(self):
         self.ed_ap.ship_tst_pitch(30)
@@ -471,6 +519,80 @@ class APGui:
     def load_settings(self):
         self.ed_ap.load_ship_configs()
 
+    def load_waypoint_file(self):
+        filepath = fd.askopenfilename(
+            title="Open Waypoint File",
+            filetypes=(("JSON files", "*.json"), ("All files", "*.*")),
+            initialdir="./waypoints"
+        )
+        if filepath:
+            self._do_load_waypoint(filepath)
+
+    def load_last_waypoint_file(self):
+        filepath = self.ed_ap.config.get('WaypointFilepath', '')
+        if filepath:
+            self._do_load_waypoint(filepath)
+
+    def _do_load_waypoint(self, filepath):
+        if self.ed_ap.waypoint.load_waypoint_file(filepath):
+            self.wp_file_label.config(text=Path(filepath).name)
+            self.refresh_commodity_tree()
+        else:
+            self.wp_file_label.config(text="Load failed")
+
+    def refresh_commodity_tree(self):
+        self.comm_tree.delete(*self.comm_tree.get_children())
+        wps = self.ed_ap.waypoint.waypoints
+        for key, value in wps.items():
+            if key == "GlobalShoppingList":
+                for comm, qty in value.get('BuyCommodities', {}).items():
+                    self.comm_tree.insert("", "end", values=(key, "Buy", comm, qty))
+            else:
+                for comm, qty in value.get('BuyCommodities', {}).items():
+                    self.comm_tree.insert("", "end", values=(key, "Buy", comm, qty))
+                for comm, qty in value.get('SellCommodities', {}).items():
+                    self.comm_tree.insert("", "end", values=(key, "Sell", comm, qty))
+
+    def _on_commodity_select(self, event):
+        sel = self.comm_tree.selection()
+        if not sel:
+            return
+        vals = self.comm_tree.item(sel[0], "values")
+        self.comm_qty_spin.delete(0, "end")
+        self.comm_qty_spin.insert(0, vals[3])
+
+    def update_commodity_qty(self):
+        sel = self.comm_tree.selection()
+        if not sel:
+            return
+        item = sel[0]
+        vals = list(self.comm_tree.item(item, "values"))
+        new_qty = int(self.comm_qty_spin.get())
+        vals[3] = new_qty
+        self.comm_tree.item(item, values=vals)
+
+    def save_commodities(self):
+        wps = self.ed_ap.waypoint.waypoints
+        # Clear existing commodities
+        for key, value in wps.items():
+            if key == "GlobalShoppingList":
+                value['BuyCommodities'] = {}
+            else:
+                value['BuyCommodities'] = {}
+                value['SellCommodities'] = {}
+        # Rebuild from treeview
+        for item_id in self.comm_tree.get_children():
+            wp_name, buy_sell, comm, qty = self.comm_tree.item(item_id, "values")
+            qty = int(qty)
+            if buy_sell == "Buy":
+                wps[wp_name]['BuyCommodities'][comm] = qty
+            else:
+                wps[wp_name]['SellCommodities'][comm] = qty
+        # Save to file
+        self.ed_ap.waypoint.write_waypoints(
+            data=None, filename='./waypoints/' + Path(self.ed_ap.waypoint.filename).name)
+        self.log_msg("Saved commodity changes.")
+
     # new data was added to a field, re-read them all for simple logic
     def entry_update(self, event):
         try:
@@ -487,7 +609,7 @@ class APGui:
             self.ed_ap.config['WaitForAutoDockTimer'] = int(self.entries['autopilot']['Wait For Autodock'].get())
             self.ed_ap.config['RefuelThreshold'] = int(self.entries['refuel']['Refuel Threshold'].get())
             self.ed_ap.config['FuelScoopTimeOut'] = int(self.entries['refuel']['Scoop Timeout'].get())
-            self.ed_ap.config['FuelThreasholdAbortAP'] = int(self.entries['refuel']['Fuel Threshold Abort'].get())
+            self.ed_ap.config['FuelThresholdAbortAP'] = int(self.entries['refuel']['Fuel Threshold Abort'].get())
             self.ed_ap.config['OverlayTextXOffset'] = int(self.entries['overlay']['X Offset'].get())
             self.ed_ap.config['OverlayTextYOffset'] = int(self.entries['overlay']['Y Offset'].get())
             self.ed_ap.config['OverlayTextFontSize'] = int(self.entries['overlay']['Font Size'].get())
@@ -504,7 +626,7 @@ class APGui:
 
             # Process config[] settings to update classes as necessary
             self.ed_ap.process_config_settings()
-        except:
+        except (ValueError, KeyError):
             messagebox.showinfo("Exception", "Invalid float entered")
 
     # ckbox.state:(ACTIVE | DISABLED)
@@ -626,7 +748,7 @@ class APGui:
         page0 = ttk.Frame(nb)
         page0.grid_columnconfigure(0, weight=1)
         page0.grid_rowconfigure(0, weight=0)
-        page0.grid_rowconfigure(1, weight=0)
+        page0.grid_rowconfigure(1, weight=2)  # Commodities row
         page0.grid_rowconfigure(2, weight=1)  # Log row
         nb.add(page0, text="Main")  # main page
 
@@ -637,21 +759,6 @@ class APGui:
         page2 = ttk.Frame(nb)
         page2.grid_columnconfigure([0, 1], weight=1)
         nb.add(page2, text="Debug/Test")  # debug/test page
-
-        # === Waypoint Editor Tab ===
-        page_waypoint_editor = ttk.Frame(nb)
-        page_waypoint_editor.grid_columnconfigure(0, weight=1)
-        nb.add(page_waypoint_editor, text="Waypoints")
-        self.waypoint_editor_tab = WaypointEditorTab(page_waypoint_editor, self.ed_ap.waypoint)
-        self.waypoint_editor_tab.frame.pack(fill="both", expand=True)
-
-        # === Colonization Editor Tab ===
-        tab_colonize_editor = ttk.Frame(nb)
-        tab_colonize_editor.grid_columnconfigure(0, weight=1)
-        nb.add(tab_colonize_editor, text="Colonization")
-        self.colonize_tab = ColonizeEditorTab(self.ed_ap, self.callback)
-        self.colonize_tab.create_waypoints_tab(tab_colonize_editor)
-        self.colonize_tab.frame.pack(fill="both", expand=True)
 
         # === MAIN TAB ===
         # main options block
@@ -664,26 +771,53 @@ class APGui:
         blk_modes.grid(row=0, column=0, padx=2, pady=2, sticky="NSEW")
         self.makeform(blk_modes, FORM_TYPE_CHECKBOX, modes_check_fields)
 
-        # ship values block
-        blk_ship = ttk.LabelFrame(blk_main, text="SHIP", padding=(10, 5))
-        blk_ship.grid(row=0, column=1, padx=2, pady=2, sticky="NSEW")
-        self.entries['ship'] = self.makeform(blk_ship, FORM_TYPE_SPINBOX, ship_entry_fields, 1, 0.5)
+        # waypoints block
+        blk_wp = ttk.LabelFrame(blk_main, text="WAYPOINTS", padding=(10, 5))
+        blk_wp.grid(row=0, column=1, padx=2, pady=2, sticky="NSEW")
 
-        lbl_sun_pitch_up = ttk.Label(blk_ship, text='SunPitchUp +/- Time:')
-        lbl_sun_pitch_up.grid(row=5, column=0, pady=3, sticky=tk.W)
-        spn_sun_pitch_up = ttk.Spinbox(blk_ship, width=10, from_=-100, to=100, increment=0.5, justify=tk.RIGHT)
-        spn_sun_pitch_up.grid(row=5, column=1, padx=2, pady=2, sticky=tk.E)
-        spn_sun_pitch_up.bind('<FocusOut>', self.entry_update)
-        self.entries['ship']['SunPitchUp+Time'] = spn_sun_pitch_up
+        self.wp_file_label = ttk.Label(blk_wp, text="No file loaded")
+        self.wp_file_label.grid(row=0, column=0, columnspan=2, pady=3, sticky=tk.W)
 
-        lbl_calibrate_note = ttk.Label(blk_ship, text="Calibrate Pitch & Yaw:\n1. Set speed: Supercruise 50%\n"
-                                                      "2. Target remote System\n"
-                                                      "3. Maneuver target to center of screen (and compass).")
-        lbl_calibrate_note.grid(row=6, columnspan=2, pady=5, sticky=tk.W)
-        btn_tst_pitch = ttk.Button(blk_ship, text='Calibrate Pitch Rate', command=self.ship_tst_pitch)
-        btn_tst_pitch.grid(row=7, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
-        btn_tst_yaw = ttk.Button(blk_ship, text='Calibrate Yaw Rate', command=self.ship_tst_yaw)
-        btn_tst_yaw.grid(row=8, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
+        btn_load_wp = ttk.Button(blk_wp, text="Load File", command=self.load_waypoint_file)
+        btn_load_wp.grid(row=1, column=0, padx=2, pady=2, sticky="NSEW")
+
+        btn_load_last = ttk.Button(blk_wp, text="Load Last", command=self.load_last_waypoint_file)
+        btn_load_last.grid(row=1, column=1, padx=2, pady=2, sticky="NSEW")
+
+        # commodities block
+        blk_comm = ttk.LabelFrame(page0, text="COMMODITIES", padding=(10, 5))
+        blk_comm.grid(row=1, column=0, padx=10, pady=5, sticky="NSEW")
+        blk_comm.grid_columnconfigure(0, weight=1)
+        blk_comm.grid_rowconfigure(0, weight=1)
+
+        cols = ("waypoint", "type", "commodity", "qty")
+        self.comm_tree = ttk.Treeview(blk_comm, columns=cols, show="headings", height=5)
+        self.comm_tree.heading("waypoint", text="Waypoint")
+        self.comm_tree.heading("type", text="Buy/Sell")
+        self.comm_tree.heading("commodity", text="Commodity")
+        self.comm_tree.heading("qty", text="Qty")
+        self.comm_tree.column("waypoint", width=150)
+        self.comm_tree.column("type", width=60)
+        self.comm_tree.column("commodity", width=150)
+        self.comm_tree.column("qty", width=60)
+        self.comm_tree.grid(row=0, column=0, sticky="NSEW")
+
+        comm_scroll = ttk.Scrollbar(blk_comm, orient="vertical", command=self.comm_tree.yview)
+        comm_scroll.grid(row=0, column=1, sticky="NS")
+        self.comm_tree.configure(yscrollcommand=comm_scroll.set)
+
+        # Edit row: qty spinbox + save button
+        comm_edit_frame = ttk.Frame(blk_comm)
+        comm_edit_frame.grid(row=1, column=0, columnspan=2, sticky="EW", pady=(5, 0))
+
+        ttk.Label(comm_edit_frame, text="Qty:").pack(side="left", padx=2)
+        self.comm_qty_spin = ttk.Spinbox(comm_edit_frame, width=8, from_=0, to=99999, increment=1)
+        self.comm_qty_spin.pack(side="left", padx=2)
+
+        ttk.Button(comm_edit_frame, text="Update", command=self.update_commodity_qty).pack(side="left", padx=2)
+        ttk.Button(comm_edit_frame, text="Save", command=self.save_commodities).pack(side="left", padx=2)
+
+        self.comm_tree.bind("<<TreeviewSelect>>", self._on_commodity_select)
 
         # log window
         log = ttk.LabelFrame(page0, text="LOG", padding=(10, 5))
@@ -694,7 +828,7 @@ class APGui:
         y_scrollbar.grid(row=0, column=1, sticky="NSE")
         x_scrollbar = ttk.Scrollbar(log, orient="horizontal")
         x_scrollbar.grid(row=1, column=0, sticky="EW")
-        mylist = tk.Listbox(log, width=100, yscrollcommand=y_scrollbar.set, xscrollcommand=x_scrollbar.set)
+        mylist = tk.Listbox(log, width=100, height=10, yscrollcommand=y_scrollbar.set, xscrollcommand=x_scrollbar.set)
         mylist.grid(row=0, column=0, sticky="NSEW")
         y_scrollbar.config(command=mylist.yview)
         x_scrollbar.config(command=mylist.xview)
@@ -753,6 +887,23 @@ class APGui:
         cb_activate_elite = ttk.Checkbutton(blk_keys, text='Activate Elite for each key', variable=self.checkboxvar['Activate Elite for each key'], command=(lambda field='Activate Elite for each key': self.check_cb(field)))
         cb_activate_elite.grid(row=0, column=0, columnspan=2, sticky=tk.W)
         self.entries['keys'] = self.makeform(blk_keys, FORM_TYPE_SPINBOX, keys_entry_fields, 1, 0.01)
+
+        # ship settings block
+        blk_ship = ttk.LabelFrame(blk_settings, text="SHIP", padding=(10, 5))
+        blk_ship.grid(row=2, column=1, padx=2, pady=2, sticky="NSEW")
+        self.entries['ship'] = self.makeform(blk_ship, FORM_TYPE_SPINBOX, ship_entry_fields, 1, 0.5)
+
+        lbl_sun_pitch_up = ttk.Label(blk_ship, text='SunPitchUp +/- Time:')
+        lbl_sun_pitch_up.grid(row=5, column=0, pady=3, sticky=tk.W)
+        spn_sun_pitch_up = ttk.Spinbox(blk_ship, width=10, from_=-100, to=100, increment=0.5, justify=tk.RIGHT)
+        spn_sun_pitch_up.grid(row=5, column=1, padx=2, pady=2, sticky=tk.E)
+        spn_sun_pitch_up.bind('<FocusOut>', self.entry_update)
+        self.entries['ship']['SunPitchUp+Time'] = spn_sun_pitch_up
+
+        btn_tst_pitch = ttk.Button(blk_ship, text='Calibrate Pitch Rate', command=self.ship_tst_pitch)
+        btn_tst_pitch.grid(row=6, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
+        btn_tst_yaw = ttk.Button(blk_ship, text='Calibrate Yaw Rate', command=self.ship_tst_yaw)
+        btn_tst_yaw.grid(row=7, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
 
         # settings button block
         blk_settings_buttons = ttk.Frame(page1)
@@ -826,8 +977,14 @@ class APGui:
         btn_save = ttk.Button(blk_debug_buttons, text='Save All Settings', command=self.save_settings, style="Accent.TButton")
         btn_save.grid(row=9, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
 
+        btn_pick_region = ttk.Button(blk_debug_buttons, text='Pick Region', command=self.start_region_picker)
+        btn_pick_region.grid(row=10, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
+
+        self.region_result_label = ttk.Label(blk_debug_buttons, text="")
+        self.region_result_label.grid(row=11, column=0, padx=2, pady=2, columnspan=2, sticky=tk.W)
+
         blk_rpy = ttk.LabelFrame(page2, text="RPY Test", padding=(10, 5))
-        blk_rpy.grid(row=10, column=0, columnspan=2, padx=2, pady=2, sticky="NSEW")
+        blk_rpy.grid(row=12, column=0, columnspan=2, padx=2, pady=2, sticky="NSEW")
         blk_rpy.columnconfigure([0, 1, 2], weight=1, minsize=100)
 
         btn_tst_roll_30 = ttk.Button(blk_rpy, text='Test Roll Rate (30 deg)', command=self.ship_tst_roll_30)
@@ -863,7 +1020,7 @@ class APGui:
 
     def restart_program(self):
         logger.debug("Entered: restart_program")
-        print("restart now")
+        logger.info("restart now")
 
         self.stop_fsd()
         self.stop_sc()
@@ -871,9 +1028,9 @@ class APGui:
         sleep(0.1)
 
         import sys
-        print("argv was", sys.argv)
-        print("sys.executable was", sys.executable)
-        print("restart now")
+        logger.debug("argv was %s", sys.argv)
+        logger.debug("sys.executable was %s", sys.executable)
+        logger.info("restart now")
 
         import os
         os.execv(sys.executable, ['python'] + sys.argv)

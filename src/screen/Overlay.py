@@ -133,7 +133,10 @@ class Overlay:
         win32gui.PumpMessages()
 
     def _GetTargetWindowRect(self):
-        rect = win32gui.GetWindowRect(self.tHwnd)
+        try:
+            rect = win32gui.GetWindowRect(self.tHwnd)
+        except Exception:
+            return self.targetRect  # window gone, return last known
         ret = Vector(rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1])
         return ret
 
@@ -198,10 +201,13 @@ class Overlay:
         """ Forces a redraw of all overlays. Call after adding or removing an overlay. """
         # if a parent was specified check to see if it moved, if so reposition our origin to new window location
         if self.tHwnd:
-            if self.targetRect != self._GetTargetWindowRect():
-                rect = win32gui.GetWindowRect(self.tHwnd)
-                self.targetRect = Vector(rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1])
-                win32gui.MoveWindow(self.hWindow, self.targetRect.x, self.targetRect.y, self.targetRect.w, self.targetRect.h, True)
+            try:
+                new_rect = self._GetTargetWindowRect()
+                if self.targetRect != new_rect:
+                    self.targetRect = new_rect
+                    win32gui.MoveWindow(self.hWindow, self.targetRect.x, self.targetRect.y, self.targetRect.w, self.targetRect.h, True)
+            except Exception:
+                pass  # target window gone (ED closed/minimized)
 
         win32gui.RedrawWindow(self.hWindow, None, None, win32con.RDW_INVALIDATE | win32con.RDW_ERASE) 
 

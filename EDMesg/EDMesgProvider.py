@@ -1,3 +1,4 @@
+import logging
 import zmq
 import threading
 from queue import Queue
@@ -6,6 +7,8 @@ import os
 import tempfile
 from typing import Any, final, Optional
 from EDMesg.EDMesgBase import EDMesgEvent, EDMesgAction, EDMesgEnvelope, EDMesgWelcomeAction
+
+logger = logging.getLogger('EDMesgProvider')
 
 
 @final
@@ -84,11 +87,11 @@ class EDMesgProvider:
                 if action:
                     self.pending_actions.put(action)
                 else:
-                    print(f"Unknown action type received: {envelope.type}")
+                    logger.warning(f"Unknown action type received: {envelope.type}")
             except zmq.Again:
                 sleep(0.01)  # Prevent busy waiting
             except Exception as e:
-                print(f"Error in _listen_actions: {e}")
+                logger.error(f"Error in _listen_actions: {e}")
                 sleep(0.1)
 
     def _listen_status(self):
@@ -100,7 +103,7 @@ class EDMesgProvider:
             except zmq.Again:
                 sleep(0.01)  # Prevent busy waiting
             except Exception as e:
-                print(f"Error in _listen_status: {e}")
+                logger.error(f"Error in _listen_status: {e}")
                 sleep(0.1)
 
     def _instantiate_action(

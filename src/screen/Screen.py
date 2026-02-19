@@ -207,7 +207,7 @@ class Screen:
             scale_key = str(self.screen_width)+"x"+str(self.screen_height)
             self.scaleX = self.scales[scale_key][0]
             self.scaleY = self.scales[scale_key][1]
-        except:            
+        except KeyError:
             # if we don't have a definition for the resolution then use calculation
             self.scaleX = self.screen_width / 3440.0
             self.scaleY = self.screen_height / 1440.0

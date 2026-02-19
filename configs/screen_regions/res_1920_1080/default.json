@@ -1,0 +1,12 @@
+{
+    "description": "Default regions for 1920x1080",
+    "resolution": [1920, 1080],
+    "regions": {
+        "compass":       { "rect": [687, 788, 763, 864] },
+        "target":        { "rect": [633, 270, 1267, 810] },
+        "sun":           { "rect": [576, 324, 1344, 734] },
+        "target_arc":    { "rect": [995, 500, 1085, 580] },
+        "sc_assist_ind": { "rect": [943, 356, 983, 396] },
+        "sc_assist_text": { "rect": [813, 357, 1113, 397] }
+    }
+}

@@ -46,9 +46,9 @@ class MousePoint:
         try:
             while self.term == False:
                 sleep(0.5)
-        except:
+        except (KeyboardInterrupt, SystemExit):
             pass
-        
+
         self.ls.stop()
 
         return self.x, self.y
