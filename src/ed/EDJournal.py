@@ -231,14 +231,16 @@ class EDJournal:
         """Update common location fields from a journal event."""
         self.ship['location'] = log['StarSystem']
         self.ship['cur_star_system'] = log['StarSystem']
-        self.ship['cur_station'] = log['StationName']
-        self.ship['cur_station_type'] = log['StationType']
+        self.ship['cur_station'] = log.get('StationName')
+        self.ship['cur_station_type'] = log.get('StationType')
         if services_optional:
             self.ship['StationServices'] = log.get('StationServices', [])
         else:
-            self.ship['StationServices'] = log['StationServices']
-        self.ship['exp_station_type'] = check_station_type(log['StationType'], log['StationName'], self.ship['StationServices'])
-        self.ship['MarketID'] = log['MarketID']
+            self.ship['StationServices'] = log.get('StationServices', [])
+        station_type = log.get('StationType', '')
+        station_name = log.get('StationName', '')
+        self.ship['exp_station_type'] = check_station_type(station_type, station_name, self.ship['StationServices'])
+        self.ship['MarketID'] = log.get('MarketID')
 
     def parse_line(self, log):
         # parse data

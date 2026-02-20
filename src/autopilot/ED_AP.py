@@ -6,7 +6,7 @@ from copy import copy
 from datetime import datetime, timedelta
 from time import sleep
 from enum import Enum
-from math import atan, degrees
+from math import asin, atan, degrees
 import random
 from string import Formatter
 from tkinter import messagebox
@@ -629,7 +629,10 @@ class EDAutopilot:
                                        maxRadius=comp_w // 2)
             if circles is not None:
                 best = min(circles[0], key=lambda c: (c[0] - comp_w/2)**2 + (c[1] - comp_h/2)**2)
-                if best[2] >= 55:
+                # Reject: radius too small OR center too far from ROI center
+                dx = abs(best[0] - comp_w/2)
+                dy = abs(best[1] - comp_h/2)
+                if best[2] >= 55 and dx < 15 and dy < 15:
                     valid_centers.append((float(best[0]), float(best[1]), float(best[2])))
 
         ring_cx = comp_w / 2.0
@@ -641,9 +644,9 @@ class EDAutopilot:
             valid_centers.sort(key=lambda c: c[1])
             ring_cy = valid_centers[len(valid_centers) // 2][1]
             avg_r = sum(c[2] for c in valid_centers) / len(valid_centers)
-            logger.info(f"Ring: center=({ring_cx:.1f},{ring_cy:.1f}) avg_r={avg_r:.1f} votes={len(valid_centers)}/5")
+            logger.debug(f"Ring: center=({ring_cx:.1f},{ring_cy:.1f}) avg_r={avg_r:.1f} votes={len(valid_centers)}/5")
         else:
-            logger.info(f"Ring: {len(valid_centers)}/5 valid, using ROI center ({ring_cx:.0f},{ring_cy:.0f})")
+            logger.debug(f"Ring: {len(valid_centers)}/5 valid, using ROI center ({ring_cx:.0f},{ring_cy:.0f})")
 
         # Look for cyan dot (front target): hue ~75-105, val 170+
         # Front dot is cyan (hue~90, sat~80, val~204)
@@ -704,22 +707,26 @@ class EDAutopilot:
         elif final_y_pct < 0.0:
             final_roll_deg = 180.0
 
-        # Linear angle mapping: dot position on the navball is proportional to angle.
-        # The navball is a sphere viewed flat -- no spherical decompression needed.
+        # Spherical angle mapping: navball is a sphere rendered flat (orthographic projection)
+        # dot position = sin(angle), so angle = asin(position)
         if final_z_pct > 0:
-            # Front hemisphere: 0 = dead ahead, +90 = top/right edge, -90 = bottom/left edge
-            final_pit_deg = final_y_pct * 90.0
-            final_yaw_deg = final_x_pct * 90.0
+            # Front hemisphere: clamp to [-1,1] for asin safety
+            clamped_y = max(-1.0, min(1.0, final_y_pct))
+            clamped_x = max(-1.0, min(1.0, final_x_pct))
+            final_pit_deg = degrees(asin(clamped_y))
+            final_yaw_deg = degrees(asin(clamped_x))
         else:
             # Behind hemisphere
-            if final_y_pct > 0:
-                final_pit_deg = 90.0 + (1.0 - final_y_pct) * 90.0   # +90 to +180
+            clamped_y = max(-1.0, min(1.0, final_y_pct))
+            clamped_x = max(-1.0, min(1.0, final_x_pct))
+            if clamped_y > 0:
+                final_pit_deg = 180.0 - degrees(asin(clamped_y))
             else:
-                final_pit_deg = -90.0 - (1.0 + final_y_pct) * 90.0  # -90 to -180
-            if final_x_pct > 0:
-                final_yaw_deg = 90.0 + (1.0 - final_x_pct) * 90.0
+                final_pit_deg = -180.0 - degrees(asin(clamped_y))
+            if clamped_x > 0:
+                final_yaw_deg = 180.0 - degrees(asin(clamped_x))
             else:
-                final_yaw_deg = -90.0 - (1.0 + final_x_pct) * 90.0
+                final_yaw_deg = -180.0 - degrees(asin(clamped_x))
 
         result = {'x': round(final_x_pct, 4), 'y': round(final_y_pct, 4), 'z': round(final_z_pct, 2),
                   'roll': round(final_roll_deg, 2), 'pit': round(final_pit_deg, 2), 'yaw': round(final_yaw_deg, 2)}
@@ -767,10 +774,11 @@ class EDAutopilot:
         return result
 
     def is_target_arc_visible(self, scr_reg) -> bool:
-        """Check if the orange target circle/arc is visible on screen.
-        Uses the small 'target_arc' detection region -- when orange dominates,
-        the target circle is on screen and its center can be used for fine alignment.
-        @return: True if orange ratio > 10% in the detection box.
+        """Check if the orange target arc is visible near screen center.
+        Detects partial arcs by checking that orange pixels lie at a consistent
+        radius from screen center (960,540). Text has scattered distances (high std),
+        arc pixels cluster at one radius (low std).
+        @return: True if arc-like orange pattern is found (min 30px, radius std < 12).
         """
         if 'target_arc' not in scr_reg.reg:
             return False
@@ -780,10 +788,22 @@ class EDAutopilot:
         hsv = cv2.cvtColor(raw, cv2.COLOR_BGR2HSV)
         orange_mask = cv2.inRange(hsv, (16, 165, 220), (98, 255, 255))
         count = cv2.countNonZero(orange_mask)
-        total = orange_mask.shape[0] * orange_mask.shape[1]
-        ratio = count / total if total > 0 else 0
-        logger.info(f"target_arc: orange={ratio:.3f} ({count}/{total})")
-        return ratio > 0.10
+
+        if count < self.MIN_ARC_PIXELS:
+            logger.debug(f"target_arc: orange={count}px -- too few")
+            return False
+
+        # Check if orange pixels form an arc (consistent radius from screen center)
+        box_x1 = scr_reg.reg['target_arc']['rect'][0]
+        box_y1 = scr_reg.reg['target_arc']['rect'][1]
+        ys, xs = np.where(orange_mask > 0)
+        dists = np.sqrt((xs + box_x1 - 960)**2 + (ys + box_y1 - 540)**2)
+        r_std = dists.std()
+        r_mean = dists.mean()
+
+        is_arc = r_std < self.ARC_STD_THRESHOLD
+        logger.debug(f"target_arc: orange={count}px r_mean={r_mean:.1f} r_std={r_std:.1f} arc={is_arc}")
+        return is_arc
 
     def target_fine_align(self, scr_reg) -> bool:
         """Use the on-screen target circle for precise fine alignment.
@@ -800,7 +820,7 @@ class EDAutopilot:
         logger.info(f"target_fine_align: pit={pit:.1f} yaw={yaw:.1f}")
 
         # Already close enough
-        if abs(pit) < 2.0 and abs(yaw) < 2.0:
+        if abs(pit) < self.FINE_ALIGN_CLOSE and abs(yaw) < self.FINE_ALIGN_CLOSE:
             logger.info("target_fine_align: already aligned")
             return True
 
@@ -831,76 +851,38 @@ class EDAutopilot:
         target_off = self.get_target_offset(scr_reg)
         if target_off:
             logger.info(f"target_fine_align: final pit={target_off['pit']:.1f} yaw={target_off['yaw']:.1f}")
-            return abs(target_off['pit']) < 3.0 and abs(target_off['yaw']) < 3.0
+            return abs(target_off['pit']) < self.FINE_ALIGN_OK and abs(target_off['yaw']) < self.FINE_ALIGN_OK
         return False
 
     def is_sc_assist_gone(self, scr_reg) -> bool:
         """3-of-3 check whether SC Assist has actually disappeared.
-        Uses BOTH the blue indicator dot AND the text region for robustness.
-        Only reports "gone" if both indicator AND text are absent.
+        Uses the blue indicator check region only.
         @return: True if SC Assist is confirmed gone (all 3 checks fail).
         """
-        import os
-        dbg_dir = 'lab/sc_assist_debug'
-        os.makedirs(dbg_dir, exist_ok=True)
-        _seq = getattr(self, '_dbg_sc_assist_seq', 0)
-
-        # Check if sc_assist_text region is available
-        has_text_region = 'sc_assist_text' in scr_reg.reg
-
         gone_count = 0
-        for i in range(3):
-            sleep(0.5)  # let frame settle before capture
+        for i in range(self.VOTE_COUNT):
+            sleep(0.5)
 
-            # --- Indicator dot check ---
-            raw = scr_reg.capture_region(self.scr, 'sc_assist_ind', inv_col=False)
-            blue = scr_reg.capture_region_filtered(self.scr, 'sc_assist_ind')
+            # inv_col=False: skip the bogus RGB2BGR conversion in mss capture
+            mask = scr_reg.capture_region_filtered(self.scr, 'sc_assist_ind', inv_col=False)
+
             ind_ratio = 0.0
-            if blue is not None:
-                blue = cv2.resize(blue, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
-                blue_count = cv2.countNonZero(blue)
-                blue_total = blue.shape[0] * blue.shape[1]
+            if mask is not None:
+                mask_2x = cv2.resize(mask, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
+                blue_count = cv2.countNonZero(mask_2x)
+                blue_total = mask_2x.shape[0] * mask_2x.shape[1]
                 ind_ratio = blue_count / blue_total if blue_total > 0 else 0
 
-            # --- Text region check (cyan text "SUPERCRUISE ASSIST") ---
-            txt_ratio = 0.0
-            txt_raw = None
-            if has_text_region:
-                txt_raw = scr_reg.capture_region(self.scr, 'sc_assist_text', inv_col=False)
-                if txt_raw is not None:
-                    txt_hsv = cv2.cvtColor(txt_raw, cv2.COLOR_BGR2HSV)
-                    # Same cyan filter as indicator: H=80-110, S=80+, V=80+
-                    txt_mask = cv2.inRange(txt_hsv, (80, 80, 80), (110, 255, 255))
-                    txt_count = cv2.countNonZero(txt_mask)
-                    txt_total = txt_mask.shape[0] * txt_mask.shape[1]
-                    txt_ratio = txt_count / txt_total if txt_total > 0 else 0
+            logger.debug(f"sc_assist {i+1}/{self.VOTE_COUNT}: ratio={ind_ratio:.3f}")
 
-            logger.info(f"sc_assist check {i+1}/3: ind={ind_ratio:.3f} txt={txt_ratio:.3f}")
-
-            # Debug images
-            tag = f"{_seq:03d}_chk{i+1}_ind{ind_ratio:.3f}_txt{txt_ratio:.3f}"
-            if raw is not None:
-                cv2.imwrite(f'{dbg_dir}/{tag}_raw.png', raw)
-            if blue is not None:
-                cv2.imwrite(f'{dbg_dir}/{tag}_mask.png', blue)
-            if txt_raw is not None:
-                cv2.imwrite(f'{dbg_dir}/{tag}_txt_raw.png', txt_raw)
-
-            # Both indicator AND text must be below threshold to count as gone
-            ind_gone = ind_ratio < 0.05
-            txt_gone = txt_ratio < 0.01  # text is larger area, lower ratio expected
-            if ind_gone and txt_gone:
+            if ind_ratio < self.SC_ASSIST_GONE_RATIO:
                 gone_count += 1
-            elif ind_gone and not txt_gone:
-                logger.info(f"sc_assist check {i+1}/3: indicator gone but text still visible -- NOT gone")
 
             sleep(1)
-
-        self._dbg_sc_assist_seq = _seq + 1
-        if gone_count >= 3:
-            logger.info(f"is_sc_assist_gone: confirmed gone ({gone_count}/3 checks)")
+        if gone_count >= self.VOTE_COUNT:
+            logger.info(f"is_sc_assist_gone: confirmed gone ({gone_count}/{self.VOTE_COUNT} checks)")
             return True
-        logger.info(f"is_sc_assist_gone: still active ({gone_count}/3 gone)")
+        logger.debug(f"is_sc_assist_gone: still active ({gone_count}/{self.VOTE_COUNT} gone)")
         return False
 
     def _find_target_circle(self, image_bgr):
@@ -1098,11 +1080,12 @@ class EDAutopilot:
             logger.error('In dock(), still not in_space after wait')
             raise Exception('Docking failed (not in space)')
 
-        # Slight pitch up to avoid collisions, then boost into docking range
-        self.keys.send('PitchUpButton', hold=1.0)
-        sleep(0.5)
+        # Slight pitch up to clear station geometry, boost, then slow down for docking
+        self.keys.send('PitchUpButton', hold=1.25)
         self.keys.send('UseBoostJuice')
-        sleep(7)
+        sleep(4)
+        self.keys.send('SetSpeed25')
+        sleep(4)
         self.ap_ckb('log+vce', "Initiating Docking Procedure")
         self.request_docking()
         sleep(1.5)  # journal catch-up
@@ -1185,10 +1168,11 @@ class EDAutopilot:
         return abs(roll_deg) < close or (180 - abs(roll_deg)) < close
 
     def _get_dist(self, axis, off):
-        """Get distance to target for an axis."""
+        """Get distance to target for an axis (ceiled to full degrees)."""
+        import math
         if axis == 'roll':
-            return min(abs(off['roll']), 180 - abs(off['roll']))
-        return abs(off[axis])
+            return math.ceil(min(abs(off['roll']), 180 - abs(off['roll'])))
+        return math.ceil(abs(off[axis]))
 
     def _is_aligned(self, axis, off, close):
         """Check if aligned on an axis."""
@@ -1219,10 +1203,12 @@ class EDAutopilot:
         else:
             return 'YawRightButton' if deg > 0 else 'YawLeftButton'
 
-    def _align_axis(self, scr_reg, axis, off, close=10.0, timeout=20.0):
+    def _align_axis(self, scr_reg, axis, off, close=10.0, timeout=None):
         """Align one axis using configured rate and calculated holds.
         @return: Updated offset dict, or None if compass lost.
         """
+        if timeout is None:
+            timeout = self.ALIGN_TIMEOUT
         # Target behind -- don't try to align, let compass_align handle the flip
         if off.get('z', 1) < 0:
             return off
@@ -1240,7 +1226,7 @@ class EDAutopilot:
         # Correction loop with calculated holds
         while remaining > close and (time.time() - start) < timeout:
             self.check_stop()
-            # Progressive approach: aggressive far out, gentle near center
+            # Progressive approach: gentle near center, bolder far out
             if remaining < 10:
                 approach_pct = 0.4
             elif remaining < 20:
@@ -1249,9 +1235,9 @@ class EDAutopilot:
                 approach_pct = 0.8
 
             hold_time = (remaining * approach_pct) / rate
-            hold_time = max(0.10, min(2.0, hold_time))
+            hold_time = max(self.MIN_HOLD_TIME, min(self.MAX_HOLD_TIME, hold_time))
 
-            logger.info(f"Align {axis}: remaining={remaining:.1f}deg, hold={hold_time:.2f}s, rate={rate:.1f}, key={key}")
+            logger.debug(f"Align {axis}: remaining={remaining:.1f}deg, hold={hold_time:.2f}s, rate={rate:.1f}, key={key}")
             self.keys.send(key, hold=hold_time)
             sleep(2.0)  # settle time -- SC inertia needs longer than normal space
 
@@ -1278,7 +1264,7 @@ class EDAutopilot:
             old_key = key
             key = self._axis_pick_key(axis, new_off[axis])
             if key != old_key:
-                logger.info(f"Align {axis}: direction changed {remaining:.1f}->{new_dist:.1f}, key={key}")
+                logger.debug(f"Align {axis}: direction changed {remaining:.1f}->{new_dist:.1f}, key={key}")
 
             remaining = new_dist
             off = new_off
@@ -1299,8 +1285,36 @@ class EDAutopilot:
         """Pitch to vertical center."""
         return self._align_axis(scr_reg, 'pit', off, close)
 
-    # Roll threshold: only roll when dot is more than this far off the vertical centerline
-    COARSE_ROLL_THRESHOLD = 45.0
+    # Threshold for roll and coarse alignment -- roll to centerline and trigger coarse
+    # correction when pit or yaw exceeds this value
+    ROLE_YAW_PITCH_CLOSE = 6.0
+    # Only roll when yaw is significantly off -- prevents unnecessary rolls near alignment
+    ROLE_TRESHHOLD = 8.0
+    # Min/max hold time for alignment key presses (SC inertia needs minimum impulse)
+    MIN_HOLD_TIME = 0.5
+    MAX_HOLD_TIME = 2.0
+    # Alignment convergence and timeout
+    ALIGN_CLOSE = 4.0           # degrees -- compass jitter is ~3-4 deg
+    ALIGN_TIMEOUT = 20.0        # seconds per axis
+    # Fine align thresholds
+    FINE_ALIGN_CLOSE = 2.0      # degrees -- "already aligned" for target circle
+    FINE_ALIGN_OK = 3.0         # degrees -- "close enough" after correction
+    # SC Assist detection
+    SC_ASSIST_GONE_RATIO = 0.50 # cyan ratio below this = indicator gone
+    SC_ASSIST_CHECK_INTERVAL = 3   # seconds between gone checks
+    SC_SETTLE_TIME = 5          # seconds to let SC assist settle after engage
+    # Target arc detection
+    MIN_ARC_PIXELS = 100        # minimum orange pixels to consider as arc
+    ARC_STD_THRESHOLD = 12      # radius std below this = arc shape (not text)
+    # Evasion pitch angles and cruise time
+    OCCLUSION_PITCH = 65
+    BODY_EVADE_PITCH = 90
+    PASSBODY_TIME = 25
+    # Common angles
+    HALF_TURN = 180.0           # target behind flip
+    QUARTER_TURN = 90           # 90-degree pitch maneuvers
+    # Voting
+    VOTE_COUNT = 3              # 3-of-3 consensus checks
 
     def compass_align(self, scr_reg) -> bool:
         """ Align ship to compass nav target.
@@ -1310,7 +1324,7 @@ class EDAutopilot:
           3) Yaw + Pitch for fine alignment (reliable, no overshoot)
         @return: True if aligned, else False.
         """
-        close = 3.0  # degrees -- compass dot is ~6px on 60px ROI (~3 deg/px), no point going tighter
+        close = self.ALIGN_CLOSE
         # Use status.json flags (reliable) instead of journal status (can be stale from corrupt lines)
         in_sc = self.status.get_flag(FlagsSupercruise)
         in_space = not self.status.get_flag(FlagsDocked) and not self.status.get_flag(FlagsLanded)
@@ -1341,7 +1355,7 @@ class EDAutopilot:
                 prev_off = None
                 continue  # no-compass doesn't count as alignment try
 
-            logger.info(f"Compass: roll={off['roll']:.1f} pit={off['pit']:.1f} yaw={off['yaw']:.1f} z={off['z']}")
+            logger.debug(f"Compass: roll={off['roll']:.1f} pit={off['pit']:.1f} yaw={off['yaw']:.1f} z={off['z']}")
 
             # Target behind -- always pitch UP to flip (away from star after jump)
             if off['z'] < 0:
@@ -1365,10 +1379,10 @@ class EDAutopilot:
 
             # Coarse roll to vertical centerline when dot is diagonal AND far enough from center
             roll_off_centerline = min(abs(off['roll']), 180 - abs(off['roll']))
-            if roll_off_centerline > self.COARSE_ROLL_THRESHOLD and (abs(off['pit']) > 8 or abs(off['yaw']) > 8):
+            if abs(off['yaw']) > self.ROLE_TRESHHOLD and roll_off_centerline > self.ROLE_YAW_PITCH_CLOSE:
                 logger.info(f"Compass: roll {roll_off_centerline:.1f}deg off centerline, coarse roll")
                 self.ap_ckb('log', 'Coarse roll')
-                off = self._roll_to_centerline(scr_reg, off, close=self.COARSE_ROLL_THRESHOLD)
+                off = self._roll_to_centerline(scr_reg, off, close=self.ROLE_YAW_PITCH_CLOSE)
                 if off is None:
                     continue
                 if off.get('z', 1) < 0:
@@ -2084,7 +2098,7 @@ class EDAutopilot:
         # Wait for SC Assist to fly us there and drop us out
         self.ap_ckb('log', 'Waiting for SC Assist to reach destination...')
         self.start_sco_monitoring()
-        sleep(5)  # let SC Assist settle and throttle text disappear
+        sleep(self.SC_SETTLE_TIME)  # let SC Assist settle and throttle text disappear
         sc_assist_cruising = True
         last_align_check = time.time()
         while True:
@@ -2114,43 +2128,35 @@ class EDAutopilot:
                 self.ap_ckb('log+vce', f'Approaching body: {approach_body} -- evading')
                 logger.info(f"sc_assist: ApproachBody detected: {approach_body}")
                 self.keys.send('SetSpeed25')  # deactivate SC Assist
-                pitch_time = 90.0 / self.pitchrate
+                pitch_time = self.BODY_EVADE_PITCH / self.pitchrate
                 self.keys.send('PitchUpButton', hold=pitch_time)
                 self.set_speed_100()
-                sleep(30)  # fly past at full speed
+                sleep(self.PASSBODY_TIME)
                 self.set_speed_0()
                 self.compass_align(scr_reg)
                 self.keys.send('SetSpeed75')  # re-engage SC Assist
-                sleep(5)
+                sleep(self.SC_SETTLE_TIME)
                 sc_assist_cruising = True
                 continue
 
-            # Every 30s check if SC Assist is still active (3-of-3 vote, indicator + text)
-            # If gone: re-align first. If still gone after re-align: target is occluded, evade.
-            if sc_assist_cruising and (time.time() - last_align_check) > 30:
+            # Check if SC Assist is still active (indicator check)
+            # If gone: target is occluded, evade by pitching up and re-aligning
+            if sc_assist_cruising and (time.time() - last_align_check) > self.SC_ASSIST_CHECK_INTERVAL:
                 last_align_check = time.time()
                 if self.is_sc_assist_gone(scr_reg):
-                    logger.warning("sc_assist: blue indicator gone, attempting re-align")
-                    self.ap_ckb('log', 'SC Assist lost -- re-aligning')
+                    logger.warning("sc_assist: gone -- target occluded, evading")
+                    self.ap_ckb('log', 'Target occluded -- evading')
+                    sc_assist_cruising = False
+                    self.keys.send('SetSpeed25')
+                    pitch_time = self.OCCLUSION_PITCH / self.pitchrate
+                    self.keys.send('PitchUpButton', hold=pitch_time)
+                    self.set_speed_100()
+                    sleep(self.PASSBODY_TIME)
                     self.set_speed_0()
                     self.compass_align(scr_reg)
                     self.keys.send('SetSpeed75')
-                    sleep(10)
-                    # Check again -- if still gone, target is occluded by a body
-                    if self.is_sc_assist_gone(scr_reg):
-                        logger.warning("sc_assist: still gone after re-align -- target occluded, evading")
-                        self.ap_ckb('log', 'Target occluded -- evading')
-                        sc_assist_cruising = False
-                        self.keys.send('SetSpeed25')
-                        pitch_time = 90.0 / self.pitchrate
-                        self.keys.send('PitchUpButton', hold=pitch_time)
-                        self.set_speed_100()
-                        sleep(30)
-                        self.set_speed_0()
-                        self.compass_align(scr_reg)
-                        self.keys.send('SetSpeed75')
-                        sleep(5)
-                        sc_assist_cruising = True
+                    sleep(self.SC_SETTLE_TIME)
+                    sc_assist_cruising = True
                     last_align_check = time.time()
                     continue
 
@@ -2696,7 +2702,6 @@ def main():
 
     # ed_ap.rotateLeft(1)
     x = 10
-    ed_ap.pitchrate = 16.0
     ed_ap.pitch_up_down(-x)
 
     sleep(.5)

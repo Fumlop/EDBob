@@ -419,7 +419,7 @@ class EDWayPoint:
         self.reset_stats()
 
         # Auto-detect starting waypoint: if docked at a waypoint station, start there
-        cur_station = self.ap.jn.ship_state()['cur_station'].upper()
+        cur_station = (self.ap.jn.ship_state()['cur_station'] or '').upper()
         cur_station_type = self.ap.jn.ship_state()['exp_station_type']
         is_docked = self.ap.status.get_flag(FlagsDocked)
         if is_docked and cur_station != "":
@@ -452,7 +452,7 @@ class EDWayPoint:
         while not _abort:
             # Current location
             cur_star_system = self.ap.jn.ship_state()['cur_star_system'].upper()
-            cur_station = self.ap.jn.ship_state()['cur_station'].upper()
+            cur_station = (self.ap.jn.ship_state()['cur_station'] or '').upper()
 
             # ====================================
             # Get next Waypoint
