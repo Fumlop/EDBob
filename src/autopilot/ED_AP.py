@@ -1081,7 +1081,7 @@ class EDAutopilot:
             raise Exception('Docking failed (not in space)')
 
         # Slight pitch up to clear station geometry, boost, then slow down for docking
-        self.keys.send('PitchUpButton', hold=1.25)
+        self.keys.send('PitchUpButton', hold=self.DOCK_PRE_PITCH)
         self.keys.send('UseBoostJuice')
         sleep(4)
         self.keys.send('SetSpeed25')
@@ -1131,6 +1131,7 @@ class EDAutopilot:
             return False
 
         self.set_speed_25()
+        sleep(self.KEY_WAIT)
 
         # Failsafe: don't pitch more than 120deg total
         fail_safe_timeout = (120 / self.pitchrate) + 3
@@ -1151,13 +1152,13 @@ class EDAutopilot:
                 break
 
         # Step 2: Extra 15deg safety pitch up
-        sleep(0.125)
+        sleep(self.KEY_WAIT)
         reserve_time = 15.0 / self.pitchrate
         logger.info(f"Sun clear, reserve pitch up {reserve_time:.1f}s (15deg safety)")
         self.keys.send('PitchUpButton', hold=reserve_time)
 
         # Full speed for fly-by (position() handles the 30s pass)
-        sleep(0.125)
+        sleep(self.KEY_WAIT)
         self.set_speed_100()
 
         return True
@@ -1313,6 +1314,12 @@ class EDAutopilot:
     # Common angles
     HALF_TURN = 180.0           # target behind flip
     QUARTER_TURN = 90           # 90-degree pitch maneuvers
+    # SCO settle time after boost
+    SCO_SETTLEMENT = 3.25       # seconds to let momentum decay after SCO
+    # Key input settle time for navigation commands
+    KEY_WAIT = 0.125
+    # Dock approach
+    DOCK_PRE_PITCH = 1.0        # seconds pitch up before boost toward station
     # Voting
     VOTE_COUNT = 3              # 3-of-3 consensus checks
 
@@ -1713,14 +1720,14 @@ class EDAutopilot:
 
         # SCO burst to quickly clear the star instead of 30s crawl
         self.keys.send('UseBoostJuice')
-        sleep(5)
+        sleep(3.75)
         self.keys.send('UseBoostJuice')  # disable SCO
 
         logger.info("Maneuvering")
 
         # Stop and let SCO momentum decay before alignment
         self.set_speed_0()
-        sleep(5)
+        sleep(self.SCO_SETTLEMENT)
 
         logger.debug('position=complete')
         return True
@@ -1977,7 +1984,7 @@ class EDAutopilot:
 
         # Stop for alignment -- wait for SCO momentum to decay
         self.set_speed_0()
-        sleep(5)
+        sleep(self.SCO_SETTLEMENT)
 
         return True
 
