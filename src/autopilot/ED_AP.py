@@ -847,15 +847,11 @@ class EDAutopilot:
                 self.keys.send(key, hold=hold)
                 sleep(2.0)
 
-        # Verify with 2-of-3 voting
-        ok_count = 0
-        for chk in range(3):
-            target_off = self.get_target_offset(scr_reg)
-            if target_off and abs(target_off['pit']) < self.FINE_ALIGN_OK and abs(target_off['yaw']) < self.FINE_ALIGN_OK:
-                ok_count += 1
-        if target_off:
-            logger.info(f"target_fine_align: final pit={target_off['pit']:.1f} yaw={target_off['yaw']:.1f} vote={ok_count}/3")
-        return ok_count >= 2
+        # Verify with 3-of-3 avg
+        med = self._avg_offset(scr_reg, self.get_target_offset)
+        if med:
+            logger.info(f"target_fine_align: final avg pit={med['pit']:.1f} yaw={med['yaw']:.1f}")
+        return med is not None and abs(med['pit']) < self.FINE_ALIGN_OK and abs(med['yaw']) < self.FINE_ALIGN_OK
 
     def is_sc_assist_gone(self, scr_reg) -> bool:
         """3-of-3 check whether SC Assist has actually disappeared.
@@ -1110,12 +1106,12 @@ class EDAutopilot:
             if self.jn.ship_state()['status'] == "in_station":
                 sleep(2)  # settle before continuing
                 MenuNav.refuel_repair_rearm(self.keys, self.status)
-                return
+                return True
             sleep(2)
 
-        self.ap_ckb('log', 'Auto dock timer timed out.')
+        self.ap_ckb('log+vce', 'Auto dock timer timed out.')
         logger.warning('Auto dock timer timed out. Aborting Docking.')
-        raise Exception('Docking failed (Auto dock timer timed out)')
+        return False
 
     def is_sun_dead_ahead(self, scr_reg):
         return scr_reg.sun_percent(scr_reg.screen) > 5
@@ -1193,11 +1189,16 @@ class EDAutopilot:
         return self.rollrate
 
     def _axis_pick_key(self, axis, deg):
-        """Pick the correct key for moving an axis toward center."""
+        """Pick the correct key for moving an axis toward center (or toward +-180 for roll).
+
+        <= 90: move toward 0   -> RollRight/PitchUp decreases positive angle
+        > 90:  move toward 180 -> INVERT direction (RollLeft/PitchDown increases positive angle)
+        """
         if axis == 'roll':
             if abs(deg) <= 90:
                 return 'RollRightButton' if deg > 0 else 'RollLeftButton'
             else:
+                # > 90: target is +-180, need opposite direction
                 return 'RollLeftButton' if deg > 0 else 'RollRightButton'
         elif axis == 'pit':
             if abs(deg) <= 90:
@@ -1288,6 +1289,26 @@ class EDAutopilot:
     def _pitch_to_center(self, scr_reg, off, close=10.0):
         """Pitch to vertical center."""
         return self._align_axis(scr_reg, 'pit', off, close)
+
+    AVG_DELAY = 0.01  # 10ms between reads
+
+    def _avg_offset(self, scr_reg, get_offset_fn):
+        """Take 3 reads with 10ms gaps, return average pit/yaw.
+        @param get_offset_fn: callable(scr_reg) -> dict with 'pit','yaw' or None
+        @return: dict with avg 'pit','yaw' or None if any read fails.
+        """
+        reads = []
+        for i in range(3):
+            if i > 0:
+                sleep(self.AVG_DELAY)
+            off = get_offset_fn(scr_reg)
+            if off is None:
+                return None
+            reads.append(off)
+        return {
+            'pit': sum(r['pit'] for r in reads) / 3,
+            'yaw': sum(r['yaw'] for r in reads) / 3,
+        }
 
     NUDGE_SAMPLES = 5
     NUDGE_HOLD = 0.4
@@ -1468,16 +1489,11 @@ class EDAutopilot:
                 if off is None:
                     continue
 
-            # Verify alignment with 2-of-3 voting to filter navball jitter
-            ok_count = 0
-            for chk in range(3):
-                off = self.get_nav_offset(scr_reg)
-                if off is None:
-                    continue
-                if abs(off['pit']) < close and abs(off['yaw']) < close:
-                    ok_count += 1
-            logger.info(f"Compass after align: pit={off['pit']:.1f} yaw={off['yaw']:.1f} vote={ok_count}/3")
-            if ok_count >= 2:
+            # Verify alignment with 3-of-3 avg to filter navball jitter
+            med = self._avg_offset(scr_reg, self.get_nav_offset)
+            if med is not None:
+                logger.info(f"Compass after align: avg pit={med['pit']:.1f} yaw={med['yaw']:.1f}")
+            if med is not None and abs(med['pit']) < close and abs(med['yaw']) < close:
                 # Try target circle fine alignment if visible
                 if self.is_target_arc_visible(scr_reg):
                     logger.info("Compass close enough, switching to target circle fine align")
@@ -1563,13 +1579,13 @@ class EDAutopilot:
                 target_align_inner_lim = target_align_inner_lim * target_align_compass_mult
                 target_align_pit_off = target_align_pit_off * target_align_compass_mult
             else:
-                # Neither target nor compass dot found -- confirm with 2-of-3 vote
-                dot_hits = sum(1 for _ in range(3) if self.get_nav_offset(scr_reg))
-                if dot_hits >= 2:
+                # Neither target nor compass dot found -- confirm with 3-of-3 avg
+                med = self._avg_offset(scr_reg, self.get_nav_offset)
+                if med is not None:
                     # Transient miss, dot is actually there -- retry main loop
                     continue
                 # Confirmed no dot -- target is behind, pitch to recover
-                self.ap_ckb('log', 'Target behind (confirmed 2/3), pitching to recover')
+                self.ap_ckb('log', 'Target behind (confirmed 3/3 avg), pitching to recover')
                 for _ in range(6):  # max 6x30=180 degrees
                     self.pitch_up_down(30)
                     dot_hits = sum(1 for _ in range(3) if self.get_nav_offset(scr_reg))
@@ -1775,7 +1791,7 @@ class EDAutopilot:
 
         # SCO burst to quickly clear the star instead of 30s crawl
         self.keys.send('UseBoostJuice')
-        sleep(3.75)
+        sleep(4.5)
         self.keys.send('UseBoostJuice')  # disable SCO
 
         logger.info("Maneuvering")
@@ -2145,21 +2161,7 @@ class EDAutopilot:
             logger.warning(f"sc_assist: not in supercruise (flag), journal status={self.jn.ship_state()['status']}")
             return
 
-        # Sun avoidance first (pitch up if sun ahead after FSD drop)
-        sun_was_ahead = self.sun_avoid(scr_reg)
-
-        # Align to target using compass
-        aligned = self.compass_align(scr_reg)
-        if not aligned:
-            self.ap_ckb('log', 'SC Assist: compass align failed, retrying once...')
-            sleep(2)
-            aligned = self.compass_align(scr_reg)
-            if not aligned:
-                self.ap_ckb('log', 'SC Assist aborted - could not align to target')
-                logger.warning("sc_assist: compass_align failed after retry, aborting")
-                return
-
-        # Throttle zero after alignment, activate SC Assist, then 75%
+        # Activate SC Assist first, then align -- SC Assist guides while we fine-tune
         self.set_speed_0()
         sleep(0.5)
         self.ap_ckb('log', 'Activating SC Assist via Nav Panel')
@@ -2171,7 +2173,24 @@ class EDAutopilot:
                 logger.warning("sc_assist: activate_sc_assist failed after retry")
                 self.set_speed_0()
                 return
-        sleep(0.5)
+
+        # Sun avoidance (pitch up if sun ahead after FSD drop)
+        sun_was_ahead = self.sun_avoid(scr_reg)
+
+        # Check if close enough to let SC Assist pull while we fine-tune
+        off = self.get_nav_offset(scr_reg)
+        if off and abs(off['pit']) < 10 and abs(off['yaw']) < 10:
+            logger.info(f"sc_assist: close enough (pit={off['pit']:.1f} yaw={off['yaw']:.1f}), throttle up for pull")
+            self.keys.send('SetSpeed75')
+
+        # Align to target using compass
+        aligned = self.compass_align(scr_reg)
+        if not aligned:
+            self.ap_ckb('log', 'SC Assist: compass align failed, retrying once...')
+            sleep(2)
+            aligned = self.compass_align(scr_reg)
+
+        # Throttle up -- SC Assist is active and we're aligned (or close enough)
         self.keys.send('SetSpeed75')
         sc_assist_cruising = False  # wait for throttle text to clear first
 
@@ -2282,9 +2301,17 @@ class EDAutopilot:
 
             if not skip_docking:
                 # go into docking sequence
-                self.dock()
-                self.ap_ckb('log+vce', "Docking complete, refueled, repaired and re-armed")
-                self.update_ap_status("Docking Complete")
+                docked_ok = self.dock()
+                if not docked_ok:
+                    stype = self.jn.ship_state().get('exp_station_type')
+                    if stype in (EDJournal.StationType.SpaceConstructionDepot,
+                                 EDJournal.StationType.ColonisationShip):
+                        self.ap_ckb('log+vce', "Docking failed at construction site -- stopping navigation")
+                        return
+                    self.ap_ckb('log', "Docking timed out, continuing...")
+                if docked_ok:
+                    self.ap_ckb('log+vce', "Docking complete, refueled, repaired and re-armed")
+                    self.update_ap_status("Docking Complete")
             else:
                 self.set_speed_0()
         else:

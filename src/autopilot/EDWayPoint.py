@@ -283,6 +283,8 @@ class EDWayPoint:
                 # Sell all to colonisation/construction ship
                 self.sell_to_colonisation_ship(ap)
 
+            return None  # delivery only, no buy attempted
+
         elif (station_type == StationType.FleetCarrier and fleetcarrier_transfer or
               station_type == StationType.SquadronCarrier and fleetcarrier_transfer):
             # Fleet Carrier in Transfer mode
@@ -489,31 +491,37 @@ class EDWayPoint:
             # If Docked -- trade, then get next target and undock
             # ====================================
             if self.ap.status.get_flag(FlagsDocked):
-                # Check if construction already complete before trading
-                depot = self.ap.jn.ship_state().get('ConstructionDepotDetails')
-                if isinstance(depot, dict) and depot.get('ConstructionComplete', False):
-                    self.ap.ap_ckb('log+vce', "Construction complete! Stopping waypoint assist.")
-                    break
+                # Check if construction already complete (only at construction waypoints)
+                if 'construction' in next_wp_station.lower():
+                    depot = self.ap.jn.ship_state().get('ConstructionDepotDetails')
+                    if isinstance(depot, dict) and depot.get('ConstructionComplete', False):
+                        self.ap.ap_ckb('log+vce', "Construction complete! Stopping waypoint assist.")
+                        break
 
+                self.ap.check_stop()
                 self.ap.ap_ckb('log+vce', f"Execute trade at: {cur_station}")
                 total_bought = self.execute_trade(self.ap, dest_key)
                 if total_bought is not None and total_bought == 0:
-                    # Check if there were items we wanted to buy
                     buy_list = self.waypoints[dest_key].get('BuyCommodities', {})
                     global_list = self.waypoints.get('GlobalShoppingList', {}).get('BuyCommodities', {})
                     wanted = sum(v for v in buy_list.values() if isinstance(v, (int, float)) and v > 0)
                     wanted += sum(v for v in global_list.values() if isinstance(v, (int, float)) and v > 0)
+                    has_list = len(buy_list) > 0 or len(global_list) > 0
                     if wanted > 0:
                         self.ap.ap_ckb('log+vce', "Nothing available to buy -- stopping for reconfiguration.")
+                        break
+                    elif has_list and wanted == 0:
+                        self.ap.ap_ckb('log+vce', "All commodities fulfilled (counts at 0) -- stopping.")
                         break
                 self.mark_waypoint_complete(dest_key)
                 self.ap.ap_ckb('log+vce', f"Waypoint complete.")
 
                 # Check again after trade (may have just delivered final batch)
-                depot = self.ap.jn.ship_state().get('ConstructionDepotDetails')
-                if isinstance(depot, dict) and depot.get('ConstructionComplete', False):
-                    self.ap.ap_ckb('log+vce', "Construction complete! Stopping waypoint assist.")
-                    break
+                if 'construction' in next_wp_station.lower():
+                    depot = self.ap.jn.ship_state().get('ConstructionDepotDetails')
+                    if isinstance(depot, dict) and depot.get('ConstructionComplete', False):
+                        self.ap.ap_ckb('log+vce', "Construction complete! Stopping waypoint assist.")
+                        break
 
                 # Get NEXT waypoint for navigation
                 dest_key, next_waypoint = self.get_waypoint()
@@ -531,6 +539,7 @@ class EDWayPoint:
                     break
 
                 # Set bookmark and undock before falling through to navigation
+                self.ap.check_stop()
                 self.ap.ap_ckb('log+vce', f"Next target: favorite #{gal_bookmark_num}")
                 res = self.ap.galaxy_map.set_gal_map_dest_bookmark(self.ap, gal_bookmark_type, gal_bookmark_num)
                 if not res:
@@ -540,6 +549,7 @@ class EDWayPoint:
                 self._last_bookmark_set = (gal_bookmark_type, gal_bookmark_num)
                 sleep(1)
 
+                self.ap.check_stop()
                 self.ap.waypoint_undock_seq()
                 # Fall through to navigation
 
@@ -556,6 +566,7 @@ class EDWayPoint:
                 self._last_bookmark_set = (gal_bookmark_type, gal_bookmark_num)
                 sleep(1)
 
+            self.ap.check_stop()
             # Different system? Jump there
             cur_star_system = self.ap.jn.ship_state()['cur_star_system'].upper()
             nav_dest = self.ap.nav_route.get_last_system().upper()
