@@ -1312,9 +1312,9 @@ class EDAutopilot:
             return True
 
         if abs(avg_pit) > abs(avg_yaw):
-            key = 'PitchUpButton' if avg_pit > 0 else 'PitchDownButton'
+            key = self._axis_pick_key('pit', avg_pit)
         else:
-            key = 'YawLeftButton' if avg_yaw > 0 else 'YawRightButton'
+            key = self._axis_pick_key('yaw', avg_yaw)
 
         logger.info(f"nudge_align: {key} hold={self.NUDGE_HOLD}s")
         self.keys.send(key, hold=self.NUDGE_HOLD)

@@ -246,17 +246,19 @@ class EDWayPoint:
         global_buy_commodities = self.waypoints['GlobalShoppingList']['BuyCommodities']
 
         if len(sell_commodities) == 0 and len(buy_commodities) == 0 and len(global_buy_commodities) == 0:
-            return
+            return 0
 
         # Does this place have commodities service?
         # From the journal, this works for stations (incl. outpost), colonisation ship and megaships
         if ap.jn.ship_state()['StationServices'] is not None:
             if 'commodities' not in ap.jn.ship_state()['StationServices']:
                 self.ap.ap_ckb('log', f"No commodities market at docked location.")
-                return
+                return 0
         else:
             self.ap.ap_ckb('log', f"No station services at docked location.")
-            return
+            return 0
+
+        total_bought = 0
 
         # Determine type of station we are at
         station_type = ap.jn.ship_state()['exp_station_type']
@@ -381,10 +383,12 @@ class EDWayPoint:
                         if buyable_items is not None:
                             for value in buyable_items:
                                 bought, full = self._buy_one(ap, value['Name_Localised'], buy_commodities[key], cargo_capacity)
+                                total_bought += bought
                                 if full:
                                     break
                     else:
                         bought, full = self._buy_one(ap, key, buy_commodities[key], cargo_capacity)
+                        total_bought += bought
                         if bought > 0 and self.waypoints[dest_key]['UpdateCommodityCount']:
                             buy_commodities[key] -= bought
                         if full:
@@ -393,6 +397,7 @@ class EDWayPoint:
                 # Go through global buy commodities list (lowest quantity first)
                 for key in sorted(global_buy_commodities, key=lambda k: global_buy_commodities[k]):
                     bought, full = self._buy_one(ap, key, global_buy_commodities[key], cargo_capacity)
+                    total_bought += bought
                     if bought > 0 and self.waypoints['GlobalShoppingList']['UpdateCommodityCount']:
                         global_buy_commodities[key] -= bought
                     if full:
@@ -404,6 +409,8 @@ class EDWayPoint:
             sleep(1.5)  # give time to popdown
             # Go to ship view
             ap.ship_control.goto_cockpit_view()
+
+        return total_bought
 
     def waypoint_assist(self, keys, scr_reg):
         """ Processes the waypoints, performing jumps and sc assist if going to a station
@@ -482,12 +489,27 @@ class EDWayPoint:
             # If Docked -- trade, then get next target and undock
             # ====================================
             if self.ap.status.get_flag(FlagsDocked):
+                # Check if construction already complete before trading
+                depot = self.ap.jn.ship_state().get('ConstructionDepotDetails')
+                if isinstance(depot, dict) and depot.get('ConstructionComplete', False):
+                    self.ap.ap_ckb('log+vce', "Construction complete! Stopping waypoint assist.")
+                    break
+
                 self.ap.ap_ckb('log+vce', f"Execute trade at: {cur_station}")
-                self.execute_trade(self.ap, dest_key)
+                total_bought = self.execute_trade(self.ap, dest_key)
+                if total_bought is not None and total_bought == 0:
+                    # Check if there were items we wanted to buy
+                    buy_list = self.waypoints[dest_key].get('BuyCommodities', {})
+                    global_list = self.waypoints.get('GlobalShoppingList', {}).get('BuyCommodities', {})
+                    wanted = sum(v for v in buy_list.values() if isinstance(v, (int, float)) and v > 0)
+                    wanted += sum(v for v in global_list.values() if isinstance(v, (int, float)) and v > 0)
+                    if wanted > 0:
+                        self.ap.ap_ckb('log+vce', "Nothing available to buy -- stopping for reconfiguration.")
+                        break
                 self.mark_waypoint_complete(dest_key)
                 self.ap.ap_ckb('log+vce', f"Waypoint complete.")
 
-                # Check if construction is complete
+                # Check again after trade (may have just delivered final batch)
                 depot = self.ap.jn.ship_state().get('ConstructionDepotDetails')
                 if isinstance(depot, dict) and depot.get('ConstructionComplete', False):
                     self.ap.ap_ckb('log+vce', "Construction complete! Stopping waypoint assist.")
