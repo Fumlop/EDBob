@@ -1718,6 +1718,10 @@ class EDAutopilot:
 
         logger.info("Maneuvering")
 
+        # Stop and let SCO momentum decay before alignment
+        self.set_speed_0()
+        sleep(5)
+
         logger.debug('position=complete')
         return True
 
@@ -1858,7 +1862,7 @@ class EDAutopilot:
                             break
                         sleep(5)
                     self.ap_ckb('log+vce', 'Maneuvering away from construction site')
-                    sleep(4)
+                    sleep(0.5)
                     self.set_speed_25()  # break autodock control
                     self.keys.send('PitchUpButton', hold=3.0)
                     sleep(0.5)
@@ -1971,8 +1975,9 @@ class EDAutopilot:
         sleep(5)
         self.keys.send('UseBoostJuice')
 
-        # Stop for alignment
+        # Stop for alignment -- wait for SCO momentum to decay
         self.set_speed_0()
+        sleep(5)
 
         return True
 
@@ -2090,7 +2095,14 @@ class EDAutopilot:
         self.set_speed_0()
         sleep(0.5)
         self.ap_ckb('log', 'Activating SC Assist via Nav Panel')
-        self.nav_panel.activate_sc_assist()
+        if not self.nav_panel.activate_sc_assist():
+            self.ap_ckb('log', 'SC Assist activation failed, retrying...')
+            sleep(2)
+            if not self.nav_panel.activate_sc_assist():
+                self.ap_ckb('log', 'SC Assist activation failed twice, aborting')
+                logger.warning("sc_assist: activate_sc_assist failed after retry")
+                self.set_speed_0()
+                return
         sleep(0.5)
         self.keys.send('SetSpeed75')
         sc_assist_cruising = False  # wait for throttle text to clear first
@@ -2105,7 +2117,7 @@ class EDAutopilot:
             sleep(2.5)
             self.check_stop()
 
-            if self.jn.ship_state()['status'] != 'in_supercruise':
+            if not self.status.get_flag(FlagsSupercruise):
                 # Dropped from supercruise (SC Assist completed or glide)
                 if self.status.get_flag2(Flags2GlideMode):
                     logger.debug("Gliding")
@@ -2350,8 +2362,8 @@ class EDAutopilot:
 
                 self.stop_sco_monitoring()
                 logger.debug("Completed sc_assist")
-                self.sc_assist_enabled = False
-                self.ap_ckb('sc_stop')
+                if not self.sc_assist_enabled:
+                    self.ap_ckb('sc_stop')
                 self.update_overlay()
 
             elif self.waypoint_assist_enabled == True:
@@ -2371,8 +2383,8 @@ class EDAutopilot:
                     logger.exception("Waypoint Assist trapped generic")
 
                 self.stop_sco_monitoring()
-                self.waypoint_assist_enabled = False
-                self.ap_ckb('waypoint_stop')
+                if not self.waypoint_assist_enabled:
+                    self.ap_ckb('waypoint_stop')
                 self.update_overlay()
 
             elif self.dss_assist_enabled == True:

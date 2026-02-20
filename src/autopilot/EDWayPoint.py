@@ -450,6 +450,8 @@ class EDWayPoint:
         # Loop until complete, or error
         _abort = False
         while not _abort:
+            self.ap.check_stop()
+
             # Current location
             cur_star_system = self.ap.jn.ship_state()['cur_star_system'].upper()
             cur_station = (self.ap.jn.ship_state()['cur_station'] or '').upper()
@@ -457,25 +459,15 @@ class EDWayPoint:
             # ====================================
             # Get next Waypoint
             # ====================================
-
             old_step = self.step
-            # Loop through waypoints to find next waypoint
-            while True:
-                self.ap.check_stop()
-                # Get the waypoint details
-                dest_key, next_waypoint = self.get_waypoint()
-                break
+            dest_key, next_waypoint = self.get_waypoint()
 
             if dest_key is None:
                 self.ap.ap_ckb('log+vce', "Waypoint list has been completed.")
                 break
 
-            # Is this a new waypoint?
             if self.step != old_step:
-                new_waypoint = True
-                self._last_bookmark_set = None  # Clear cached bookmark for new waypoint
-            else:
-                new_waypoint = False
+                self._last_bookmark_set = None
 
             gal_bookmark_type = next_waypoint.get('GalaxyBookmarkType', '')
             gal_bookmark_num = next_waypoint.get('GalaxyBookmarkNumber', 0)
@@ -486,14 +478,10 @@ class EDWayPoint:
                 _abort = True
                 break
 
-            if new_waypoint:
-                self.ap.ap_ckb('log+vce', f"Next Waypoint: favorite #{gal_bookmark_num}")
-
             # ====================================
-            # Docked -- trade, then set next bookmark, then undock + fly
+            # If Docked -- trade, then get next target and undock
             # ====================================
             if self.ap.status.get_flag(FlagsDocked):
-                # Trade at current station
                 self.ap.ap_ckb('log+vce', f"Execute trade at: {cur_station}")
                 self.execute_trade(self.ap, dest_key)
                 self.mark_waypoint_complete(dest_key)
@@ -505,7 +493,7 @@ class EDWayPoint:
                     self.ap.ap_ckb('log+vce', "Construction complete! Stopping waypoint assist.")
                     break
 
-                # Get NEXT waypoint and set its bookmark before undocking
+                # Get NEXT waypoint for navigation
                 dest_key, next_waypoint = self.get_waypoint()
                 if dest_key is None:
                     self.ap.ap_ckb('log+vce', "Waypoint list has been completed.")
@@ -520,6 +508,7 @@ class EDWayPoint:
                     _abort = True
                     break
 
+                # Set bookmark and undock before falling through to navigation
                 self.ap.ap_ckb('log+vce', f"Next target: favorite #{gal_bookmark_num}")
                 res = self.ap.galaxy_map.set_gal_map_dest_bookmark(self.ap, gal_bookmark_type, gal_bookmark_num)
                 if not res:
@@ -529,29 +518,11 @@ class EDWayPoint:
                 self._last_bookmark_set = (gal_bookmark_type, gal_bookmark_num)
                 sleep(1)
 
-                # Undock and fly to next target
                 self.ap.waypoint_undock_seq()
-                self.ap.sc_engage()
-
-                # Different system? Jump
-                nav_dest = self.ap.nav_route.get_last_system().upper()
-                if nav_dest != "" and nav_dest != cur_star_system:
-                    keys.send('TargetNextRouteSystem')
-                    self.ap.ap_ckb('log+vce', f"Jumping to {nav_dest}.")
-                    self.ap.do_route_jump(scr_reg)
-                    continue
-
-                # Same system -- SC to station
-                sc_target = next_wp_station
-                if sc_target == "":
-                    sc_target = self.ap.status.get_cleaned_data().get('Destination_Name', '')
-                if sc_target != "":
-                    self.ap.supercruise_to_station(scr_reg, sc_target)
-                    sleep(1)
-                continue
+                # Fall through to navigation
 
             # ====================================
-            # Not docked -- ensure we have a target and fly there
+            # Navigation (single path for all states)
             # ====================================
             if self._last_bookmark_set != (gal_bookmark_type, gal_bookmark_num):
                 self.ap.ap_ckb('log+vce', f"Targeting favorite #{gal_bookmark_num}")
@@ -564,6 +535,7 @@ class EDWayPoint:
                 sleep(1)
 
             # Different system? Jump there
+            cur_star_system = self.ap.jn.ship_state()['cur_star_system'].upper()
             nav_dest = self.ap.nav_route.get_last_system().upper()
             if nav_dest != "" and nav_dest != cur_star_system:
                 self.ap.sc_engage()
@@ -572,7 +544,7 @@ class EDWayPoint:
                 self.ap.do_route_jump(scr_reg)
                 continue
 
-            # Same system -- SC to station
+            # Same system -- SC to station (blocks until docked or failed)
             sc_target = next_wp_station
             if sc_target == "":
                 sc_target = self.ap.status.get_cleaned_data().get('Destination_Name', '')
@@ -581,7 +553,7 @@ class EDWayPoint:
                 sleep(1)
                 continue
 
-            # No target, not docked -- lost. Reset to waypoint #1
+            # No target found -- reset
             logger.warning("Not docked and no target. Resetting to waypoint #1.")
             self.ap.ap_ckb('log+vce', "No target found. Resetting to waypoint #1.")
             self.mark_all_waypoints_not_complete()
