@@ -860,7 +860,7 @@ class EDAutopilot:
         """
         gone_count = 0
         for i in range(self.VOTE_COUNT):
-            sleep(0.5)
+            sleep(3)
 
             # inv_col=False: skip the bogus RGB2BGR conversion in mss capture
             mask = scr_reg.capture_region_filtered(self.scr, 'sc_assist_ind', inv_col=False)
@@ -876,8 +876,6 @@ class EDAutopilot:
 
             if ind_ratio < self.SC_ASSIST_GONE_RATIO:
                 gone_count += 1
-
-            sleep(1)
         if gone_count >= self.VOTE_COUNT:
             logger.info(f"is_sc_assist_gone: confirmed gone ({gone_count}/{self.VOTE_COUNT} checks)")
             return True

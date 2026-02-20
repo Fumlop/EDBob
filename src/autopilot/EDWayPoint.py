@@ -375,8 +375,17 @@ class EDWayPoint:
 
             # --------- BUY ----------
             if len(buy_commodities) > 0 or len(global_buy_commodities) > 0:
-                # Select the BUY option
-                self.ap.stn_svcs_in_ship.commodities_market.select_buy(ap.keys)
+                if len(sell_commodities) > 0:
+                    # Already in commodities screen after sell -- navigate to buy tab
+                    ap.keys.send('UI_Left')
+                    ap.keys.send('UI_Up', repeat=2)
+                    ap.keys.send('UI_Select')  # Select Buy
+                    sleep(0.5)
+                    ap.keys.send('UI_Right')  # Into buy list
+                    self.ap.stn_svcs_in_ship.commodities_market._cursor_pos = 0
+                else:
+                    # No sell happened -- select buy from commodities main screen
+                    self.ap.stn_svcs_in_ship.commodities_market.select_buy(ap.keys)
 
                 # Go through buy commodities list (lowest quantity first to fit all)
                 for key in sorted(buy_commodities, key=lambda k: buy_commodities[k]):

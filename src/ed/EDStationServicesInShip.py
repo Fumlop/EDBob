@@ -244,15 +244,16 @@ class CommoditiesMarket:
         logger.info(f"OCR quantity: failed (results: {results})")
         return -1
 
-    def _set_buy_sell_quantity(self, keys, target_qty: int, max_qty: int):
+    def _set_buy_sell_quantity(self, keys, target_qty: int, max_qty: int, sell=False):
         """Set the buy/sell quantity in the popup dialog.
-        If target fills all free cargo, hold right to max.
-        Otherwise tap right for exact count.
+        @param sell: True for sell (max qty prefilled, skip hold), False for buy.
         """
         target_qty = int(target_qty)
         max_qty = int(max_qty)
         if target_qty >= max_qty:
-            keys.send("UI_Right", hold=4)
+            if not sell:
+                keys.send("UI_Right", hold=4)
+            # sell: already prefilled to max, no action needed
         else:
             keys.send("UI_Right", hold=0.04, repeat=target_qty)
 
@@ -440,19 +441,10 @@ class CommoditiesMarket:
                 self.ap.overlay.overlay_paint()
 
             sleep(0.5)  # give time for popup
-            keys.send('UI_Up', repeat=2)  # make sure at top
 
-            # Set quantity
-            if act_qty >= 9999 or qty_in_cargo <= act_qty:
-                self.ap_ckb('log+vce', f"Selling all our units of {name}.")
-                logger.info(f"Attempting to sell all our units of {name}")
-                max_qty = qty_in_cargo
-            else:
-                self.ap_ckb('log+vce', f"Selling {act_qty} units of {name}.")
-                logger.info(f"Attempting to sell {act_qty} units of {name}")
-                max_qty = qty_in_cargo
-
-            self._set_buy_sell_quantity(keys, min(act_qty, max_qty), max_qty)
+            # Sell always sells all -- quantity is prefilled
+            self.ap_ckb('log+vce', f"Selling all our units of {name}.")
+            logger.info(f"Attempting to sell all our units of {name}")
 
             keys.send('UI_Down')  # Down to the Sell button
             self.ap.jn.ship['last_market_sell'] = None  # clear before sell so we detect the new event
