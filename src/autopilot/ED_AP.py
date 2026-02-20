@@ -1289,14 +1289,45 @@ class EDAutopilot:
         """Pitch to vertical center."""
         return self._align_axis(scr_reg, 'pit', off, close)
 
+    NUDGE_SAMPLES = 5
+    NUDGE_HOLD = 0.25
+
+    def nudge_align(self, scr_reg) -> bool:
+        """Minimal realignment using 5-of-5 navball consensus.
+        Measures drift precisely, applies a single nudge on the worst axis.
+        Returns True if a nudge was applied, False if reads failed."""
+        offsets = []
+        for _ in range(self.NUDGE_SAMPLES):
+            off = self.get_nav_offset(scr_reg)
+            if off is None:
+                return False
+            offsets.append(off)
+
+        avg_pit = sum(o['pit'] for o in offsets) / self.NUDGE_SAMPLES
+        avg_yaw = sum(o['yaw'] for o in offsets) / self.NUDGE_SAMPLES
+        logger.info(f"nudge_align: avg pit={avg_pit:.1f} yaw={avg_yaw:.1f} (5 samples)")
+
+        if abs(avg_pit) < self.FINE_ALIGN_CLOSE and abs(avg_yaw) < self.FINE_ALIGN_CLOSE:
+            logger.info("nudge_align: already aligned, no nudge needed")
+            return True
+
+        if abs(avg_pit) > abs(avg_yaw):
+            key = 'PitchUpButton' if avg_pit > 0 else 'PitchDownButton'
+        else:
+            key = 'YawLeftButton' if avg_yaw > 0 else 'YawRightButton'
+
+        logger.info(f"nudge_align: {key} hold={self.NUDGE_HOLD}s")
+        self.keys.send(key, hold=self.NUDGE_HOLD)
+        return True
+
     # Threshold for roll and coarse alignment -- roll to centerline and trigger coarse
     # correction when pit or yaw exceeds this value
     ROLE_YAW_PITCH_CLOSE = 6.0
     # Only roll when yaw is significantly off -- prevents unnecessary rolls near alignment
     ROLE_TRESHHOLD = 8.0
     # Min/max hold time for alignment key presses (SC inertia needs minimum impulse)
-    MIN_HOLD_TIME = 0.5
-    MAX_HOLD_TIME = 2.0
+    MIN_HOLD_TIME = 0.55
+    MAX_HOLD_TIME = 2.1
     # Alignment convergence and timeout
     ALIGN_CLOSE = 4.0           # degrees -- compass jitter is ~3-4 deg
     ALIGN_TIMEOUT = 20.0        # seconds per axis
@@ -1441,12 +1472,8 @@ class EDAutopilot:
                 self.ap_ckb('log', 'Compass Align complete')
                 return True
 
-            # One nudge on worst axis, then accept
-            if off is not None and off.get('z', 1) > 0:
-                if abs(off['pit']) > abs(off['yaw']):
-                    self._pitch_to_center(scr_reg, off, close)
-                else:
-                    self._yaw_to_center(scr_reg, off, close)
+            # Single nudge on worst axis, then accept
+            self.nudge_align(scr_reg)
             self.ap_ckb('log', 'Compass Align complete')
             return True
 
@@ -1776,10 +1803,16 @@ class EDAutopilot:
                 logger.error('FSD failed to charge.')
                 continue
 
-            res = self.status.wait_for_flag_on(FlagsFsdJump, 30)
+            res = self.status.wait_for_flag_on(FlagsFsdJump, 60)
             if not res:
+                # FSD still charged? Alignment drifted -- nudge and let FSD pull us in
+                if self.status.get_flag(FlagsFsdCharging):
+                    logger.info("jump: FSD charged but no jump -- nudging alignment")
+                    self.nudge_align(scr_reg)
+                    continue
+                # Charge dropped -- full realign needed
                 logger.warning('FSD failure to start jump timeout.')
-                self.mnvr_to_target(scr_reg)  # attempt realign to target
+                self.mnvr_to_target(scr_reg)
                 continue
 
             logger.debug('jump= in jump')
