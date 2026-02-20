@@ -1290,11 +1290,13 @@ class EDAutopilot:
         return self._align_axis(scr_reg, 'pit', off, close)
 
     NUDGE_SAMPLES = 5
-    NUDGE_HOLD = 0.25
+    NUDGE_HOLD = 0.4
+
+    NUDGE_BOTH_THRESHOLD = 5.0
 
     def nudge_align(self, scr_reg) -> bool:
         """Minimal realignment using 5-of-5 navball consensus.
-        Measures drift precisely, applies a single nudge on the worst axis.
+        Nudges both axes if both are above threshold, otherwise worst axis only.
         Returns True if a nudge was applied, False if reads failed."""
         offsets = []
         for _ in range(self.NUDGE_SAMPLES):
@@ -1311,13 +1313,24 @@ class EDAutopilot:
             logger.info("nudge_align: already aligned, no nudge needed")
             return True
 
-        if abs(avg_pit) > abs(avg_yaw):
+        pit_bad = abs(avg_pit) >= self.FINE_ALIGN_CLOSE
+        yaw_bad = abs(avg_yaw) >= self.FINE_ALIGN_CLOSE
+        both_bad = abs(avg_pit) >= self.NUDGE_BOTH_THRESHOLD and abs(avg_yaw) >= self.NUDGE_BOTH_THRESHOLD
+
+        if both_bad:
+            pit_key = self._axis_pick_key('pit', avg_pit)
+            yaw_key = self._axis_pick_key('yaw', avg_yaw)
+            logger.info(f"nudge_align: both axes off, {pit_key}+{yaw_key} hold={self.NUDGE_HOLD}s")
+            self.keys.send(pit_key, hold=self.NUDGE_HOLD)
+            self.keys.send(yaw_key, hold=self.NUDGE_HOLD)
+        elif pit_bad and (not yaw_bad or abs(avg_pit) > abs(avg_yaw)):
             key = self._axis_pick_key('pit', avg_pit)
+            logger.info(f"nudge_align: {key} hold={self.NUDGE_HOLD}s")
+            self.keys.send(key, hold=self.NUDGE_HOLD)
         else:
             key = self._axis_pick_key('yaw', avg_yaw)
-
-        logger.info(f"nudge_align: {key} hold={self.NUDGE_HOLD}s")
-        self.keys.send(key, hold=self.NUDGE_HOLD)
+            logger.info(f"nudge_align: {key} hold={self.NUDGE_HOLD}s")
+            self.keys.send(key, hold=self.NUDGE_HOLD)
         return True
 
     # Threshold for roll and coarse alignment -- roll to centerline and trigger coarse
@@ -1330,7 +1343,7 @@ class EDAutopilot:
     MAX_HOLD_TIME = 2.1
     # Alignment convergence and timeout
     ALIGN_CLOSE = 4.0           # degrees -- compass jitter is ~3-4 deg
-    ALIGN_TIMEOUT = 20.0        # seconds per axis
+    ALIGN_TIMEOUT = 25.0        # seconds per axis (allows ~6 cycles with 2s settle)
     # Fine align thresholds
     FINE_ALIGN_CLOSE = 2.0      # degrees -- "already aligned" for target circle
     FINE_ALIGN_OK = 3.0         # degrees -- "close enough" after correction
