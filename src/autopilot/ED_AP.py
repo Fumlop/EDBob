@@ -847,12 +847,15 @@ class EDAutopilot:
                 self.keys.send(key, hold=hold)
                 sleep(2.0)
 
-        # Verify
-        target_off = self.get_target_offset(scr_reg)
+        # Verify with 2-of-3 voting
+        ok_count = 0
+        for chk in range(3):
+            target_off = self.get_target_offset(scr_reg)
+            if target_off and abs(target_off['pit']) < self.FINE_ALIGN_OK and abs(target_off['yaw']) < self.FINE_ALIGN_OK:
+                ok_count += 1
         if target_off:
-            logger.info(f"target_fine_align: final pit={target_off['pit']:.1f} yaw={target_off['yaw']:.1f}")
-            return abs(target_off['pit']) < self.FINE_ALIGN_OK and abs(target_off['yaw']) < self.FINE_ALIGN_OK
-        return False
+            logger.info(f"target_fine_align: final pit={target_off['pit']:.1f} yaw={target_off['yaw']:.1f} vote={ok_count}/3")
+        return ok_count >= 2
 
     def is_sc_assist_gone(self, scr_reg) -> bool:
         """3-of-3 check whether SC Assist has actually disappeared.
@@ -1421,9 +1424,16 @@ class EDAutopilot:
                 if off is None:
                     continue
 
-            # Verify
-            logger.info(f"Compass after align: pit={off['pit']:.1f} yaw={off['yaw']:.1f}")
-            if abs(off['pit']) < close and abs(off['yaw']) < close:
+            # Verify alignment with 2-of-3 voting to filter navball jitter
+            ok_count = 0
+            for chk in range(3):
+                off = self.get_nav_offset(scr_reg)
+                if off is None:
+                    continue
+                if abs(off['pit']) < close and abs(off['yaw']) < close:
+                    ok_count += 1
+            logger.info(f"Compass after align: pit={off['pit']:.1f} yaw={off['yaw']:.1f} vote={ok_count}/3")
+            if ok_count >= 2:
                 # Try target circle fine alignment if visible
                 if self.is_target_arc_visible(scr_reg):
                     logger.info("Compass close enough, switching to target circle fine align")
@@ -1431,9 +1441,14 @@ class EDAutopilot:
                 self.ap_ckb('log', 'Compass Align complete')
                 return True
 
-            logger.info("Compass: not converged, retrying")
-            if align_tries >= max_align_tries:
-                break
+            # One nudge on worst axis, then accept
+            if off is not None and off.get('z', 1) > 0:
+                if abs(off['pit']) > abs(off['yaw']):
+                    self._pitch_to_center(scr_reg, off, close)
+                else:
+                    self._yaw_to_center(scr_reg, off, close)
+            self.ap_ckb('log', 'Compass Align complete')
+            return True
 
         self.ap_ckb('log+vce', 'Compass Align failed - exhausted all retries')
         return False
@@ -2163,6 +2178,15 @@ class EDAutopilot:
             if sc_assist_cruising and (time.time() - last_align_check) > self.SC_ASSIST_CHECK_INTERVAL:
                 last_align_check = time.time()
                 if self.is_sc_assist_gone(scr_reg):
+                    # SC may have dropped during the ~4.5s check -- normal arrival, not occlusion
+                    if not self.status.get_flag(FlagsSupercruise):
+                        logger.info("sc_assist: indicator gone but SC already dropped -- normal arrival")
+                        break
+                    # Interdiction kills the indicator too -- let the interdiction handler deal with it
+                    if self.status.get_flag(FlagsBeingInterdicted):
+                        logger.info("sc_assist: indicator gone due to interdiction -- skipping evasion")
+                        sc_assist_cruising = False
+                        continue
                     logger.warning("sc_assist: gone -- target occluded, evading")
                     self.ap_ckb('log', 'Target occluded -- evading')
                     sc_assist_cruising = False
