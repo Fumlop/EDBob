@@ -1359,7 +1359,7 @@ class EDAutopilot:
     ROLE_TRESHHOLD = 8.0
     # Min/max hold time for alignment key presses (SC inertia needs minimum impulse)
     MIN_HOLD_TIME = 0.55
-    MAX_HOLD_TIME = 2.1
+    MAX_HOLD_TIME = 4.0
     # Alignment convergence and timeout
     ALIGN_CLOSE = 4.0           # degrees -- compass jitter is ~3-4 deg
     ALIGN_TIMEOUT = 25.0        # seconds per axis (allows ~6 cycles with 2s settle)
@@ -1780,7 +1780,7 @@ class EDAutopilot:
     # position() happens after a refuel and performs
     #   - accelerate past sun
     #   - perform Discovery scan
-    def position(self, scr_reg):
+    def position(self, scr_reg, sun_was_ahead=False):
         logger.debug('position')
 
         self.set_speed_100()
@@ -1794,9 +1794,13 @@ class EDAutopilot:
 
         logger.info("Maneuvering")
 
-        # Stop and let SCO momentum decay before alignment
+        # Pitch down to recover heading while SCO momentum decays
+        if sun_was_ahead:
+            recover_time = 15.0 / self.pitchrate
+            logger.info(f"Post fly-by, pitching down {recover_time:.1f}s (15deg recovery)")
+            self.keys.send('PitchDownButton', hold=recover_time)
+
         self.set_speed_0()
-        sleep(self.SCO_SETTLEMENT)
 
         logger.debug('position=complete')
         return True
@@ -2090,15 +2094,7 @@ class EDAutopilot:
         sun_was_ahead = self.sun_avoid(scr_reg)
 
         self.update_ap_status("Maneuvering")
-        self.position(scr_reg)
-
-        # After fly-by, pitch back down to recover heading
-        if sun_was_ahead:
-            recover_time = 15.0 / self.pitchrate
-            logger.info(f"Post fly-by, pitching down {recover_time:.1f}s (15deg recovery)")
-            self.keys.send('PitchDownButton', hold=recover_time)
-
-        self.set_speed_0()
+        self.position(scr_reg, sun_was_ahead=sun_was_ahead)
 
     def supercruise_to_station(self, scr_reg, station_name: str) -> bool:
         """ Supercruise to the specified target, which may be a station, FC, body, signal source, etc.
