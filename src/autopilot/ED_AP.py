@@ -1334,17 +1334,15 @@ class EDAutopilot:
     # Debug
     DEBUG_SNAP = True            # save debug snapshots to debug-output/
 
-    def compass_align(self, scr_reg, start_fsd=False) -> bool:
+    def compass_align(self, scr_reg) -> bool:
         """ Align ship to compass nav target.
         Strategy:
           1) If target behind: pitch UP to flip (away from star)
           2) If roll > 45deg off centerline: coarse roll to get close
           3) Yaw + Pitch for fine alignment (reliable, no overshoot)
-        @param start_fsd: If True, initiate FSD charge once target is in front (z>0).
         @return: True if aligned, else False.
         """
         close = self.ALIGN_CLOSE
-        fsd_started = False
         # Use status.json flags (reliable) instead of journal status (can be stale from corrupt lines)
         in_sc = self.status.get_flag(FlagsSupercruise)
         in_space = not self.status.get_flag(FlagsDocked) and not self.status.get_flag(FlagsLanded)
@@ -1412,17 +1410,6 @@ class EDAutopilot:
                     sleep(0.5)
                     continue
 
-            # Start FSD charging while we fine-align (target is in front)
-            if start_fsd and not fsd_started and off['z'] > 0:
-                logger.info("Compass: target in front, starting FSD charge during align")
-                self.keys.send('HyperSuperCombination')
-                fsd_started = True
-
-            # Check if FSD pulled us into jump during alignment
-            if fsd_started and self.status.get_flag(FlagsFsdJump):
-                logger.info("Compass: FSD jumped during align -- good enough")
-                return True
-
             # Fine alignment -- THIS counts as an alignment try
             # Do the larger-offset axis first: when pitch is large, the dot is near
             # the circle edge where yaw has reduced effectiveness (spherical projection).
@@ -1475,13 +1462,12 @@ class EDAutopilot:
 
         sun_was_ahead = self.sun_avoid(scr_reg)
 
-        res = self.compass_align(scr_reg, start_fsd=True)
+        res = self.compass_align(scr_reg)
 
-        # Compass align to ~3 degrees is sufficient for FSD jump.
-        # FSD may already be charging (started during align).
-        logger.info('mnvr_to_target: compass align done, proceeding to FSD')
-        self.ap_ckb('log', 'Compass aligned, proceeding to FSD')
-
+        # Aligned -- start FSD charge now (after align to avoid drift)
+        logger.info('mnvr_to_target: compass align done, starting FSD')
+        self.ap_ckb('log', 'Compass aligned, starting FSD')
+        self.keys.send('HyperSuperCombination')
         self.set_speed_100()
 
     def sc_target_align(self, scr_reg) -> ScTargetAlignReturn:
