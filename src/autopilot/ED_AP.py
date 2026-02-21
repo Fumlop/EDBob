@@ -1328,7 +1328,7 @@ class EDAutopilot:
     # Turn rate at 0% throttle vs blue zone (50%) -- assumed ~65%
     ZERO_THROTTLE_RATE_FACTOR = 0.60
     # Debug
-    DEBUG_SNAP = True            # save debug snapshots to debug-output/
+    DEBUG_SNAP = False           # save debug snapshots to debug-output/
 
     def compass_align(self, scr_reg) -> bool:
         """ Align ship to compass nav target.
