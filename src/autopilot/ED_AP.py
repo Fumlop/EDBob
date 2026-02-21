@@ -1887,12 +1887,9 @@ class EDAutopilot:
                                 break
                             logger.debug(f"in_station check: {pct:.1f}% -- LEAVE STATION still visible")
                         sleep(1)
-                    logger.info("Station cleared, boosting away from orbital plane")
+                    logger.info("Station cleared, boosting")
                     self.set_speed_100()
                     self.keys.send('UseBoostJuice')
-                    sleep(2)
-                    pitch_time = 10.0 / self.pitchrate
-                    self.keys.send('PitchUpButton', hold=pitch_time)
                     sleep(4)
                 else:
                     # All non-starport stations: brief wait, then pitch away, boost, clear
