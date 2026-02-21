@@ -1175,7 +1175,7 @@ class EDAutopilot:
 
             logger.debug(f"Align {axis}: remaining={remaining:.1f}deg, hold={hold_time:.2f}s, rate={rate:.1f}, key={key}")
             self.keys.send(key, hold=hold_time)
-            sleep(2.0)  # settle time -- SC inertia needs longer than normal space
+            sleep(self.ALIGN_SETTLE)
 
             # FSD jumped during hold/settle -- compass is garbage, bail out
             if self.status.get_flag(FlagsFsdJump):
@@ -1300,7 +1300,8 @@ class EDAutopilot:
     MAX_HOLD_TIME = 4.0
     # Alignment convergence and timeout
     ALIGN_CLOSE = 4.0           # degrees -- compass jitter is ~3-4 deg
-    ALIGN_TIMEOUT = 25.0        # seconds per axis (allows ~6 cycles with 2s settle)
+    ALIGN_SETTLE = 2.0          # seconds to let ship/compass settle after pitch/yaw
+    ALIGN_TIMEOUT = 25.0        # seconds per axis (allows ~6 cycles with settle)
     # Fine align thresholds
     FINE_ALIGN_CLOSE = 2.0      # degrees -- "already aligned" for target circle
     FINE_ALIGN_OK = 3.0         # degrees -- "close enough" after correction
@@ -1383,13 +1384,12 @@ class EDAutopilot:
                     logger.warning("Compass: 2 flips failed, trying 90deg break")
                 else:
                     logger.error("Compass: 3 flips exhausted, giving up")
-                    align_tries = max_align_tries
-                    continue
+                    break
                 pitch_time = flip_deg / effective_rate
                 logger.info(f"Compass: target behind, flip {flip_count+1} pitch {flip_deg:.0f}deg ({pitch_time:.1f}s)")
                 self.ap_ckb('log', 'Target behind, flipping up')
                 self.keys.send('PitchUpButton', hold=pitch_time)
-                sleep(0.5)
+                sleep(self.ALIGN_SETTLE)
                 self._flip_count = flip_count + 1
                 prev_off = off
                 continue
