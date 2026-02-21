@@ -275,7 +275,7 @@ class EDAutopilot:
             "TargetScale": 1.0,  # Scaling of the target when a system is selected
             "ScreenScale": 1.0,  # Scaling of the target when a system is selected
             "AutomaticLogout": False,  # Logout when we are done with the mission
-            "OCDepartureAngle": 90.0,  # Angle to pitch up when departing non-starport stations
+            "OCDepartureAngle": 75.0,  # Angle to pitch up when departing non-starport stations
             "Language": 'en',  # Language (matching ./locales/xx.json file)
             "OCRLanguage": 'en',  # Language for OCR detection (see OCR language doc in \docs)
             "EnableEDMesg": False,
@@ -1015,8 +1015,8 @@ class EDAutopilot:
             except Exception as e:
                 logger.warning(f"Debug snapshot failed: {e}")
 
-        # Pitch 90° up to clear station, then fly clear at full speed
-        pitch_time = 90.0 / self.pitchrate
+        # Pitch up to clear station, then fly clear at full speed
+        pitch_time = 75.0 / self.pitchrate
         self.keys.send('PitchUpButton', hold=pitch_time)
         self.set_speed_100()
         sleep(4)
@@ -1956,12 +1956,24 @@ class EDAutopilot:
 
         self.wait_masslock_clear()
 
-        # Engage Supercruise
-        self.keys.send('Supercruise')
-
-        # Wait for jump to supercruise
-        while not self.status.get_flag(FlagsFsdJump):
-            sleep(1)
+        # Engage Supercruise (retry if masslock reappears)
+        for attempt in range(3):
+            self.keys.send('Supercruise')
+            for _ in range(20):
+                if self.status.get_flag(FlagsFsdJump):
+                    break
+                if self.status.get_flag(FlagsSupercruise):
+                    break
+                self.check_stop()
+                sleep(1)
+            else:
+                if self.status.get_flag(FlagsFsdMassLocked):
+                    logger.warning(f'sc_engage: still masslocked, boosting (attempt {attempt+1})')
+                    self.wait_masslock_clear()
+                    continue
+                logger.warning(f'sc_engage: SC not engaging, retrying (attempt {attempt+1})')
+                continue
+            break
 
         # Wait for supercruise
         self.status.wait_for_flag_on(FlagsSupercruise, timeout=30)
