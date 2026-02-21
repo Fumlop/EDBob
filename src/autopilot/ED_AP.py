@@ -1881,9 +1881,10 @@ class EDAutopilot:
                         self.check_stop()
                         snap = self.scrReg.capture_region(self.scr, 'in_station', inv_col=False)
                         if snap is not None:
+                            bgr = snap[:, :, :3]
                             lower = np.array([181, 181, 111], dtype=np.uint8)
                             upper = np.array([221, 221, 151], dtype=np.uint8)
-                            mask = cv2.inRange(snap, lower, upper)
+                            mask = cv2.inRange(bgr, lower, upper)
                             pct = (np.count_nonzero(mask) / mask.size) * 100
                             if pct < 0.5:
                                 logger.info(f"in_station check: {pct:.1f}% -- cleared slot")
