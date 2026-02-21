@@ -1348,6 +1348,7 @@ class EDAutopilot:
         self.ap_ckb('log+vce', 'Compass Align')
         self.set_speed_0()
         prev_off = None
+        self._flip_count = 0
 
         align_tries = 0
         max_align_tries = self.config['NavAlignTries']
@@ -1370,19 +1371,28 @@ class EDAutopilot:
 
             logger.debug(f"Compass: roll={off['roll']:.1f} pit={off['pit']:.1f} yaw={off['yaw']:.1f} z={off['z']}")
 
-            # Target behind -- always pitch UP to flip (away from star after jump)
+            # Target behind -- pitch UP to flip (away from star after jump)
+            # Max 2x 180° flips, then 1x 90° to break deadlock
             if off['z'] < 0:
-                if prev_off and prev_off.get('z', 1) < 0 and abs(prev_off['roll'] - off['roll']) < 5:
-                    logger.warning("Compass: flip had no effect, retrying immediately")
-                    align_tries += 1  # stuck flips count
-
-                pitch_time = 180.0 / self.pitchrate
-                logger.info(f"Compass: target behind, pitching up {pitch_time:.1f}s")
+                flip_count = getattr(self, '_flip_count', 0)
+                effective_rate = self.pitchrate * self.ZERO_THROTTLE_RATE_FACTOR
+                if flip_count < 2:
+                    flip_deg = 180.0
+                elif flip_count == 2:
+                    flip_deg = 90.0
+                    logger.warning("Compass: 2 flips failed, trying 90deg break")
+                else:
+                    logger.error("Compass: 3 flips exhausted, giving up")
+                    align_tries = max_align_tries
+                    continue
+                pitch_time = flip_deg / effective_rate
+                logger.info(f"Compass: target behind, flip {flip_count+1} pitch {flip_deg:.0f}deg ({pitch_time:.1f}s)")
                 self.ap_ckb('log', 'Target behind, flipping up')
                 self.keys.send('PitchUpButton', hold=pitch_time)
                 sleep(0.5)
+                self._flip_count = flip_count + 1
                 prev_off = off
-                continue  # flip itself doesn't count
+                continue
             prev_off = off
 
             # Already aligned?
@@ -1399,8 +1409,9 @@ class EDAutopilot:
                 if off is None:
                     continue
                 if off.get('z', 1) < 0:
-                    logger.info("Compass: target went behind during roll, flipping up")
-                    pitch_time = 180.0 / self.pitchrate
+                    effective_rate = self.pitchrate * self.ZERO_THROTTLE_RATE_FACTOR
+                    pitch_time = 180.0 / effective_rate
+                    logger.info(f"Compass: target went behind during roll, flipping up ({pitch_time:.1f}s)")
                     self.keys.send('PitchUpButton', hold=pitch_time)
                     sleep(0.5)
                     continue
