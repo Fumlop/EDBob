@@ -1887,10 +1887,8 @@ class EDAutopilot:
                                 break
                             logger.debug(f"in_station check: {pct:.1f}% -- LEAVE STATION still visible")
                         sleep(1)
-                    logger.info("Station cleared, boosting")
+                    logger.info("Station cleared")
                     self.set_speed_100()
-                    self.keys.send('UseBoostJuice')
-                    sleep(4)
                 else:
                     # All non-starport stations: brief wait, then pitch away, boost, clear
                     sleep(5)
