@@ -6,6 +6,8 @@
         "target":        { "rect": [633, 270, 1267, 810] },
         "sun":           { "rect": [576, 324, 1344, 734] },
         "target_arc":    { "rect": [910, 492, 1013, 587] },
-        "sc_assist_ind": { "rect": [950, 387, 975, 393] }
+        "sc_assist_ind": { "rect": [950, 387, 975, 393] },
+        "center_normalcruise": { "rect": [565, 280, 1365, 625] },
+        "in_station": { "rect": [844, 748, 1100, 790] }
     }
 }

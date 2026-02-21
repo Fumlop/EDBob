@@ -20,9 +20,9 @@ from simple_localization import LocalizationManager
 from src.autopilot.EDAP_EDMesg_Server import EDMesgServer
 from src.core.EDAP_data import (
     FlagsDocked, FlagsLanded, FlagsLandingGearDown, FlagsSupercruise, FlagsFsdMassLocked,
-    FlagsFsdCharging, FlagsFsdCooldown, FlagsFsdJump, FlagsLowFuel,
-    FlagsOverHeating, FlagsHasLatLong, FlagsBeingInterdicted,
-    FlagsAnalysisMode, Flags2FsdHyperdriveCharging, Flags2FsdScoActive,
+    FlagsFsdCharging, FlagsFsdCooldown, FlagsFsdJump,
+    FlagsHasLatLong, FlagsBeingInterdicted,
+    FlagsAnalysisMode, Flags2FsdHyperdriveCharging,
     Flags2GlideMode, GuiFocusNoFocus, ship_size_map, ship_rpy_sc_50,
 )
 from src.core.directinput import SCANCODE
@@ -91,15 +91,10 @@ class EDAutopilot:
         self.ship_configs = {
             "Ship_Configs": {},  # Dictionary of ship types with additional settings
         }
-        self._sc_sco_active_loop_thread = None
-        self._sc_sco_active_loop_enable = False
-        self.sc_sco_is_active = 0
-        self._sc_sco_active_on_ls = 0
         self._prev_star_system = None
         self.honk_thread = None
         self.speed_demand = None
         self._ocr = None
-        self._sc_disengage_active = False  # Is SC Disengage active
         self.ship_tst_roll_enabled = False
         self.ship_tst_pitch_enabled = False
         self.ship_tst_yaw_enabled = False
@@ -548,6 +543,7 @@ class EDAutopilot:
 
         # Submit if still in supercruise
         while self.status.get_flag(FlagsSupercruise) or self.status.get_flag2(Flags2FsdHyperdriveCharging):
+            self.check_stop()
             self.set_speed_0()
             sleep(0.5)
 
@@ -559,6 +555,7 @@ class EDAutopilot:
 
         # Boost while waiting for cooldown to complete
         while not self.status.wait_for_flag_off(FlagsFsdCooldown, timeout=1):
+            self.check_stop()
             self.keys.send('UseBoostJuice')
 
         # Back to supercruise
@@ -980,80 +977,6 @@ class EDAutopilot:
                   'yaw': round(final_yaw_deg, 2)}
         return result
 
-    def sc_disengage_label_up(self, scr_reg) -> bool:
-        """ Check if SC disengage happened by checking journal status.
-        SC Assist auto-drops from supercruise, so we detect via status change
-        instead of screen template matching. """
-        # Check if we left supercruise (SC Assist dropped us)
-        if not self.status.get_flag(FlagsSupercruise):
-            return True
-        # Also check journal for destination drop event
-        if self.jn.ship_state()['status'] == 'in_space':
-            return True
-        return False
-
-    def start_sco_monitoring(self):
-        """ Start Supercruise Overcharge Monitoring. This starts a parallel thread used to detect SCO
-        until stop_sco_monitoring if called. """
-        self._sc_sco_active_loop_enable = True
-
-        if self._sc_sco_active_loop_thread is None or not self._sc_sco_active_loop_thread.is_alive():
-            self._sc_sco_active_loop_thread = threading.Thread(target=self._sc_sco_active_loop, daemon=True)
-            self._sc_sco_active_loop_thread.start()
-
-    def stop_sco_monitoring(self):
-        """ Stop Supercruise Overcharge Monitoring. """
-        self._sc_sco_active_loop_enable = False
-        self._sc_disengage_active = False
-
-    def _sc_sco_active_loop(self):
-        """ A loop to determine is Supercruise Overcharge is active.
-        This runs on a separate thread monitoring the status in the background. """
-        while self._sc_sco_active_loop_enable:
-            # deactivate if not in SC
-            if not self.status.get_flag(FlagsSupercruise):
-                self.stop_sco_monitoring()
-                break
-
-            start_time = time.time()
-
-            # Try to determine if the disengage/sco text is there
-            sc_sco_is_active_ls = self.sc_sco_is_active
-
-            # Check if SCO active in flags
-            self.sc_sco_is_active = self.status.get_flag2(Flags2FsdScoActive)
-
-            if self.sc_sco_is_active and not sc_sco_is_active_ls:
-                self.ap_ckb('log+vce', "Supercruise Overcharge activated")
-            if sc_sco_is_active_ls and not self.sc_sco_is_active:
-                self.ap_ckb('log+vce', "Supercruise Overcharge deactivated")
-
-            # Protection if SCO is active
-            if self.sc_sco_is_active:
-                if self.status.get_flag(FlagsOverHeating):
-                    logger.info("SCO Aborting, overheating")
-                    self.ap_ckb('log+vce', "SCO Aborting, overheating")
-                    self.keys.send('UseBoostJuice')
-                elif self.status.get_flag(FlagsLowFuel):
-                    logger.info("SCO Aborting, < 25% fuel")
-                    self.ap_ckb('log+vce', "SCO Aborting, < 25% fuel")
-                    self.keys.send('UseBoostJuice')
-                elif self.jn.ship_state()['fuel_percent'] < self.config['FuelThresholdAbortAP']:
-                    logger.info("SCO Aborting, < users low fuel threshold")
-                    self.ap_ckb('log+vce', "SCO Aborting, < users low fuel threshold")
-                    self.keys.send('UseBoostJuice')
-
-            # Check SC Disengage via journal/status (no screen detection needed)
-            if not self.sc_sco_is_active:
-                self._sc_disengage_active = self.sc_disengage_label_up(self.scrReg)
-            else:
-                self._sc_disengage_active = False
-
-            # Status checks are fast, poll every 0.5s
-            elapsed_time = time.time() - start_time
-            if elapsed_time < 0.5:
-                sleep(0.5 - elapsed_time)
-
     def undock(self):
         """ Performs menu action to undock from Station """
         MenuNav.undock(self.keys, self.status)
@@ -1077,12 +1000,30 @@ class EDAutopilot:
             logger.error('In dock(), still not in_space after wait')
             raise Exception('Docking failed (not in space)')
 
-        # Slight pitch up to clear station geometry, boost, then slow down for docking
-        self.keys.send('PitchUpButton', hold=self.DOCK_PRE_PITCH)
+        # Boost toward station then pitch up to clear construction geometry
         self.keys.send('UseBoostJuice')
         sleep(4)
-        self.keys.send('SetSpeed25')
+
+        # Debug snapshot after boost (closer to station)
+        if self.DEBUG_SNAP:
+            try:
+                snap = self.scrReg.capture_region(self.scr, 'center_normalcruise', inv_col=False)
+                if snap is not None:
+                    snap_dir = os.path.join('debug-output', 'target-snap')
+                    os.makedirs(snap_dir, exist_ok=True)
+                    ts = time.strftime('%Y%m%d_%H%M%S')
+                    cv2.imwrite(os.path.join(snap_dir, f'approach_{ts}.png'), snap)
+                    logger.info(f"Debug snapshot saved: approach_{ts}.png")
+            except Exception as e:
+                logger.warning(f"Debug snapshot failed: {e}")
+
+        # Pitch 90° up to clear station, then fly clear at full speed
+        pitch_time = 90.0 / self.pitchrate
+        self.keys.send('PitchUpButton', hold=pitch_time)
+        self.set_speed_100()
         sleep(4)
+
+        self.set_speed_0()
         self.ap_ckb('log+vce', "Initiating Docking Procedure")
         self.request_docking()
         sleep(1.5)  # journal catch-up
@@ -1128,7 +1069,6 @@ class EDAutopilot:
             return False
 
         self.set_speed_25()
-        sleep(self.KEY_WAIT)
 
         # Failsafe: don't pitch more than 120deg total
         fail_safe_timeout = (120 / self.pitchrate) + 3
@@ -1149,13 +1089,11 @@ class EDAutopilot:
                 break
 
         # Step 2: Extra 15deg safety pitch up
-        sleep(self.KEY_WAIT)
         reserve_time = 15.0 / self.pitchrate
         logger.info(f"Sun clear, reserve pitch up {reserve_time:.1f}s (15deg safety)")
         self.keys.send('PitchUpButton', hold=reserve_time)
 
         # Full speed for fly-by (position() handles the 30s pass)
-        sleep(self.KEY_WAIT)
         self.set_speed_100()
 
         return True
@@ -1221,7 +1159,7 @@ class EDAutopilot:
 
         start = time.time()
         remaining = self._get_dist(axis, off)
-        rate = self._axis_max_rate(axis)
+        rate = self._axis_max_rate(axis) * self.ZERO_THROTTLE_RATE_FACTOR
         key = self._axis_pick_key(axis, off[axis])
 
         logger.info(f"Align {axis}: {off[axis]:.1f}deg, dist={remaining:.1f}, rate={rate:.1f}, key={key}")
@@ -1243,6 +1181,11 @@ class EDAutopilot:
             logger.debug(f"Align {axis}: remaining={remaining:.1f}deg, hold={hold_time:.2f}s, rate={rate:.1f}, key={key}")
             self.keys.send(key, hold=hold_time)
             sleep(2.0)  # settle time -- SC inertia needs longer than normal space
+
+            # FSD jumped during hold/settle -- compass is garbage, bail out
+            if self.status.get_flag(FlagsFsdJump):
+                logger.info(f"Align {axis}: FSD jumped during align, aborting")
+                return off
 
             new_off = self.get_nav_offset(scr_reg)
             if new_off is None:
@@ -1388,16 +1331,22 @@ class EDAutopilot:
     DOCK_PRE_PITCH = 1.0        # seconds pitch up before boost toward station
     # Voting
     VOTE_COUNT = 3              # 3-of-3 consensus checks
+    # Turn rate at 0% throttle vs blue zone (50%) -- assumed ~65%
+    ZERO_THROTTLE_RATE_FACTOR = 0.65
+    # Debug
+    DEBUG_SNAP = True            # save debug snapshots to debug-output/
 
-    def compass_align(self, scr_reg) -> bool:
+    def compass_align(self, scr_reg, start_fsd=False) -> bool:
         """ Align ship to compass nav target.
         Strategy:
           1) If target behind: pitch UP to flip (away from star)
           2) If roll > 45deg off centerline: coarse roll to get close
           3) Yaw + Pitch for fine alignment (reliable, no overshoot)
+        @param start_fsd: If True, initiate FSD charge once target is in front (z>0).
         @return: True if aligned, else False.
         """
         close = self.ALIGN_CLOSE
+        fsd_started = False
         # Use status.json flags (reliable) instead of journal status (can be stale from corrupt lines)
         in_sc = self.status.get_flag(FlagsSupercruise)
         in_space = not self.status.get_flag(FlagsDocked) and not self.status.get_flag(FlagsLanded)
@@ -1465,6 +1414,17 @@ class EDAutopilot:
                     sleep(0.5)
                     continue
 
+            # Start FSD charging while we fine-align (target is in front)
+            if start_fsd and not fsd_started and off['z'] > 0:
+                logger.info("Compass: target in front, starting FSD charge during align")
+                self.keys.send('HyperSuperCombination')
+                fsd_started = True
+
+            # Check if FSD pulled us into jump during alignment
+            if fsd_started and self.status.get_flag(FlagsFsdJump):
+                logger.info("Compass: FSD jumped during align -- good enough")
+                return True
+
             # Fine alignment -- THIS counts as an alignment try
             # Do the larger-offset axis first: when pitch is large, the dot is near
             # the circle edge where yaw has reduced effectiveness (spherical projection).
@@ -1517,17 +1477,13 @@ class EDAutopilot:
 
         sun_was_ahead = self.sun_avoid(scr_reg)
 
-        res = self.compass_align(scr_reg)
+        res = self.compass_align(scr_reg, start_fsd=True)
 
         # Compass align to ~3 degrees is sufficient for FSD jump.
-        # Skip sc_target_align -- its open-loop roll/pitch corrections fight
-        # with the compass alignment and make things worse.
+        # FSD may already be charging (started during align).
         logger.info('mnvr_to_target: compass align done, proceeding to FSD')
         self.ap_ckb('log', 'Compass aligned, proceeding to FSD')
 
-        # Throttle zero briefly after alignment, then full speed for FSD
-        self.set_speed_0()
-        sleep(0.3)
         self.set_speed_100()
 
     def sc_target_align(self, scr_reg) -> ScTargetAlignReturn:
@@ -1591,12 +1547,6 @@ class EDAutopilot:
                         break
                 continue
 
-
-            # check for SC Disengage
-            if self._sc_disengage_active:
-                self.ap_ckb('log+vce', 'Disengage Supercruise')
-                self.stop_sco_monitoring()
-                return ScTargetAlignReturn.Disengage
 
             # Quit loop if we found Target or Compass
             if off:
@@ -1700,12 +1650,6 @@ class EDAutopilot:
                 # Store current offsets
                 tar_off1 = tar_off2.copy()
 
-
-            # check for SC Disengage
-            if self._sc_disengage_active:
-                self.ap_ckb('log+vce', 'Disengage Supercruise')
-                self.stop_sco_monitoring()
-                return ScTargetAlignReturn.Disengage
 
             # Check if target is outside the target region (behind us) and break loop
             if tar_off2 is None and nav_off2 is None:
@@ -1813,9 +1757,6 @@ class EDAutopilot:
 
         logger.info("Frameshift Jump")
 
-        # Stop SCO monitoring
-        self.stop_sco_monitoring()
-
         jump_tries = self.config['JumpTries']
         for i in range(jump_tries):
             self.check_stop()
@@ -1826,13 +1767,15 @@ class EDAutopilot:
             sleep(0.2)
             logger.debug('jump= start fsd')
 
-            # Initiate FSD Jump
-            self.keys.send('HyperSuperCombination')
-
-            res = self.status.wait_for_flag_on(FlagsFsdCharging, 5)
-            if not res:
-                logger.error('FSD failed to charge.')
-                continue
+            # Check if FSD already charging (started during compass_align)
+            if self.status.get_flag(FlagsFsdCharging):
+                logger.info('jump: FSD already charging from align phase')
+            else:
+                self.keys.send('HyperSuperCombination')
+                res = self.status.wait_for_flag_on(FlagsFsdCharging, 5)
+                if not res:
+                    logger.error('FSD failed to charge.')
+                    continue
 
             res = self.status.wait_for_flag_on(FlagsFsdJump, 60)
             if not res:
@@ -1858,9 +1801,6 @@ class EDAutopilot:
             self.set_speed_0(repeat=3)  # Let's be triply sure that we set speed to 0% :)
             sleep(1)  # wait 1 sec after jump to allow graphics to stablize and accept inputs
             logger.debug('jump=complete')
-
-            # Start SCO monitoring ready when we drop back to SC.
-            self.start_sco_monitoring()
 
             # We completed the jump
             return True
@@ -1948,20 +1888,38 @@ class EDAutopilot:
                             break
                         sleep(5)
                     self.ap_ckb('log+vce', 'Maneuvering away from construction site')
-                    sleep(0.5)
-                    self.set_speed_25()  # break autodock control
+                    self.set_speed_50()
                     self.keys.send('PitchUpButton', hold=3.0)
-                    sleep(0.5)
                     self.keys.send('UseBoostJuice')
-                    sleep(8)
+                    sleep(4)
                     self.keys.send('PitchDownButton', hold=3.0)
                     self.update_ap_status("Undock Complete, accelerating")
                     self.sc_engage()
 
                 else:
-                    # Stations with mail slots: wait for music events to signal in_space
+                    # Stations with mail slots: wait for autodock to fly us out
                     while self.jn.ship_state()['status'] != 'in_space':
+                        self.check_stop()
                         sleep(1)
+
+                    # Wait 15s for autodock to clear the slot, then check if we're out
+                    sleep(15)
+                    for _ in range(30):
+                        self.check_stop()
+                        snap = self.scrReg.capture_region(self.scr, 'in_station', inv_col=False)
+                        if snap is not None:
+                            # Check for cyan station interior color (BGR 201,201,131)
+                            lower = np.array([181, 181, 111], dtype=np.uint8)
+                            upper = np.array([221, 221, 151], dtype=np.uint8)
+                            mask = cv2.inRange(snap, lower, upper)
+                            pct = (np.count_nonzero(mask) / mask.size) * 100
+                            if pct < 0.5:
+                                logger.info(f"in_station check: {pct:.1f}% -- cleared slot")
+                                break
+                            logger.debug(f"in_station check: {pct:.1f}% -- LEAVE STATION still visible")
+                        sleep(1)
+                    self.set_speed_100()
+                    logger.info("Station cleared, throttle 100%")
 
                     if fleet_carrier or squadron_fleet_carrier:
                         self.ap_ckb('log+vce', 'Maneuvering')
@@ -1990,6 +1948,7 @@ class EDAutopilot:
 
                 # need to wait until undock complete, that is when we are back in_space
                 while self.jn.ship_state()['status'] != 'in_space':
+                    self.check_stop()
                     sleep(1)
                 self.update_ap_status("Undock Complete, accelerating")
 
@@ -2035,8 +1994,6 @@ class EDAutopilot:
         """
         # Check if we are already in SC
         if self.status.get_flag(FlagsSupercruise):
-            # Start SCO monitoring
-            self.start_sco_monitoring()
             return True
 
         self.set_speed_100()
@@ -2045,9 +2002,6 @@ class EDAutopilot:
 
         # Engage Supercruise
         self.keys.send('Supercruise')
-
-        # Start SCO monitoring
-        self.start_sco_monitoring()
 
         # Wait for jump to supercruise
         while not self.status.get_flag(FlagsFsdJump):
@@ -2190,7 +2144,6 @@ class EDAutopilot:
 
         # Wait for SC Assist to fly us there and drop us out
         self.ap_ckb('log', 'Waiting for SC Assist to reach destination...')
-        self.start_sco_monitoring()
         sleep(self.SC_SETTLE_TIME)  # let SC Assist settle and throttle text disappear
         sc_assist_cruising = True
         last_align_check = time.time()
@@ -2205,12 +2158,20 @@ class EDAutopilot:
                     self.status.wait_for_flag2_off(Flags2GlideMode, 30)
                 else:
                     logger.debug("No longer in supercruise - SC Assist dropped us")
-                self.stop_sco_monitoring()
-                break
 
-            if self._sc_disengage_active:
-                self.ap_ckb('log+vce', 'Disengage Supercruise')
-                self.stop_sco_monitoring()
+                # Debug snapshot of what's ahead after SC drop
+                if self.DEBUG_SNAP:
+                    try:
+                        snap = scr_reg.capture_region(self.scr, 'center_normalcruise', inv_col=False)
+                        if snap is not None:
+                            snap_dir = os.path.join('debug-output', 'target-snap')
+                            os.makedirs(snap_dir, exist_ok=True)
+                            ts = time.strftime('%Y%m%d_%H%M%S')
+                            cv2.imwrite(os.path.join(snap_dir, f'drop_{ts}.png'), snap)
+                            logger.info(f"Debug snapshot saved: drop_{ts}.png")
+                    except Exception as e:
+                        logger.warning(f"Debug snapshot failed: {e}")
+
                 break
 
             # Body proximity check -- ApproachBody journal event
@@ -2417,9 +2378,6 @@ class EDAutopilot:
             if self.debug_show_target_overlay:
                 self.get_target_offset(self.scrReg, True)
 
-            # TODO - Enable for test
-            # self.start_sco_monitoring()
-
             # Ship calibration functions
             if self.ship_tst_roll_enabled:
                 self.ship_tst_roll_new(0)
@@ -2458,7 +2416,6 @@ class EDAutopilot:
                 except Exception as e:
                     logger.exception("SC Assist trapped generic")
 
-                self.stop_sco_monitoring()
                 logger.debug("Completed sc_assist")
                 if not self.sc_assist_enabled:
                     self.ap_ckb('sc_stop')
@@ -2480,7 +2437,6 @@ class EDAutopilot:
                 except Exception as e:
                     logger.exception("Waypoint Assist trapped generic")
 
-                self.stop_sco_monitoring()
                 if not self.waypoint_assist_enabled:
                     self.ap_ckb('waypoint_stop')
                 self.update_overlay()

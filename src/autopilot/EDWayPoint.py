@@ -501,7 +501,7 @@ class EDWayPoint:
             # ====================================
             if self.ap.status.get_flag(FlagsDocked):
                 # Check if construction already complete (only at construction waypoints)
-                if 'construction' in next_wp_station.lower():
+                if next_waypoint.get('IsConstruction', False):
                     depot = self.ap.jn.ship_state().get('ConstructionDepotDetails')
                     if isinstance(depot, dict) and depot.get('ConstructionComplete', False):
                         self.ap.ap_ckb('log+vce', "Construction complete! Stopping waypoint assist.")
@@ -526,7 +526,7 @@ class EDWayPoint:
                 self.ap.ap_ckb('log+vce', f"Waypoint complete.")
 
                 # Check again after trade (may have just delivered final batch)
-                if 'construction' in next_wp_station.lower():
+                if next_waypoint.get('IsConstruction', False):
                     depot = self.ap.jn.ship_state().get('ConstructionDepotDetails')
                     if isinstance(depot, dict) and depot.get('ConstructionComplete', False):
                         self.ap.ap_ckb('log+vce', "Construction complete! Stopping waypoint assist.")
