@@ -300,24 +300,10 @@ class EDJournal:
                 self.ship['status'] = 'in_space'
                 
             elif log_event == 'Undocked':
-                self.ship['status'] = 'starting_undocking'
-                #self.ship['status'] = 'in_space'
+                self.ship['status'] = 'in_space'
 
             elif log_event == 'DockingRequested':
                 self.ship['status'] = 'starting_docking'
-
-            elif log_event == "Music" and log['MusicTrack'] == "DockingComputer":
-                if self.ship['status'] == 'starting_undocking':
-                    self.ship['status'] = 'in_undocking'
-                elif self.ship['status'] == 'starting_docking':
-                    self.ship['status'] = 'in_docking'
-
-            elif log_event == "Music" and log['MusicTrack'] == "NoTrack" and self.ship['status'] == 'in_undocking':
-                self.ship['status'] = 'in_space'
-                
-                # for unodck from outpost
-            elif log_event == "Music" and log['MusicTrack'] == "Exploration" and self.ship['status'] == 'in_undocking':
-                self.ship['status'] = 'in_space'
 
             elif log_event == 'Docked':
                 # {"timestamp": "2024-09-29T00:47:08Z", "event": "Docked", "StationName": "Filipchenko City",

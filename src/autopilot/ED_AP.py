@@ -1875,10 +1875,6 @@ class EDAutopilot:
                 self.undock()
 
                 if starport:
-                    # Wait for autodock to fly us out of the mail slot
-                    while self.jn.ship_state()['status'] != 'in_space':
-                        self.check_stop()
-                        sleep(1)
                     # Starports have mail slots -- wait for LEAVE STATION text to disappear
                     sleep(15)
                     for _ in range(30):
@@ -1922,30 +1918,22 @@ class EDAutopilot:
 
                 # Undock from port
                 self.undock()
-
-                # need to wait until undock complete, that is when we are back in_space
-                while self.jn.ship_state()['status'] != 'in_space':
-                    self.check_stop()
-                    sleep(1)
-                self.update_ap_status("Undock Complete, accelerating")
+                sleep(5)
 
             elif self.status.get_flag(FlagsLanded):
                 # We are on planet surface (not docked at planet landing pad)
-                # Hold UP for takeoff
                 self.keys.send('UpThrustButton', hold=6)
                 self.keys.send('LandingGearToggle')
-                self.update_ap_status("Takeoff Complete, accelerating")
 
-            # Undocked or off the surface, so leave planet
+            # Leave planet: pitch up, boost, engage SC (no pitch back on planet)
+            self.ap_ckb('log+vce', 'Maneuvering away from planet')
             self.set_speed_50()
-            # The pitch rates are defined in SC, not normal flights, so bump this up a bit
-            self.pitch_up_down(90 * 1.25)
-
-            # Engage Supercruise
-            self.sc_engage()
-
-            # Enable SCO. If SCO not fitted, this will do nothing.
+            pitch_time = self.config['OCDepartureAngle'] / self.pitchrate
+            self.keys.send('PitchUpButton', hold=pitch_time)
             self.keys.send('UseBoostJuice')
+            sleep(4)
+            self.update_ap_status("Undock Complete, accelerating")
+            self.sc_engage()
 
             # Wait until out of orbit.
             res = self.status.wait_for_flag_off(FlagsHasLatLong, timeout=60)
