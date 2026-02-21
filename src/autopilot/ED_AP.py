@@ -1755,20 +1755,24 @@ class EDAutopilot:
 
         logger.info("Frameshift Jump")
 
+        # FSD already pulled us into jump during align -- just wait for completion
+        if self.status.get_flag(FlagsFsdJump):
+            logger.info('jump: already in FSD jump (pulled in during align)')
+            res = self.status.wait_for_flag_off(FlagsFsdJump, 360)
+            if not res:
+                logger.error('FSD failure to complete jump timeout.')
+                raise Exception('FSD jump timeout')
+            self.jump_cnt = self.jump_cnt + 1
+            self.set_speed_0(repeat=3)
+            return
+
         jump_tries = self.config['JumpTries']
         for i in range(jump_tries):
             self.check_stop()
             logger.debug('jump= try:'+str(i))
-            if not (self.jn.ship_state()['status'] == 'in_supercruise' or self.jn.ship_state()['status'] == 'in_space'):
-                logger.error('Not ready to FSD jump. jump=err1')
-                raise Exception('not ready to jump')
-            sleep(0.2)
-            logger.debug('jump= start fsd')
 
-            # Check if FSD already charging (started during compass_align)
-            if self.status.get_flag(FlagsFsdCharging):
-                logger.info('jump: FSD already charging from align phase')
-            else:
+            # FSD already charging from compass_align -- skip straight to wait
+            if not (self.status.get_flag(FlagsFsdCharging) or self.status.get_flag(FlagsFsdJump)):
                 self.keys.send('HyperSuperCombination')
                 res = self.status.wait_for_flag_on(FlagsFsdCharging, 5)
                 if not res:
