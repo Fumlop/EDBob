@@ -1129,11 +1129,8 @@ class EDAutopilot:
         > 90:  move toward 180 -> INVERT direction (RollLeft/PitchDown increases positive angle)
         """
         if axis == 'roll':
-            if abs(deg) <= 90:
-                return 'RollRightButton' if deg > 0 else 'RollLeftButton'
-            else:
-                # > 90: target is +-180, need opposite direction
-                return 'RollLeftButton' if deg > 0 else 'RollRightButton'
+            # Roll toward nearest centerline (0 or 180): same direction regardless
+            return 'RollRightButton' if deg > 0 else 'RollLeftButton'
         elif axis == 'pit':
             if abs(deg) <= 90:
                 return 'PitchUpButton' if deg > 0 else 'PitchDownButton'
@@ -1299,7 +1296,7 @@ class EDAutopilot:
     # Only roll when yaw is significantly off -- prevents unnecessary rolls near alignment
     ROLE_TRESHHOLD = 8.0
     # Min/max hold time for alignment key presses (SC inertia needs minimum impulse)
-    MIN_HOLD_TIME = 0.55
+    MIN_HOLD_TIME = 0.50
     MAX_HOLD_TIME = 4.0
     # Alignment convergence and timeout
     ALIGN_CLOSE = 4.0           # degrees -- compass jitter is ~3-4 deg
@@ -1328,7 +1325,7 @@ class EDAutopilot:
     # Voting
     VOTE_COUNT = 3              # 3-of-3 consensus checks
     # Turn rate at 0% throttle vs blue zone (50%) -- assumed ~65%
-    ZERO_THROTTLE_RATE_FACTOR = 0.65
+    ZERO_THROTTLE_RATE_FACTOR = 0.60
     # Debug
     DEBUG_SNAP = True            # save debug snapshots to debug-output/
 
