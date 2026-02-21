@@ -1948,35 +1948,20 @@ class EDAutopilot:
     def sc_engage(self) -> bool:
         """ Engages supercruise. Clears masslock first (boosting), then SC, then 50% speed.
         """
-        # Check if we are already in SC
-        if self.status.get_flag(FlagsSupercruise):
-            return True
-
-        self.set_speed_100()
-
-        self.wait_masslock_clear()
-
-        # Engage Supercruise (retry if masslock reappears)
         for attempt in range(3):
-            self.keys.send('Supercruise')
-            for _ in range(20):
-                if self.status.get_flag(FlagsFsdJump):
-                    break
-                if self.status.get_flag(FlagsSupercruise):
-                    break
-                self.check_stop()
-                sleep(1)
-            else:
-                if self.status.get_flag(FlagsFsdMassLocked):
-                    logger.warning(f'sc_engage: still masslocked, boosting (attempt {attempt+1})')
-                    self.wait_masslock_clear()
-                    continue
-                logger.warning(f'sc_engage: SC not engaging, retrying (attempt {attempt+1})')
-                continue
-            break
+            self.check_stop()
+            if self.status.get_flag(FlagsSupercruise):
+                break
 
-        # Wait for supercruise
-        self.status.wait_for_flag_on(FlagsSupercruise, timeout=30)
+            self.set_speed_100()
+            self.wait_masslock_clear()
+            self.keys.send('Supercruise')
+
+            # Wait for supercruise flag
+            res = self.status.wait_for_flag_on(FlagsSupercruise, timeout=20)
+            if res:
+                break
+            logger.warning(f'sc_engage: not in supercruise after 20s (attempt {attempt+1})')
 
         # Short SCO burst to get away from planet gravity well
         self.keys.send('UseBoostJuice')
