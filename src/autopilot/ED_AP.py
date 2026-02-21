@@ -275,9 +275,7 @@ class EDAutopilot:
             "TargetScale": 1.0,  # Scaling of the target when a system is selected
             "ScreenScale": 1.0,  # Scaling of the target when a system is selected
             "AutomaticLogout": False,  # Logout when we are done with the mission
-            "FCDepartureTime": 5.0,  # Extra time to fly away from a Fleet Carrier
-            "FCDepartureAngle": 90.0,  # Angle to pitch up when leaving a Fleet Carrier
-            "OCDepartureAngle": 90.0,  # Angle to pitch up when leaving an Orbital Construction Site
+            "OCDepartureAngle": 90.0,  # Angle to pitch up when departing non-starport stations
             "Language": 'en',  # Language (matching ./locales/xx.json file)
             "OCRLanguage": 'en',  # Language for OCR detection (see OCR language doc in \docs)
             "EnableEDMesg": False,
@@ -1861,12 +1859,7 @@ class EDAutopilot:
         on_planet = self.status.get_flag(FlagsHasLatLong)
         station_type = self.jn.ship_state()['exp_station_type']
         logger.info(f"Undock: exp_station_type={station_type}, station={self.jn.ship_state()['cur_station']}")
-        on_orbital_construction_site = (station_type == EDJournal.StationType.SpaceConstructionDepot or
-                                       station_type == EDJournal.StationType.ColonisationShip or
-                                       station_type == EDJournal.StationType.PlanetaryConstructionDepot)
-        fleet_carrier = station_type == EDJournal.StationType.FleetCarrier
-        squadron_fleet_carrier = station_type == EDJournal.StationType.SquadronCarrier
-        starport_outpost = not on_planet and not on_orbital_construction_site and not fleet_carrier and not squadron_fleet_carrier
+        starport = station_type == EDJournal.StationType.Starport
 
         # Leave starport or planetary port
         if not on_planet:
@@ -1881,34 +1874,17 @@ class EDAutopilot:
                 # Undock from station
                 self.undock()
 
-                if on_orbital_construction_site:
-                    # Construction site: wait for autodock to finish (Music:Exploration/NoTrack)
-                    for _ in range(12):
-                        if self.jn.ship_state()['status'] == 'in_space':
-                            break
-                        sleep(5)
-                    self.ap_ckb('log+vce', 'Maneuvering away from construction site')
-                    self.set_speed_50()
-                    self.keys.send('PitchUpButton', hold=3.0)
-                    self.keys.send('UseBoostJuice')
-                    sleep(4)
-                    self.keys.send('PitchDownButton', hold=3.0)
-                    self.update_ap_status("Undock Complete, accelerating")
-                    self.sc_engage()
-
-                else:
-                    # Stations with mail slots: wait for autodock to fly us out
+                if starport:
+                    # Wait for autodock to fly us out of the mail slot
                     while self.jn.ship_state()['status'] != 'in_space':
                         self.check_stop()
                         sleep(1)
-
-                    # Wait 15s for autodock to clear the slot, then check if we're out
+                    # Starports have mail slots -- wait for LEAVE STATION text to disappear
                     sleep(15)
                     for _ in range(30):
                         self.check_stop()
                         snap = self.scrReg.capture_region(self.scr, 'in_station', inv_col=False)
                         if snap is not None:
-                            # Check for cyan station interior color (BGR 201,201,131)
                             lower = np.array([181, 181, 111], dtype=np.uint8)
                             upper = np.array([221, 221, 151], dtype=np.uint8)
                             mask = cv2.inRange(snap, lower, upper)
@@ -1920,18 +1896,19 @@ class EDAutopilot:
                         sleep(1)
                     self.set_speed_100()
                     logger.info("Station cleared, throttle 100%")
+                else:
+                    # All non-starport stations: brief wait, then pitch away, boost, clear
+                    sleep(5)
+                    self.ap_ckb('log+vce', 'Maneuvering away from station')
+                    self.set_speed_50()
+                    pitch_time = self.config['OCDepartureAngle'] / self.pitchrate
+                    self.keys.send('PitchUpButton', hold=pitch_time)
+                    self.keys.send('UseBoostJuice')
+                    sleep(4)
+                    self.keys.send('PitchDownButton', hold=pitch_time)
 
-                    if fleet_carrier or squadron_fleet_carrier:
-                        self.ap_ckb('log+vce', 'Maneuvering')
-                        self.pitch_up_down(self.config['FCDepartureAngle'])
-                        self.update_ap_status("Undock Complete, accelerating")
-                        self.sc_engage()
-                        self.ap_ckb('log', 'Flying for configured FC departure time.')
-                        sleep(self.config['FCDepartureTime'])
-
-                    if starport_outpost:
-                        self.update_ap_status("Undock Complete, accelerating")
-                        self.sc_engage()
+                self.update_ap_status("Undock Complete, accelerating")
+                self.sc_engage()
 
         elif on_planet:
             # Check if we are on a landing pad (docked), or landed on the planet surface
