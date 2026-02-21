@@ -1883,7 +1883,6 @@ class EDAutopilot:
                     pitch_time = 70.0 / self.pitchrate
                     self.keys.send('PitchUpButton', hold=pitch_time)
                     sleep(4)
-                    self.keys.send('PitchDownButton', hold=pitch_time)
                 else:
                     # All non-starport stations: brief wait, then pitch away, boost, clear
                     sleep(5)
@@ -1893,7 +1892,6 @@ class EDAutopilot:
                     self.keys.send('PitchUpButton', hold=pitch_time)
                     self.keys.send('UseBoostJuice')
                     sleep(4)
-                    self.keys.send('PitchDownButton', hold=pitch_time)
 
                 self.update_ap_status("Undock Complete, accelerating")
                 self.sc_engage()
