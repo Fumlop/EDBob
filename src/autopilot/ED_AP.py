@@ -1880,7 +1880,7 @@ class EDAutopilot:
                     self.set_speed_100()
                     self.keys.send('UseBoostJuice')
                     sleep(2)
-                    pitch_time = 70.0 / self.pitchrate
+                    pitch_time = 10.0 / self.pitchrate
                     self.keys.send('PitchUpButton', hold=pitch_time)
                     sleep(4)
                 else:
