@@ -581,6 +581,10 @@ class EDWayPoint:
             nav_dest = self.ap.nav_route.get_last_system().upper()
             if nav_dest != "" and nav_dest != cur_star_system:
                 self.ap.sc_engage()
+                # SCO burst to clear gravity well before jump alignment
+                keys.send('UseBoostJuice')
+                sleep(3)
+                keys.send('UseBoostJuice')
                 keys.send('TargetNextRouteSystem')
                 self.ap.ap_ckb('log+vce', f"Jumping to {nav_dest}.")
                 self.ap.do_route_jump(scr_reg)

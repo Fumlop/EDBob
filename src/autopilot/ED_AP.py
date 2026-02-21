@@ -1321,8 +1321,6 @@ class EDAutopilot:
     # Common angles
     HALF_TURN = 180.0           # target behind flip
     QUARTER_TURN = 90           # 90-degree pitch maneuvers
-    # SCO settle time after boost
-    SCO_SETTLEMENT = 3.25       # seconds to let momentum decay after SCO
     # Key input settle time for navigation commands
     KEY_WAIT = 0.125
     # Dock approach
@@ -1946,31 +1944,21 @@ class EDAutopilot:
             sleep(5)
 
     def sc_engage(self) -> bool:
-        """ Engages supercruise. Clears masslock first (boosting), then SC, then 50% speed.
+        """ Engages supercruise. Clears masslock first (boosting), then SC.
         """
+        if self.status.get_flag(FlagsSupercruise):
+            return True
+
         for attempt in range(3):
             self.check_stop()
-            if self.status.get_flag(FlagsSupercruise):
-                break
-
             self.set_speed_100()
             self.wait_masslock_clear()
             self.keys.send('Supercruise')
 
-            # Wait for supercruise flag
             res = self.status.wait_for_flag_on(FlagsSupercruise, timeout=20)
             if res:
                 break
             logger.warning(f'sc_engage: not in supercruise after 20s (attempt {attempt+1})')
-
-        # Short SCO burst to get away from planet gravity well
-        self.keys.send('UseBoostJuice')
-        sleep(5)
-        self.keys.send('UseBoostJuice')
-
-        # Stop for alignment -- wait for SCO momentum to decay
-        self.set_speed_0()
-        sleep(self.SCO_SETTLEMENT)
 
         return True
 
