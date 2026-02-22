@@ -1,3 +1,4 @@
+import json
 import math
 import os
 import threading
@@ -14,8 +15,8 @@ from tkinter import messagebox
 import cv2
 import numpy as np
 import kthread
-from src.gui.EDAPColonizeEditor import read_json_file, write_json_file
 from simple_localization import LocalizationManager
+
 
 from src.autopilot.EDAP_EDMesg_Server import EDMesgServer
 from src.core.EDAP_data import (
@@ -46,6 +47,30 @@ from src.screen.OCR import OCR
 from src.ed.EDNavigationPanel import EDNavigationPanel
 from src.screen.Overlay import Overlay
 from src.ed.StatusParser import StatusParser
+
+
+def read_json_file(filepath: str):
+    if not os.path.exists(filepath):
+        return None
+    try:
+        with open(filepath, "r", encoding='utf-8') as fp:
+            return json.load(fp)
+    except Exception as e:
+        logger.warning(f"read_json_file error for '{filepath}': {e}")
+        return None
+
+
+def write_json_file(data, filepath: str):
+    if not os.path.exists(filepath) or data is None:
+        return False
+    try:
+        with open(filepath, "w", encoding='utf-8') as fp:
+            json.dump(data, fp, indent=4)
+            return True
+    except Exception as e:
+        logger.warning(f"write_json_file error for '{filepath}': {e}")
+        return False
+
 
 """
 File:EDAP.py    EDAutopilot
@@ -92,7 +117,6 @@ class EDAutopilot:
             "Ship_Configs": {},  # Dictionary of ship types with additional settings
         }
         self._prev_star_system = None
-        self.honk_thread = None
         self.speed_demand = None
         self._ocr = None
         self.ship_tst_roll_enabled = False
@@ -805,18 +829,23 @@ class EDAutopilot:
         The target circle center = exact target position. Screen center (960,540) = aligned.
         @return: True if fine alignment succeeded.
         """
+        _dbg = self.DEBUG_TARGET_CIRCLE
+
         target_off = self.get_target_offset(scr_reg)
         if target_off is None:
-            logger.info("target_fine_align: no target circle found")
+            if _dbg:
+                logger.info("[TGT_ALIGN] no target circle found, aborting")
             return False
 
         pit = target_off['pit']
         yaw = target_off['yaw']
-        logger.info(f"target_fine_align: pit={pit:.1f} yaw={yaw:.1f}")
+        if _dbg:
+            logger.info(f"[TGT_ALIGN] initial offset: pit={pit:.1f} yaw={yaw:.1f}")
 
         # Already close enough
         if abs(pit) < self.FINE_ALIGN_CLOSE and abs(yaw) < self.FINE_ALIGN_CLOSE:
-            logger.info("target_fine_align: already aligned")
+            if _dbg:
+                logger.info(f"[TGT_ALIGN] already aligned (threshold={self.FINE_ALIGN_CLOSE})")
             return True
 
         # Single correction per axis -- gentle, 50% approach
@@ -824,7 +853,8 @@ class EDAutopilot:
             key = 'PitchUpButton' if pit > 0 else 'PitchDownButton'
             hold = (abs(pit) * 0.5) / self.pitchrate
             hold = max(0.10, min(1.0, hold))
-            logger.info(f"target_fine_align: pit correction {pit:.1f}deg, hold={hold:.2f}s, key={key}")
+            if _dbg:
+                logger.info(f"[TGT_ALIGN] pitch correction: {pit:.1f}deg -> hold={hold:.2f}s key={key}")
             self.keys.send(key, hold=hold)
             sleep(2.0)
 
@@ -832,21 +862,32 @@ class EDAutopilot:
             # Re-read after pitch correction
             target_off = self.get_target_offset(scr_reg)
             if target_off is None:
+                if _dbg:
+                    logger.info("[TGT_ALIGN] lost target after pitch correction")
                 return False
             yaw = target_off['yaw']
+            if _dbg:
+                logger.info(f"[TGT_ALIGN] post-pitch yaw={yaw:.1f}")
             if abs(yaw) > 2.0:
                 key = 'YawRightButton' if yaw > 0 else 'YawLeftButton'
                 hold = (abs(yaw) * 0.5) / self.yawrate
                 hold = max(0.10, min(1.0, hold))
-                logger.info(f"target_fine_align: yaw correction {yaw:.1f}deg, hold={hold:.2f}s, key={key}")
+                if _dbg:
+                    logger.info(f"[TGT_ALIGN] yaw correction: {yaw:.1f}deg -> hold={hold:.2f}s key={key}")
                 self.keys.send(key, hold=hold)
                 sleep(2.0)
 
         # Verify with 3-of-3 avg
         med = self._avg_offset(scr_reg, self.get_target_offset)
-        if med:
-            logger.info(f"target_fine_align: final avg pit={med['pit']:.1f} yaw={med['yaw']:.1f}")
-        return med is not None and abs(med['pit']) < self.FINE_ALIGN_OK and abs(med['yaw']) < self.FINE_ALIGN_OK
+        if _dbg:
+            if med:
+                logger.info(f"[TGT_ALIGN] final avg: pit={med['pit']:.1f} yaw={med['yaw']:.1f} (ok_threshold={self.FINE_ALIGN_OK})")
+            else:
+                logger.info("[TGT_ALIGN] final avg: no valid readings")
+        aligned = med is not None and abs(med['pit']) < self.FINE_ALIGN_OK and abs(med['yaw']) < self.FINE_ALIGN_OK
+        if _dbg:
+            logger.info(f"[TGT_ALIGN] result={'ALIGNED' if aligned else 'MISSED'}")
+        return aligned
 
     def is_sc_assist_gone(self, scr_reg) -> bool:
         """3-of-3 check whether SC Assist has actually disappeared.
@@ -877,44 +918,50 @@ class EDAutopilot:
         logger.debug(f"is_sc_assist_gone: still active ({gone_count}/{self.VOTE_COUNT} gone)")
         return False
 
+    # Target circle radius bounds at 1920x1080
+    TARGET_CIRCLE_R_MIN = 44
+    TARGET_CIRCLE_R_MAX = 48
+
     def _find_target_circle(self, image_bgr):
-        """Find the orange target circle in an image using color detection.
+        """Find the orange target circle in an image using HoughCircles.
+        HoughCircles detects circular arcs directly, ignoring nearby text.
         @return: (center_x, center_y) or None if no orange circle found.
         """
         hsv = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2HSV)
 
-        # Orange filter for normal target circle
+        # Orange filter for target circle
         orange_mask = cv2.inRange(hsv, np.array([16, 165, 220]), np.array([98, 255, 255]))
+        blurred = cv2.GaussianBlur(orange_mask, (5, 5), 1)
 
-        # Min area for a valid target arc (scales with image size)
-        min_arc_area = max(30, image_bgr.shape[0] * image_bgr.shape[1] * 0.0001)
+        img_h, img_w = image_bgr.shape[:2]
 
-        best_contour = None
+        if self.DEBUG_TARGET_CIRCLE:
+            orange_px = int(cv2.countNonZero(orange_mask))
+            logger.info(f"[TGT_CIRCLE] image={img_w}x{img_h} orange_px={orange_px} r_range=[{self.TARGET_CIRCLE_R_MIN},{self.TARGET_CIRCLE_R_MAX}]")
 
-        contours, _ = cv2.findContours(orange_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if contours:
-            for c in sorted(contours, key=cv2.contourArea, reverse=True):
-                area = cv2.contourArea(c)
-                if area < min_arc_area:
-                    break
+        circles = cv2.HoughCircles(blurred, cv2.HOUGH_GRADIENT, dp=1.2,
+                                   minDist=img_w // 2,
+                                   param1=50, param2=20,
+                                   minRadius=self.TARGET_CIRCLE_R_MIN,
+                                   maxRadius=self.TARGET_CIRCLE_R_MAX)
 
-                x, y, cw, ch = cv2.boundingRect(c)
-                rect_area = cw * ch
-                if rect_area == 0:
-                    continue
-
-                fill_ratio = area / rect_area
-                aspect = max(cw, ch) / max(min(cw, ch), 1)
-
-                if fill_ratio < 0.5 and aspect < 3.0 and min(cw, ch) > 15:
-                    best_contour = c
-                    break
-
-        if best_contour is None:
+        if circles is None:
+            if self.DEBUG_TARGET_CIRCLE:
+                logger.info("[TGT_CIRCLE] no circle found")
             return None
 
-        (cx, cy), radius = cv2.minEnclosingCircle(best_contour)
-        logger.debug(f"_find_target_circle: center=({cx:.0f},{cy:.0f}) radius={radius:.0f}")
+        if self.DEBUG_TARGET_CIRCLE:
+            for i, c in enumerate(circles[0]):
+                dist = ((c[0] - img_w/2)**2 + (c[1] - img_h/2)**2)**0.5
+                logger.info(f"[TGT_CIRCLE] candidate {i}: center=({c[0]:.0f},{c[1]:.0f}) r={c[2]:.0f} dist_from_center={dist:.0f}")
+
+        # Pick the circle closest to image center
+        best = min(circles[0], key=lambda c: (c[0] - img_w/2)**2 + (c[1] - img_h/2)**2)
+        cx, cy, r = float(best[0]), float(best[1]), float(best[2])
+
+        if self.DEBUG_TARGET_CIRCLE:
+            logger.info(f"[TGT_CIRCLE] selected: center=({cx:.0f},{cy:.0f}) r={r:.0f}")
+
         return cx, cy
 
     def get_target_offset(self, scr_reg, disable_auto_cal: bool = False):
@@ -1329,6 +1376,7 @@ class EDAutopilot:
     ZERO_THROTTLE_RATE_FACTOR = 0.60
     # Debug
     DEBUG_SNAP = False           # save debug snapshots to debug-output/
+    DEBUG_TARGET_CIRCLE = True   # verbose logging for target circle detection + fine align
 
     def compass_align(self, scr_reg) -> bool:
         """ Align ship to compass nav target.
@@ -1678,24 +1726,6 @@ class EDAutopilot:
         self.compass_align(scr_reg)
         self.set_speed_50()
 
-    def honk(self):
-        # Do the Discovery Scan (Honk)
-
-        if self.status.get_flag(FlagsAnalysisMode):
-            fire_key = 'PrimaryFire' if self.config['DSSButton'] == 'Primary' else 'SecondaryFire'
-            if not self.keys.has_binding(fire_key):
-                logger.warning(f'honk: no keybinding for {fire_key}, skipping discovery scan')
-                self.ap_ckb('log', f'No keybinding for {fire_key}. Skipping honk.')
-                return
-
-            logger.debug('position=scanning')
-            self.keys.send(fire_key, state=1)
-            sleep(7)  # roughly 6 seconds for DSS
-            logger.debug('position=scanning complete')
-            self.keys.send(fire_key, state=0)
-        else:
-            self.ap_ckb('log', 'Not in analysis mode. Skipping discovery scan (honk).')
-
     def logout(self):
         """ Performs menu action to log out of game """
         self.update_ap_status("Logout")
@@ -1887,7 +1917,8 @@ class EDAutopilot:
                                 break
                             logger.debug(f"in_station check: {pct:.1f}% -- LEAVE STATION still visible")
                         sleep(1)
-                    logger.info("Station cleared")
+                    logger.info("Station cleared, waiting 3s before throttle up")
+                    sleep(3)
                     self.set_speed_100()
                 else:
                     # All non-starport stations: brief wait, then pitch away, boost, clear
@@ -1987,10 +2018,6 @@ class EDAutopilot:
         self.total_dist_jumped += self.jn.ship_state()['dist_jumped']
         self.total_jumps = self.jump_cnt + self.jn.ship_state()['jumps_remains']
         self.jn.ship_state()['jumps_remains'] = 0
-
-        # Discovery scan (honk)
-        self.honk_thread = threading.Thread(target=self.honk, daemon=True)
-        self.honk_thread.start()
 
         # Sun avoidance
         sun_was_ahead = self.sun_avoid(scr_reg)
@@ -2234,7 +2261,6 @@ class EDAutopilot:
                     self.update_ap_status("DSS Scan")
                     self.ap_ckb('log', 'DSS Scan: '+cur_star_system)
                     set_focus_elite_window()
-                    self.honk()
                     self._prev_star_system = cur_star_system
                     self.update_ap_status("Idle")
 
