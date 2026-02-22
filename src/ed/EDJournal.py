@@ -192,6 +192,7 @@ class EDJournal:
             'last_market_buy': None,   # {'Type': str, 'Count': int, 'timestamp': str}
             'last_market_sell': None,   # {'Type': str, 'Count': int, 'timestamp': str}
             'nav_route_cleared': False,
+            'music_track': '',
         }
         self.ship_state()    # load up from file
         self.reset_items()
@@ -301,6 +302,9 @@ class EDJournal:
                 
             elif log_event == 'Undocked':
                 self.ship['status'] = 'in_space'
+
+            elif log_event == 'Music':
+                self.ship['music_track'] = log.get('MusicTrack', '')
 
             elif log_event == 'DockingRequested':
                 self.ship['status'] = 'starting_docking'

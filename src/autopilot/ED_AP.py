@@ -1364,7 +1364,6 @@ class EDAutopilot:
     BODY_EVADE_PITCH = 90
     PASSBODY_TIME = 25
     # Common angles
-    HALF_TURN = 180.0           # target behind flip
     QUARTER_TURN = 90           # 90-degree pitch maneuvers
     # Key input settle time for navigation commands
     KEY_WAIT = 0.125
@@ -1420,21 +1419,21 @@ class EDAutopilot:
 
             logger.debug(f"Compass: roll={off['roll']:.1f} pit={off['pit']:.1f} yaw={off['yaw']:.1f} z={off['z']}")
 
-            # Target behind -- pitch UP to flip (away from star after jump)
-            # Max 2x 180° flips, then 1x 90° to break deadlock
+            # Target behind -- pitch UP in 90° steps with compass check between each
+            # Sequence: 90°, 90°, 90°, 45° (max 4 attempts)
             if off['z'] < 0:
                 flip_count = getattr(self, '_flip_count', 0)
                 effective_rate = self.pitchrate * self.ZERO_THROTTLE_RATE_FACTOR
-                if flip_count < 2:
-                    flip_deg = 180.0
-                elif flip_count == 2:
+                if flip_count < 3:
                     flip_deg = 90.0
-                    logger.warning("Compass: 2 flips failed, trying 90deg break")
+                elif flip_count == 3:
+                    flip_deg = 45.0
+                    logger.warning("Compass: 3x 90deg flips failed, trying 45deg")
                 else:
-                    logger.error("Compass: 3 flips exhausted, giving up")
+                    logger.error("Compass: 4 flips exhausted, giving up")
                     break
                 pitch_time = flip_deg / effective_rate
-                logger.info(f"Compass: target behind, flip {flip_count+1} pitch {flip_deg:.0f}deg ({pitch_time:.1f}s)")
+                logger.info(f"Compass: target behind, flip {flip_count+1}/4 pitch {flip_deg:.0f}deg ({pitch_time:.1f}s)")
                 self.ap_ckb('log', 'Target behind, flipping up')
                 self.keys.send('PitchUpButton', hold=pitch_time)
                 sleep(self.ALIGN_SETTLE)
@@ -1458,8 +1457,8 @@ class EDAutopilot:
                     continue
                 if off.get('z', 1) < 0:
                     effective_rate = self.pitchrate * self.ZERO_THROTTLE_RATE_FACTOR
-                    pitch_time = 180.0 / effective_rate
-                    logger.info(f"Compass: target went behind during roll, flipping up ({pitch_time:.1f}s)")
+                    pitch_time = 90.0 / effective_rate
+                    logger.info(f"Compass: target went behind during roll, pitching 90deg ({pitch_time:.1f}s)")
                     self.keys.send('PitchUpButton', hold=pitch_time)
                     sleep(0.5)
                     continue
@@ -1901,30 +1900,20 @@ class EDAutopilot:
                 self.undock()
 
                 if starport:
-                    # Starports have mail slots -- wait for LEAVE STATION text to disappear
-                    # Require 3 consecutive clear frames to avoid false-clears
-                    sleep(15)
-                    clear_count = 0
-                    for _ in range(30):
+                    # Starports have mail slots -- wait for autodock to clear via journal
+                    # Music: DockingComputer -> NoTrack means autodock finished, we're outside
+                    logger.info("Starport undock: waiting for Music:NoTrack journal event")
+                    for i in range(48):
                         self.check_stop()
-                        snap = self.scrReg.capture_region(self.scr, 'in_station', inv_col=False)
-                        if snap is not None:
-                            bgr = snap[:, :, :3]
-                            lower = np.array([195, 195, 125], dtype=np.uint8)
-                            upper = np.array([205, 205, 135], dtype=np.uint8)
-                            mask = cv2.inRange(bgr, lower, upper)
-                            pct = (np.count_nonzero(mask) / mask.size) * 100
-                            if pct < 0.5:
-                                clear_count += 1
-                                logger.info(f"in_station check: {pct:.1f}% -- clear frame {clear_count}/3")
-                                if clear_count >= 3:
-                                    break
-                            else:
-                                clear_count = 0
-                                logger.debug(f"in_station check: {pct:.1f}% -- LEAVE STATION still visible")
-                        sleep(1)
-                    logger.info("Station cleared, waiting 3s before throttle up")
-                    sleep(3)
+                        self.jn.ship_state()
+                        track = self.jn.ship.get('music_track', '')
+                        if track == 'NoTrack':
+                            logger.info(f"Starport undock: Music:NoTrack after {(i+1)*5}s -- mail slot cleared")
+                            break
+                        logger.debug(f"Starport undock: music_track='{track}', waiting...")
+                        sleep(5)
+                    else:
+                        logger.warning("Starport undock: 240s timeout waiting for NoTrack, proceeding anyway")
                     self.set_speed_100()
                 else:
                     # All non-starport stations: brief wait, then pitch away, boost, clear
