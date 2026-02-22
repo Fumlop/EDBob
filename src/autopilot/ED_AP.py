@@ -1902,20 +1902,26 @@ class EDAutopilot:
 
                 if starport:
                     # Starports have mail slots -- wait for LEAVE STATION text to disappear
+                    # Require 3 consecutive clear frames to avoid false-clears
                     sleep(15)
+                    clear_count = 0
                     for _ in range(30):
                         self.check_stop()
                         snap = self.scrReg.capture_region(self.scr, 'in_station', inv_col=False)
                         if snap is not None:
                             bgr = snap[:, :, :3]
-                            lower = np.array([181, 181, 111], dtype=np.uint8)
-                            upper = np.array([221, 221, 151], dtype=np.uint8)
+                            lower = np.array([195, 195, 125], dtype=np.uint8)
+                            upper = np.array([205, 205, 135], dtype=np.uint8)
                             mask = cv2.inRange(bgr, lower, upper)
                             pct = (np.count_nonzero(mask) / mask.size) * 100
                             if pct < 0.5:
-                                logger.info(f"in_station check: {pct:.1f}% -- cleared slot")
-                                break
-                            logger.debug(f"in_station check: {pct:.1f}% -- LEAVE STATION still visible")
+                                clear_count += 1
+                                logger.info(f"in_station check: {pct:.1f}% -- clear frame {clear_count}/3")
+                                if clear_count >= 3:
+                                    break
+                            else:
+                                clear_count = 0
+                                logger.debug(f"in_station check: {pct:.1f}% -- LEAVE STATION still visible")
                         sleep(1)
                     logger.info("Station cleared, waiting 3s before throttle up")
                     sleep(3)
@@ -1969,7 +1975,7 @@ class EDAutopilot:
             # Disable SCO. If SCO not fitted, this will do nothing.
             self.keys.send('UseBoostJuice')
 
-    def wait_masslock_clear(self, max_checks=20):
+    def wait_masslock_clear(self, max_checks=10):
         """Boost and wait until masslock clears. Boosts once per check cycle."""
         if not self.status.get_flag(FlagsFsdMassLocked):
             return
