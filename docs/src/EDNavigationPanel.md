@@ -1,38 +1,67 @@
-# EDNavigationPanel.py
+# EDNavigationPanel.py -- Navigation Panel Interactions
 
 ## Purpose
-Navigation (left-hand) panel: target row detection for SC Assist activation and docking requests. Menu key sequences are delegated to MenuNav. Also exports perspective transform utilities shared with EDInternalStatusPanel.
 
-## Module-level Functions (shared utilities)
-- **image_perspective_transform(image, src_quad)**: Deskews a panel image via perspective warp. Returns (image, transform, reverse_transform).
-- **image_reverse_perspective_transform(image, src_quad, rev_transform)**: Reverse-warps coordinates back to skewed panel space for overlay drawing.
-- **rects_to_quadrilateral(rect_tlbr, rect_bltr)**: Converts two bounding rectangles into a quadrilateral shape.
+Navigation (left-hand) panel: target row detection for SC Assist activation and docking requests. Menu key sequences are delegated to MenuNav. Also exports perspective transform utilities shared with EDInternalStatusPanel.
+Lives in `src/ed/EDNavigationPanel.py`.
+
+## Module-Level Functions
+
+| Function | Returns | Description |
+|---|---|---|
+| `image_perspective_transform(image, src_quad)` | (image, transform, reverse_transform) | Deskew a nav/internal panel image via perspective warp using `cv2.getPerspectiveTransform`. |
+| `image_reverse_perspective_transform(image, src_quad, rev_transform)` | Quad | Reverse-warp coordinates back to skewed panel space for overlay drawing. |
+| `rects_to_quadrilateral(rect_tlbr, rect_bltr)` | Quad | Convert two bounding rectangles (top-left/bottom-right and bottom-left/top-right) into a single quadrilateral. |
 
 ## Class: EDNavigationPanel
 
-### Target Row Detection
-- **_load_templates()**: Class method, loads and caches bracket templates (`bracket_lt.png` flipped/inverted)
-- **_is_target_row_selected(seen_bracket)**: Combined detection using orange mask bracket absence + inverted grayscale bracket presence. Passed as callback to `MenuNav.activate_sc_assist()`
+### Constructor
 
-### Detection Constants
-- `NAV_LIST_BOX`: (264, 400, 1200, 800) -- crop region for nav list rows
-- `ORANGE_BRACKET_HIGH`: 0.70 -- bracket clearly visible (not on target)
-- `ORANGE_BRACKET_LOW`: 0.60 -- bracket gone (target found)
-- `INV_BRACKET_THRESHOLD`: 0.65 -- inverted bracket match confirms target
+| Parameter | Type | Description |
+|---|---|---|
+| `ed_ap` | EDAutopilot | Parent autopilot instance |
+| `screen` | Screen | Screen capture instance |
+| `keys` | EDKeys | Key sending interface |
+| `cb` | callable | GUI callback |
 
-### MenuNav Delegates
-- **activate_sc_assist()** -> `MenuNav.activate_sc_assist()` with `_is_target_row_selected` callback
-- **request_docking()** -> `MenuNav.request_docking()`
-- **hide_panel()** -> `MenuNav.goto_cockpit()` when panel is open
-- **lock_destination()** -> Deprecated stub, returns False
+### Class Constants
+
+| Constant | Value | Description |
+|---|---|---|
+| `NAV_LIST_BOX` | (264, 400, 1200, 800) | Nav panel list crop region in 1920x1080 pixels |
+| `ORANGE_BRACKET_HIGH` | 0.70 | Bracket clearly visible (not on target row) |
+| `ORANGE_BRACKET_LOW` | 0.60 | Bracket gone (target row selected or off-page) |
+| `INV_BRACKET_THRESHOLD` | 0.65 | Inverted bracket match confirms target selected |
+
+### Methods
+
+| Method | Returns | Description |
+|---|---|---|
+| `_load_templates()` | None | Class method. Loads and caches `bracket_lt.png` template, creates flipped/inverted variant for `>` detection. |
+| `_is_target_row_selected(seen_bracket)` | bool | Combined detection: (1) orange mask template match for `<` bracket disappearance, (2) inverted grayscale `>` match on bright row. Either trigger = target found. |
+| `activate_sc_assist()` | bool | Delegates to `MenuNav.activate_sc_assist()` with `_is_target_row_selected` as callback. |
+| `request_docking()` | bool | Delegates to `MenuNav.request_docking()`. |
+| `hide_panel()` | None | Closes nav panel via `MenuNav.goto_cockpit()` if `GuiFocusExternalPanel` is active. |
+| `lock_destination(dst_name)` | bool | DEPRECATED. OCR-based nav panel reading removed. Always returns False. |
+
+### Target Row Detection Algorithm
+
+1. Capture full screen, crop to `NAV_LIST_BOX`
+2. Method 1 (orange mask): Template match `<` bracket on orange HSV mask. High score means bracket visible (not on target). Score drop after seeing bracket = target found.
+3. Method 2 (inverted grayscale): Template match dark `>` on bright selected row. High score = positive confirmation.
+4. Either method triggering returns True.
 
 ## Dependencies
-- MenuNav: All menu key sequences delegated here
-- cv2/numpy: Template matching, color conversion
-- StatusParser: GUI focus state detection
 
-## Removed (consolidated into MenuNav or unused)
-- All perspective transform capture methods (capture_panel_straightened, capture_tab_bar, capture_location_panel)
-- OCR-based tab detection (show_panel, is_panel_active, show_navigation_tab, show_contacts_tab)
-- Panel region config (reg, sub_reg, panel_quad_pct/pix, transforms)
-- Locale tab text strings
+| Module | Purpose |
+|---|---|
+| `MenuNav` | All menu key sequences delegated here |
+| `cv2` / `numpy` | Template matching, color conversion, HSV filtering |
+| `StatusParser` | GUI focus state detection (`GuiFocusExternalPanel`) |
+| `Screen_Regions` | `Quad`, `Point` geometry classes |
+
+## Notes
+
+- Bracket template loaded from `src/ed/templates/bracket_lt.png`
+- `seen_bracket` is a mutable list `[bool]` passed by reference to track state across calls
+- Perspective transform utilities are used by `EDInternalStatusPanel` for panel deskewing

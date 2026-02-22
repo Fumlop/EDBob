@@ -1,54 +1,28 @@
-# MenuNav.py
-
-**Location:** `src/ed/MenuNav.py`
+# MenuNav.py -- Consolidated Menu Navigation
 
 ## Purpose
 
-Consolidated menu/UI navigation functions for Elite Dangerous. Single source of truth for all menu key sequences. Replaces scattered menu navigation across ED_AP, EDNavigationPanel, EDStationServicesInShip, and EDShipControl with clean, reusable stateless functions.
-
-## Dependencies
-
-- `EDKeys` (keys param) -- sends keypresses to ED
-- `StatusParser` (status_parser param) -- reads gui_focus from Status.json
-- `EDAP_data` -- GuiFocus constants
+Consolidated menu/UI navigation functions for Elite Dangerous. Single source of truth for all menu key sequences. Stateless module-level functions replace scattered menu navigation across ED_AP, EDNavigationPanel, EDStationServicesInShip, and EDShipControl.
+Lives in `src/ed/MenuNav.py`.
 
 ## Functions
 
-All functions are module-level (no class). They take `keys` and `status_parser` as first params (except where noted).
+All functions are module-level (no class). They take `keys` (EDKeys) and `status_parser` (StatusParser) as first params unless noted otherwise.
 
-### `goto_cockpit(keys, status_parser) -> bool`
-Sends `UI_Back` repeatedly until `gui_focus == NoFocus`. Safe to call when already in cockpit.
-
-### `realign_cursor(keys, hold=3)`
-Holds `UI_Up` to move cursor to the top of any menu list. Default hold=3 seconds.
-
-### `refuel_repair_rearm(keys, status_parser)`
-From docked station menu: realigns to top (Refuel), selects Refuel, moves right to Repair and selects, moves right to Rearm and selects, then returns to cockpit view.
-
-### `open_station_services(keys, status_parser) -> bool`
-From docked menu: goes to cockpit, realigns, navigates down to Station Services. Returns True if GuiFocus == StationServices within 15s timeout.
-
-### `undock(keys, status_parser)`
-From docked menu: goes to cockpit, realigns to top, navigates down 2 rows to Auto Undock, selects.
-
-### `open_nav_panel(keys, status_parser) -> bool`
-Sends `FocusLeftPanel`, waits for gui_focus == ExternalPanel (3s timeout). Returns success.
-
-### `close_nav_panel(keys)`
-Sends `UI_Back` to close nav panel.
-
-### `activate_sc_assist(keys, status_parser, is_target_row_fn, cb=None) -> bool`
-Opens nav panel, scrolls to top, steps down row-by-row calling `is_target_row_fn(seen_bracket)` to detect target. On match: selects row, navigates right to SC Assist button, selects, closes panel.
-
-### `request_docking(keys, status_parser) -> bool`
-Opens nav panel, cycles 2 tabs to Contacts, selects action on first entry (UI_Right + UI_Select), cycles back 2 tabs, closes panel.
-
-### `transfer_all_to_colonisation(keys)`
-Transfers all cargo to a colonisation/construction ship. Assumes the construction services screen is already open. Navigates into the table, selects TRANSFER ALL, confirms, and exits.
+| Function | Returns | Description |
+|---|---|---|
+| `goto_cockpit(keys, status_parser, max_tries=10)` | bool | Sends `UI_Back` repeatedly until `gui_focus == NoFocus`. Safe to call when already in cockpit. Returns False if max_tries exceeded. |
+| `realign_cursor(keys)` | None | Holds `UI_Up` for 2s to move cursor to top of any menu list. |
+| `refuel_repair_rearm(keys, status_parser)` | None | From docked menu: Refuel (top row), Right to Repair, Right to Rearm, then back to cockpit. |
+| `open_station_services(keys, status_parser)` | bool | From docked menu: cockpit, realign, Down to Station Services, Select. Returns True if `GuiFocusStationServices` within 15s. |
+| `undock(keys, status_parser)` | None | From docked menu: cockpit, realign, Down x2 to Auto Undock, Select. |
+| `open_nav_panel(keys, status_parser)` | bool | Sends `FocusLeftPanel`, waits for `GuiFocusExternalPanel` (3s timeout). |
+| `close_nav_panel(keys)` | None | Sends `UI_Back` to close nav panel. |
+| `activate_sc_assist(keys, status_parser, is_target_row_fn, cb=None)` | bool | Opens nav panel, scrolls to top, steps down row-by-row (max 20) calling `is_target_row_fn(seen_bracket)`. On match: Select, Right to SC Assist, Select, close panel. |
+| `request_docking(keys, status_parser)` | bool | Opens nav panel, cycles 2 tabs to Contacts, Right + Select on first entry, cycles back 2 tabs, closes panel. |
+| `transfer_all_to_colonisation(keys)` | None | Keys-only param. Transfers all cargo to colonisation ship: navigate into table, TRANSFER ALL, Confirm, Exit. Assumes construction services screen is open. |
 
 ## Delegation Map
-
-All callers delegate their menu key sequences to MenuNav:
 
 | Caller | Method | Delegates to |
 |---|---|---|
@@ -62,11 +36,6 @@ All callers delegate their menu key sequences to MenuNav:
 | `ED_AP` | `undock()` | `undock()` |
 | `ED_AP` | `dock()` (refuel block) | `refuel_repair_rearm()` |
 
-## Not in MenuNav
-
-- `sell_commodity` / `buy_commodity` -- business logic with market data, cursor tracking, OCR. Stays in `CommoditiesMarket`.
-- Galaxy map, system map, fleet carrier transfers -- stay in their current files for now.
-
 ## Menu Layout Reference (Docked Station)
 
 ```
@@ -74,3 +43,19 @@ Row 0: Refuel  |  Repair  |  Rearm    (horizontal navigation with UI_Right)
 Row 1: Station Services
 Row 2: Auto Undock (Launch)
 ```
+
+## Dependencies
+
+| Module | Purpose |
+|---|---|
+| `EDAP_data` | `GuiFocusNoFocus`, `GuiFocusExternalPanel`, `GuiFocusStationServices` |
+| `StatusParser` | Reads gui_focus from Status.json |
+| `EDlogger` | Logging |
+
+## Notes
+
+- All functions are stateless -- no class needed
+- `realign_cursor` uses 2s hold on `UI_Up` (not 3s as previously documented)
+- `activate_sc_assist` walks max 20 rows before giving up
+- `request_docking` cycles to Contacts tab (2 tabs right from Navigation)
+- Not in MenuNav: buy/sell commodity logic (stays in `CommoditiesMarket`), galaxy/system map navigation

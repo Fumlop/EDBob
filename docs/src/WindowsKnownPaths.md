@@ -1,45 +1,70 @@
-# WindowsKnownPaths.py
+# WindowsKnownPaths.py -- Windows Known Folder Paths
 
 ## Purpose
-Windows Shell API wrapper for resolving known folder paths. Provides cross-platform path resolution for system directories like Documents, Downloads, SavedGames, etc.
 
-## Key Classes/Functions
-- GUID: ctypes Structure mapping UUID to Windows GUID format
-- FOLDERID: Class with 100+ UUID constants for Windows known folder IDs
-- UserHandle: Enum-like class for user context (current/common)
-- PathNotFoundException: Exception raised when folder not found
+Wraps the Windows Shell API `SHGetKnownFolderPath` to resolve known folder paths (Documents, SavedGames, etc.). Used throughout the codebase to find Elite Dangerous data files.
+Lives in `src/core/WindowsKnownPaths.py`.
 
-## Key Methods
-- get_path(folderid, user_handle=UserHandle.common): Resolves full path for given folder ID, returns string path
+## Classes
 
-## FOLDERID Constants (Sample)
-- Desktop, Documents, Downloads, Pictures, Videos
-- SavedGames: For Elite Dangerous game data files
-- LocalAppData: For game configuration files
-- ProgramFiles, System, Windows
-- Music, Contacts, Favorites, History, Recent
-- CommonAdminTools, CommonPrograms, CommonStartMenu
+### GUID
+
+ctypes Structure wrapping a Windows GUID from a Python `UUID`.
+
+| Method | Description |
+|---|---|
+| `__init__(uuid_)` | Parse UUID fields into DWORD/WORD/BYTE structure. |
+
+### FOLDERID
+
+Collection of `UUID` constants for Windows known folders. Key entries used by this project:
+
+| Attribute | Description |
+|---|---|
+| `SavedGames` | `{4C5C32FF-BB9D-43b0-B5B4-2D72E54EAAA4}` -- used to find `Status.json`, `NavRoute.json`, `Cargo.json`, `Market.json` |
+| `LocalAppData` | `{F1B32785-6FBA-4FCF-9D55-7B8E7F157091}` |
+| `Documents` | `{FDD39AD0-238F-46AF-ADB4-6C85480369C7}` |
+| `Desktop` | `{B4BFCC3A-DB2C-424C-B029-7FE99A87C641}` |
+
+Contains 110+ known folder IDs covering all standard Windows locations.
+
+### UserHandle
+
+| Attribute | Type | Description |
+|---|---|---|
+| `current` | HANDLE(0) | Current user |
+| `common` | HANDLE(-1) | All users (common/public) |
+
+### PathNotFoundException
+
+Exception raised when `SHGetKnownFolderPath` fails.
+
+## Functions
+
+| Function | Returns | Description |
+|---|---|---|
+| `get_path(folderid, user_handle=UserHandle.common)` | str | Resolve a known folder path. Calls `SHGetKnownFolderPath`, frees COM memory with `CoTaskMemFree`. Raises `PathNotFoundException` on failure. |
+
+## Usage Pattern
+
+```python
+from src.core.WindowsKnownPaths import get_path, FOLDERID, UserHandle
+saved_games = get_path(FOLDERID.SavedGames, UserHandle.current)
+# -> "C:\Users\<user>\Saved Games"
+status_path = saved_games + "/Frontier Developments/Elite Dangerous/Status.json"
+```
 
 ## Dependencies
-- ctypes: Windows API bindings (windll, wintypes)
-- uuid: UUID handling for FOLDERID constants
-- sys: Used in __main__ for CLI argument handling
 
-## Usage
-```python
-from WindowsKnownPaths import get_path, FOLDERID, UserHandle
-saved_games = get_path(FOLDERID.SavedGames, UserHandle.current)
-```
-
-## Command Line Usage
-```
-python WindowsKnownPaths.py SavedGames current
-python WindowsKnownPaths.py Documents
-```
+| Module | Purpose |
+|---|---|
+| `ctypes` / `windll` / `wintypes` | Windows API access |
+| `uuid.UUID` | Python UUID for GUID conversion |
 
 ## Notes
-- Uses Windows Shell32 API (SHGetKnownFolderPath)
-- Automatic COM memory cleanup (CoTaskMemFree)
-- Currently Windows-only (ctypes/windll Windows-specific)
-- UserHandle.current = current user, UserHandle.common = all users
-- Used by CargoParser, MarketParser for finding Elite Dangerous game files
+
+- Windows-only module (uses `shell32.SHGetKnownFolderPath`)
+- Primary use: resolving `SavedGames` folder for ED journal/status files
+- `UserHandle.current` is used for per-user paths, `UserHandle.common` for shared paths
+- Standalone `__main__` block accepts folder name and user handle as CLI arguments
+- COM memory is properly freed via `CoTaskMemFree`

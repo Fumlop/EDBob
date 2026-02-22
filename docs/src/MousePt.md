@@ -1,31 +1,51 @@
-# MousePt.py
+# MousePt.py -- Mouse Input Handler
 
 ## Purpose
-Mouse position tracking and clicking utility. Captures mouse click coordinates and executes mouse clicks at specified screen positions.
 
-## Key Classes/Functions
-- MousePoint: Handles mouse event listening and click execution
+Mouse click detection and simulation using `pynput`. Provides blocking click-location capture and programmatic click at coordinates.
+Lives in `src/core/MousePt.py`.
 
-## Key Methods
-- get_location(): Starts mouse listener, blocks until user clicks, returns (x, y) tuple
-- do_click(x, y, delay=0.1): Moves mouse to position and executes left click with configurable hold time
-- on_click(x, y, button, pressed): Callback for mouse click events (stores position, sets termination flag)
-- on_move(x, y): Callback for mouse move events (placeholder)
-- on_scroll(x, y, dx, dy): Callback for scroll events (placeholder)
+## Class: MousePoint
 
-## Attributes
-- x, y: Current mouse position
-- term: Termination flag for blocking listener loop
-- ls: Mouse listener instance
-- ms: Mouse controller instance
+### Constructor
+
+No parameters. Initializes position to (0, 0), creates pynput `Controller`.
+
+### Attributes
+
+| Attribute | Type | Description |
+|---|---|---|
+| `x` | int | Last captured X coordinate |
+| `y` | int | Last captured Y coordinate |
+| `term` | bool | Termination flag for listener loop |
+| `ls` | Listener or None | pynput mouse listener (created on demand) |
+| `ms` | Controller | pynput mouse controller |
+
+### Methods
+
+| Method | Returns | Description |
+|---|---|---|
+| `on_move(x, y)` | True | Mouse move callback (no-op, keeps listener alive). |
+| `on_scroll(x, y, dx, dy)` | True | Mouse scroll callback (no-op, keeps listener alive). |
+| `on_click(x, y, button, pressed)` | True | Mouse click callback. Stores coordinates and sets `term = True`. |
+| `get_location()` | (x, y) | Blocking: starts mouse listener, waits for click, returns click coordinates. Stops listener after capture. |
+| `do_click(x, y, delay=0.1)` | None | Move mouse to (x, y), press left button, wait `delay` seconds, release. |
+
+## Module-Level Functions
+
+| Function | Description |
+|---|---|
+| `main()` | Test harness: calls `do_click(1977, 510)`. |
 
 ## Dependencies
-- pynput.mouse: Cross-platform mouse control and listening
-- time.sleep: Sleep for polling loop
+
+| Module | Purpose |
+|---|---|
+| `pynput.mouse` | Mouse listener (`Listener`) and controller (`Controller`) |
 
 ## Notes
-- Uses pynput for cross-platform mouse control
-- get_location() blocks main thread until click detected
-- do_click() includes small delay between press and release
-- Listener started/stopped on demand (not persistent)
-- Initial example in main() shows clicking at position (1977, 510)
+
+- `get_location()` creates a new listener each call (not reusable)
+- `do_click()` uses press/release with configurable delay (default 0.1s)
+- Handles `KeyboardInterrupt` gracefully in `get_location()`
+- Used for calibration and manual coordinate capture
