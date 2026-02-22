@@ -1022,8 +1022,7 @@ class APGui:
         logger.debug("Entered: restart_program")
         logger.info("restart now")
 
-        self.stop_fsd()
-        self.stop_sc()
+        self.stop_all_assists()
         self.ed_ap.quit()
         sleep(0.1)
 
