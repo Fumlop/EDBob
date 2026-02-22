@@ -15,7 +15,8 @@ Automated waypoint autopilot for Elite Dangerous. Flies trade routes, buys and s
 | Resolution | **1920 x 1080** |
 | Display mode | **Borderless Windowed** |
 | HUD color | **Default orange** -- custom HUD colors are NOT supported |
-| Docking computer | Required (autopilot requests docking, the game handles landing) |
+| Docking computer | Required (the autopilot requests docking, the in-game docking computer handles landing) |
+| SC Assist | Required (the in-game module handles supercruise approach and drop-out) |
 
 Keybindings are auto-detected from your Elite Dangerous config files. No manual key setup needed.
 
