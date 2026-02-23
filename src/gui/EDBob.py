@@ -30,8 +30,6 @@ import sys  # Do not delete - prevents a 'super' error from tktoolip.
 from time import sleep
 from tktooltip import ToolTip  # In requirements.txt as 'tkinter-tooltip'.
 
-from src.core.MousePt import MousePoint
-
 from src.autopilot import ED_AP
 
 from src.core.EDlogger import logger
@@ -132,8 +130,6 @@ class APGui:
 
         self.ed_ap = ED_AP.EDAutopilot(cb=self.callback)
 
-
-        self.mouse = MousePoint()
 
         self.checkboxvar = {}
         self.radiobuttonvar = {}

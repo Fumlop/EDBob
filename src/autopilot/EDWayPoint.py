@@ -10,7 +10,6 @@ from src.ed.EDKeys import EDKeys
 from src.core.EDlogger import logger
 import json
 from src.ed.MarketParser import MarketParser
-from src.core.MousePt import MousePoint
 from pathlib import Path
 
 """
@@ -20,7 +19,6 @@ Description:
    Class will load file called waypoints.json which contains a list of System name to jump to.
    Provides methods to select a waypoint pass into it.  
 
-Author: sumzer0@yahoo.com
 """
 
 
