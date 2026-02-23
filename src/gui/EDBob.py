@@ -40,15 +40,11 @@ File:EDBob.py
 Description:
 User interface for controlling the ED Autopilot
 
-Note:
-Ideas taken from:  https://github.com/skai2/EDAutopilot
-
  HotKeys:
     Home - Start FSD Assist
     INS  - Start SC Assist
     End - Terminate any ongoing assist (FSD, SC)
 
-Author: sumzer0@yahoo.com
 """
 
 
@@ -323,16 +319,10 @@ class APGui:
 
         if updates_available:
             # Optionally, provide further instructions or automate the cloning process
-            self.log_msg("=====================================================")
-            self.log_msg("========== An update to EDAP is available ===========")
-            self.log_msg("==== Click 'Check for Updates' on the Debug tab, ====")
-            self.log_msg("====== or go directly to the EDAP Github page =======")
-            self.log_msg("=====================================================")
-
-            # print("You can use the following command to clone the repository again:")
-            # print("git clone <repository_url> <new_directory_name>")
+            self.log_msg("An update to EDBob is available!")
+            self.log_msg("Visit https://github.com/Fumlop/EDBob to update.")
         else:
-            self.log_msg("You have the latest version of EDAP!")
+            self.log_msg("You have the latest version of EDBob.")
 
     def open_changelog(self):
         webbrowser.open_new("https://github.com/Fumlop/EDBob/blob/main/ChangeLog.md")

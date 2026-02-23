@@ -20,7 +20,6 @@ File:StationServicesInShip.py
 Description:
   TBD 
 
-Author: Stumpii
 """
 
 

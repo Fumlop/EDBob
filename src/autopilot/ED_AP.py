@@ -53,7 +53,7 @@ File:EDAP.py    EDBob
 Description:
 
 Note:
-https://github.com/Fumlo/EDBob
+https://github.com/Fumlop/EDBob
 """
 
 

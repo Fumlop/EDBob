@@ -17,7 +17,6 @@ File:Overlay.py
 Description:
   Class to support drawing lines and text which would overlay the parent screen
 
-Author: sumzer0@yahoo.com
 
 to use:
 ov = Overlay("")

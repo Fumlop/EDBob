@@ -14,8 +14,7 @@ from src.core.EDlogger import logger
 from src.core.WindowsKnownPaths import get_path, FOLDERID, UserHandle
 
 """
-File EDJournal.py  (leveraged the EDAutopilot on github, turned into a 
-                   class and enhanced, see https://github.com/skai2/EDAutopilot
+File EDJournal.py
 
 Description: This file perform journal file processing.  It opens the latest updated Journal* 
 file in the Saved directory, loads in the entries.  Specific entries are stored in a dictionary.
@@ -34,7 +33,6 @@ Design:
     process it
     - also check if a new journal file present, if so close current one and open new one
  
-Author: sumzer0@yahoo.com
 """
 
 """                             

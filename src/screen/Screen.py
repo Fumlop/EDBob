@@ -18,7 +18,6 @@ File:Screen.py
 Description:
   Class to handle screen grabs
 
-Author: sumzer0@yahoo.com
 """
 # size() return (ctypes.windll.user32.GetSystemMetrics(0), ctypes.windll.user32.GetSystemMetrics(1))
 # TODO: consider update to handle ED running in a window

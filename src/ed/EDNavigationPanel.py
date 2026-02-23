@@ -21,7 +21,6 @@ Description:
 
   Also exports perspective transform utilities used by EDInternalStatusPanel.
 
-Author: Stumpii
 """
 
 
