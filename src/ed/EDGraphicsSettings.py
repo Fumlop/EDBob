@@ -1,88 +1,35 @@
 from os.path import isfile
 
-from src.core.EDlogger import logger
 import xmltodict
 from os import environ
 
+from src.core.EDlogger import logger
+
 
 class EDGraphicsSettings:
-    """ Handles the Graphics DisplaySettings.xml and Settings.xml files. """
+    """ Reads Elite Dangerous graphics XML files to extract FOV and screen settings. """
 
     def __init__(self, display_file_path=None, settings_file_path=None):
-        self.fullscreen = ''
-        self.fullscreen_str = ''
-        self.screenwidth = ''
-        self.screenheight = ''
-        self.monitor = ''
-        self.fov = ''
-        self.display_settings_filepath = display_file_path if display_file_path else \
-            (environ[
-                 'LOCALAPPDATA'] + "\\Frontier Developments\\Elite Dangerous\\Options\\Graphics\\DisplaySettings.xml")
-        self.settings_filepath = settings_file_path if settings_file_path else \
-            (environ['LOCALAPPDATA'] + "\\Frontier Developments\\Elite Dangerous\\Options\\Graphics\\Settings.xml")
+        base = environ['LOCALAPPDATA'] + "\\Frontier Developments\\Elite Dangerous\\Options\\Graphics\\"
+        self.display_settings_filepath = display_file_path or (base + "DisplaySettings.xml")
+        self.settings_filepath = settings_file_path or (base + "Settings.xml")
 
-        if not isfile(self.display_settings_filepath):
-            logger.error(
-                f"Elite Dangerous graphics display settings file does not exist: {self.display_settings_filepath}.")
-            raise Exception(
-                f"Elite Dangerous graphics display settings file does not exist: {self.display_settings_filepath}.")
+        for path in (self.display_settings_filepath, self.settings_filepath):
+            if not isfile(path):
+                raise FileNotFoundError(f"ED graphics file not found: {path}")
 
-        if not isfile(self.settings_filepath):
-            logger.error(f"Elite Dangerous settings file does not exist: {self.settings_filepath}.")
-            raise Exception(f"Elite Dangerous settings file does not exist: {self.settings_filepath}.")
+        display = self._read_xml(self.display_settings_filepath)['DisplayConfig']
+        self.screenwidth = display['ScreenWidth']
+        self.screenheight = display['ScreenHeight']
+        self.fullscreen = display['FullScreen']  # 0=Windowed, 1=Fullscreen, 2=Borderless
+        self.monitor = display['Monitor']
 
-        # Read graphics display settings xml file data
-        logger.info(f"Reading ED graphics display settings from '{self.display_settings_filepath}'.")
-        self.display_settings = self.read_settings(self.display_settings_filepath)
+        settings = self._read_xml(self.settings_filepath)
+        self.fov = settings['GraphicsOptions']['FOV']
 
-        # Read graphics display settings xml file data
-        logger.info(f"Reading ED graphics settings from '{self.settings_filepath}'.")
-        self.settings = self.read_settings(self.settings_filepath)
-
-        # Process graphics display settings
-        if self.display_settings is not None:
-            self.screenwidth = self.display_settings['DisplayConfig']['ScreenWidth']
-            logger.debug(f"Elite Dangerous Display Config 'ScreenWidth': {self.screenwidth}.")
-
-            self.screenheight = self.display_settings['DisplayConfig']['ScreenHeight']
-            logger.debug(f"Elite Dangerous Display Config 'ScreenHeight': {self.screenheight}.")
-
-            self.fullscreen = self.display_settings['DisplayConfig'][
-                'FullScreen']  # 0=Windowed, 1=Fullscreen, 2=Borderless
-            options = ["Windowed", "Fullscreen", "Borderless"]
-            self.fullscreen_str = options[int(self.fullscreen)]
-            logger.debug(f"Elite Dangerous Display Config 'Fullscreen': {self.fullscreen_str}.")
-
-            self.monitor = self.display_settings['DisplayConfig']['Monitor']
-            logger.debug(f"Elite Dangerous Display Config 'Monitor': {self.monitor}.")
-
-        if self.fullscreen_str.upper() == "Fullscreen".upper():
-            logger.error("Elite Dangerous is set to FULLSCREEN. Use Borderless or Windowed mode.")
-            raise Exception('Elite Dangerous is set to FULLSCREEN. Use Borderless or Windowed mode.')
-        if self.fullscreen_str.upper() == "Windowed".upper():
-            logger.warning("Elite Dangerous is in WINDOWED mode. Borderless is recommended but Windowed will work.")
-
-        # Process graphics settings
-        if self.settings is not None:
-            self.fov = self.settings['GraphicsOptions']['FOV']
-            logger.debug(f"Elite Dangerous Graphics Options 'FOV': {self.fov}.")
+        logger.info(f"ED Graphics: {self.screenwidth}x{self.screenheight} FOV={self.fov}")
 
     @staticmethod
-    def read_settings(filename) -> dict:
-        """ Reads an XML settings file to a Dict and returns the dict. """
-        try:
-            with open(filename, 'r') as file:
-                my_xml = file.read()
-                my_dict = xmltodict.parse(my_xml)
-                return my_dict
-        except OSError as e:
-            logger.error(f"OS Error reading Elite Dangerous display settings file: {filename}.")
-            raise Exception(f"OS Error reading Elite Dangerous display settings file: {filename}.")
-
-
-def main():
-    gs = EDGraphicsSettings()
-
-
-if __name__ == "__main__":
-    main()
+    def _read_xml(filename) -> dict:
+        with open(filename, 'r') as f:
+            return xmltodict.parse(f.read())
