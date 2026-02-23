@@ -26,7 +26,11 @@
       "Bash(/tmp/test_compass_detection_v2.py:*)",
       "Bash(/tmp/debug_compass.py:*)",
       "Bash(/tmp/recheck_images.py:*)",
-      "Bash(/tmp/test_compass_final.py:*)"
+      "Bash(/tmp/test_compass_final.py:*)",
+      "Bash(git tag:*)",
+      "WebFetch(domain:forums.frontier.co.uk)",
+      "Bash(git prune:*)",
+      "Bash(wc:*)"
     ]
   }
 }

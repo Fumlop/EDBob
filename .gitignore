@@ -7,6 +7,8 @@ __pycache__/
 /dist
 /build
 /EDAPGiu.spec
+/debug-output/
+/debug-examples/
 /EDAPGui.spec
 /elw.txt
 /build.bat

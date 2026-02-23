@@ -583,7 +583,7 @@ class EDWayPoint:
                 self.ap.sc_engage()
                 # SCO burst to clear gravity well before jump alignment
                 keys.send('UseBoostJuice')
-                sleep(3)
+                sleep(4)
                 keys.send('UseBoostJuice')
                 keys.send('TargetNextRouteSystem')
                 self.ap.ap_ckb('log+vce', f"Jumping to {nav_dest}.")

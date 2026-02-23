@@ -16,14 +16,15 @@
         "SystemBookmarkNumber": 1,
         "SellCommodities": {},
         "BuyCommodities": {
-            "Aluminium": 40053,
-            "Titanium": 13590
+            "Aluminium": 27060,
+            "Titanium": 0,
+            "Steel": 47109
         },
         "Comment": "Buy commodities here",
         "UpdateCommodityCount": true,
         "FleetCarrierTransfer": false,
         "Skip": false,
-        "Completed": true
+        "Completed": false
     },
     "2": {
         "SystemName": "",
