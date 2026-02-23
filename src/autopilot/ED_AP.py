@@ -42,7 +42,6 @@ from src.ed import EDKeys
 from src.ed.EDInternalStatusPanel import EDInternalStatusPanel
 from src.ed.NavRouteParser import NavRouteParser
 from src.ed.EDNavigationPanel import EDNavigationPanel
-from src.screen.Overlay import Overlay
 from src.ed.StatusParser import StatusParser
 
 
@@ -189,19 +188,7 @@ class EDAutopilot:
         self._nav_cor_y = 0.0  # Nav Point correction to yaw
         self.target_align_outer_lim = 1.0  # In deg. Anything outside of this range will cause alignment.
         self.target_align_inner_lim = 0.5  # In deg. Will stop alignment when in this range.
-        self.debug_show_compass_overlay = False
-        self.debug_show_target_overlay = False
-
-        # Overlay vars
         self.ap_state = "Idle"
-        # Initialize the Overlay class
-        self.overlay = Overlay("", elite=1)
-        self.overlay.overlay_setfont(self.config['OverlayTextFont'], self.config['OverlayTextFontSize'])
-        self.overlay.overlay_set_pos(self.config['OverlayTextXOffset'], self.config['OverlayTextYOffset'])
-        # must be called after we initialized the objects above
-        self.update_overlay()
-
-        self.debug_overlay = False
         self.debug_images = False
         self.debug_image_folder = './debug-output/images'
         if not os.path.exists(self.debug_image_folder):
@@ -256,12 +243,6 @@ class EDAutopilot:
             "HotKey_StopAllAssists": "ctrl+x",
             "EnableRandomness": False,  # add some additional random sleep times to avoid AP detection (0-3sec at specific locations)
             "ActivateEliteEachKey": False,  # Activate Elite window before each key or group of keys
-            "OverlayTextEnable": False,  # Experimental at this stage
-            "OverlayTextYOffset": 400,  # offset down the screen to start place overlay text
-            "OverlayTextXOffset": 50,  # offset left the screen to start place overlay text
-            "OverlayTextFont": "Eurostyle",
-            "OverlayTextFontSize": 14,
-            "OverlayGraphicEnable": False,  # not implemented yet
             "DiscordWebhook": False,  # discord not implemented yet
             "DiscordWebhookURL": "",
             "DiscordUserID": "",
@@ -273,7 +254,6 @@ class EDAutopilot:
             "AutomaticLogout": False,  # Logout when we are done with the mission
             "OCDepartureAngle": 75.0,  # Angle to pitch up when departing non-starport stations
             "Language": 'en',  # Language (matching ./locales/xx.json file)
-            "DebugOverlay": False,
             "HotkeysEnable": False,  # Enable hotkeys
             "WaypointFilepath": "",  # The previous waypoint file path
             "DebugImages": False,  # For debug, write debug images to output folder
@@ -282,8 +262,6 @@ class EDAutopilot:
             "Key_RepeatDelay": 0.1,  # Delay between key press repeats
             "target_align_outer_lim": 1.0,  # For test
             "target_align_inner_lim": 0.5,  # For test
-            "Debug_ShowCompassOverlay": False,  # For test
-            "Debug_ShowTargetOverlay": False,  # For test
             "GalMap_SystemSelectDelay": 0.5,  # Delay selecting the system when in galaxy map
             "PlanetDepartureSCOTime": 5.0,  # SCO boost time when leaving planet in secs
             "FleetCarrierMonitorCAPIDataPath": "",  # EDMC Fleet Carrier Monitor plugin data export path
@@ -411,39 +389,8 @@ class EDAutopilot:
         if ship_type not in self.ship_configs['Ship_Configs']:
             self.ship_configs['Ship_Configs'][ship_type] = dict()
 
-    def update_overlay(self):
-        """ Draw the overlay data on the ED Window """
-        if self.config['OverlayTextEnable']:
-            ap_mode = "Offline"
-            if self.sc_assist_enabled:
-                ap_mode = "SC Assist"
-            elif self.waypoint_assist_enabled:
-                ap_mode = "Waypoint Assist"
-            elif self.dss_assist_enabled:
-                ap_mode = "DSS Assist"
-
-            ship_state = self.jn.ship_state()['status']
-            if ship_state is None:
-                ship_state = '<init>'
-
-            sclass = self.jn.ship_state()['star_class']
-            if sclass is None:
-                sclass = "<init>"
-
-            location = self.jn.ship_state()['location']
-            if location is None:
-                location = "<init>"
-            self.overlay.overlay_text('1', "AP MODE: "+ap_mode, 1, 1, (136, 53, 0), -1)
-            self.overlay.overlay_text('2', "AP STATUS: "+self.ap_state, 2, 1, (136, 53, 0), -1)
-            self.overlay.overlay_text('3', "SHIP STATUS: "+ship_state, 3, 1, (136, 53, 0), -1)
-            self.overlay.overlay_text('4', "CURRENT SYSTEM: "+location+", "+sclass, 4, 1, (136, 53, 0), -1)
-            self.overlay.overlay_text('5', "JUMPS: {} of {}".format(self.jump_cnt, self.total_jumps), 5, 1, (136, 53, 0), -1)
-            self.overlay.overlay_text('6', "ETA (to System): "+self._str_eta, 6, 1, (136, 53, 0), -1)
-            self.overlay.overlay_paint()
-
     def update_ap_status(self, txt):
         self.ap_state = txt
-        self.update_overlay()
         self.ap_ckb('statusline', txt)
 
     def process_config_settings(self):
@@ -460,9 +407,6 @@ class EDAutopilot:
         self.target_align_outer_lim = self.config['target_align_outer_lim']
         self.target_align_inner_lim = self.config['target_align_inner_lim']
 
-        self.debug_show_compass_overlay = self.config['Debug_ShowCompassOverlay']
-        self.debug_show_target_overlay = self.config['Debug_ShowTargetOverlay']
-        self.debug_overlay = self.config['DebugOverlay']
         self.debug_images = self.config['DebugImages']
 
     def have_destination(self, scr_reg) -> bool:
@@ -674,17 +618,6 @@ class EDAutopilot:
 
         result = {'x': round(final_x_pct, 4), 'y': round(final_y_pct, 4), 'z': round(final_z_pct, 2),
                   'roll': round(final_roll_deg, 2), 'pit': round(final_pit_deg, 2), 'yaw': round(final_yaw_deg, 2)}
-
-        # Draw box around compass region
-        if self.debug_overlay:
-            border = 10
-            c_right = scr_reg.reg['compass']['rect'][2]
-            c_bottom = scr_reg.reg['compass']['rect'][3]
-
-            self.overlay.overlay_rect('compass', (c_left - border, c_top - border), (c_right + border, c_bottom + border), (0, 255, 0), 2)
-            self.overlay.overlay_floating_text('compass', f'Fixed region', c_left - border, c_top - border - 45, (0, 255, 0))
-            self.overlay.overlay_floating_text('compass_rpy', f'r: {round(final_roll_deg, 2)} p: {round(final_pit_deg, 2)} y: {round(final_yaw_deg, 2)}', c_left - border, c_bottom + border, (0, 255, 0))
-            self.overlay.overlay_paint()
 
         # Debug: save compass detection images with pit/yaw in filename
         if False:  # set True for navball calibration
@@ -978,8 +911,14 @@ class EDAutopilot:
             except Exception as e:
                 logger.warning(f"Debug snapshot failed: {e}")
 
+        # Roll off the strut plane for rotating stations (Coriolis/Orbis/Ocellus)
+        stype = self.jn.ship_state().get('exp_station_type')
+        if stype != EDJournal.StationType.SpaceConstructionDepot and stype != EDJournal.StationType.ColonisationShip:
+            roll_time = 30.0 / self.rollrate
+            self.keys.send('RollRightButton', hold=roll_time)
+
         # Pitch up to clear station, then fly clear at full speed
-        pitch_time = 75.0 / self.pitchrate
+        pitch_time = 65.0 / self.pitchrate
         self.keys.send('PitchUpButton', hold=pitch_time)
         self.set_speed_100()
         sleep(4)
@@ -1764,7 +1703,7 @@ class EDAutopilot:
 
         # if we are starting the waypoint docked at a station or landed, we need to undock/takeoff first
         if self.status.get_flag(FlagsDocked) or self.status.get_flag(FlagsLanded):
-            self.update_overlay()
+
             self.waypoint_undock_seq()
 
         # Ensure we are in supercruise
@@ -1993,14 +1932,6 @@ class EDAutopilot:
     def set_automatic_logout(self, enable=False):
         self.config["AutomaticLogout"] = enable
 
-    def set_overlay(self, enable=False):
-        # TODO: apply the change without restarting the program
-        self.config["OverlayTextEnable"] = enable
-        if not enable:
-            self.overlay.overlay_clear()
-
-        self.overlay.overlay_paint()
-
     def set_log_error(self, enable=False):
         self.config["LogDEBUG"] = False
         self.config["LogINFO"] = False
@@ -2019,8 +1950,6 @@ class EDAutopilot:
     # quit() is important to call to clean up, if we don't terminate the threads we created the AP will hang on exit
     # have then then kill python exec
     def quit(self):
-        if self.overlay != None:
-            self.overlay.overlay_quit()
         self.terminate = True
 
     #
@@ -2029,12 +1958,6 @@ class EDAutopilot:
     #
     def engine_loop(self):
         while not self.terminate:
-            # TODO - Remove these show compass/target all the time
-            if self.debug_show_compass_overlay:
-                self.get_nav_offset(self.scrReg, True)
-            if self.debug_show_target_overlay:
-                self.get_target_offset(self.scrReg, True)
-
             # Ship calibration functions
             if self.ship_tst_roll_enabled:
                 self.ship_tst_roll_new(0)
@@ -2064,7 +1987,7 @@ class EDAutopilot:
                 logger.debug("Running sc_assist")
                 self._stop_event.clear()
                 set_focus_elite_window()
-                self.update_overlay()
+    
                 try:
                     self.update_ap_status("SC to Target")
                     self.sc_assist(self.scrReg)
@@ -2076,13 +1999,13 @@ class EDAutopilot:
                 logger.debug("Completed sc_assist")
                 if not self.sc_assist_enabled:
                     self.ap_ckb('sc_stop')
-                self.update_overlay()
+    
 
             elif self.waypoint_assist_enabled == True:
                 logger.debug("Running waypoint_assist")
                 self._stop_event.clear()
                 set_focus_elite_window()
-                self.update_overlay()
+    
                 self.jump_cnt = 0
                 self.refuel_cnt = 0
                 self.total_dist_jumped = 0
@@ -2096,13 +2019,13 @@ class EDAutopilot:
 
                 if not self.waypoint_assist_enabled:
                     self.ap_ckb('waypoint_stop')
-                self.update_overlay()
+    
 
             elif self.dss_assist_enabled == True:
                 logger.debug("Running dss_assist")
                 self._stop_event.clear()
                 set_focus_elite_window()
-                self.update_overlay()
+    
                 try:
                     self.dss_assist()
                 except EDAP_Interrupt:
@@ -2112,7 +2035,7 @@ class EDAutopilot:
 
                 self.dss_assist_enabled = False
                 self.ap_ckb('dss_stop')
-                self.update_overlay()
+    
 
             # Check once EDAPGUI loaded to prevent errors logging to the listbox before loaded
             if self.gui_loaded:
@@ -2151,7 +2074,7 @@ class EDAutopilot:
                         self.ap_ckb('update_ship_cfg')
 
 
-            self.update_overlay()
+
             cv2.waitKey(10)
             sleep(1)
 
@@ -2161,7 +2084,6 @@ class EDAutopilot:
             'pos_key': 'PitchUpButton', 'neg_key': 'PitchDownButton',
             'rate_attr': 'pitchrate', 'targ_angles': [5, 10, 20, 40, 80, 160],
             'init_time': 0.05, 'time_mult': 1.04, 'default_angle': 300,
-            'overlay_keys': [('rect', 'target'), ('text', 'target'), ('text', 'target_occ'), ('text', 'target_rpy')],
             'move_fn': 'pitch_up_down',
         },
         'roll': {
@@ -2169,7 +2091,6 @@ class EDAutopilot:
             'pos_key': 'RollRightButton', 'neg_key': 'RollLeftButton',
             'rate_attr': 'rollrate', 'targ_angles': [40, 80, 160, 320],
             'init_time': 0.05, 'time_mult': 1.03, 'default_angle': 450,
-            'overlay_keys': [('rect', 'compass'), ('text', 'compass'), ('text', 'nav'), ('text', 'nav_beh'), ('text', 'compass_rpy')],
             'move_fn': 'roll_clockwise_anticlockwise',
         },
         'yaw': {
@@ -2177,7 +2098,6 @@ class EDAutopilot:
             'pos_key': 'YawRightButton', 'neg_key': 'YawLeftButton',
             'rate_attr': 'yawrate', 'targ_angles': [5, 10, 20, 40, 80, 160],
             'init_time': 0.07, 'time_mult': 1.05, 'default_angle': 300,
-            'overlay_keys': [('rect', 'target'), ('text', 'target'), ('text', 'target_occ'), ('text', 'target_rpy')],
             'move_fn': 'yaw_right_left',
         },
     }
@@ -2209,14 +2129,6 @@ class EDAutopilot:
                 if not off:
                     logger.debug(f"{name} target lost")
                     break
-
-                if self.debug_overlay:
-                    for kind, key in cfg['overlay_keys']:
-                        if kind == 'rect':
-                            self.overlay.overlay_remove_rect(key)
-                        else:
-                            self.overlay.overlay_remove_floating_text(key)
-                    self.overlay.overlay_paint()
 
                 if off[cfg['offset_key']] > 0:
                     self.keys.send(cfg['pos_key'], hold=test_time)
