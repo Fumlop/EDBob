@@ -18,7 +18,7 @@ import kthread
 from simple_localization import LocalizationManager
 
 
-from src.autopilot.EDAP_EDMesg_Server import EDMesgServer
+
 from src.core.EDAP_data import (
     FlagsDocked, FlagsLanded, FlagsLandingGearDown, FlagsSupercruise, FlagsFsdMassLocked,
     FlagsFsdCharging, FlagsFsdCooldown, FlagsFsdJump,
@@ -174,12 +174,6 @@ class EDAutopilot:
         self.stn_svcs_in_ship = EDStationServicesInShip(self, self.scr, self.keys, cb)
         self.nav_panel = EDNavigationPanel(self, self.scr, self.keys, cb)
 
-        self.mesg_server = EDMesgServer(self, cb)
-        self.mesg_server.actions_port = self.config['EDMesgActionsPort']
-        self.mesg_server.events_port = self.config['EDMesgEventsPort']
-        if self.config['EnableEDMesg']:
-            self.mesg_server.start_server()
-
         # Set defaults for data read from ships config
         self.yawrate   = 8.0
         self.rollrate  = 80.0
@@ -302,9 +296,7 @@ class EDAutopilot:
             "OCDepartureAngle": 75.0,  # Angle to pitch up when departing non-starport stations
             "Language": 'en',  # Language (matching ./locales/xx.json file)
             "OCRLanguage": 'en',  # Language for OCR detection (see OCR language doc in \docs)
-            "EnableEDMesg": False,
-            "EDMesgActionsPort": 15570,
-            "EDMesgEventsPort": 15571,
+
             "DebugOverlay": False,
             "HotkeysEnable": False,  # Enable hotkeys
             "WaypointFilepath": "",  # The previous waypoint file path
