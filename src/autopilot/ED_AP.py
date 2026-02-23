@@ -188,9 +188,6 @@ class EDAutopilot:
             os.makedirs(self.debug_image_folder)
 
         # debug window
-        self.cv_view = False
-        self.cv_view_x = 10
-        self.cv_view_y = 10
 
         #start the engine thread
         self.terminate = False  # terminate used by the thread to exit its loop
@@ -257,7 +254,6 @@ class EDAutopilot:
             "DiscordUserID": "",
             "LogDEBUG": False,  # enable for debug messages
             "LogINFO": True,
-            "Enable_CV_View": 0,  # Should CV View be enabled by default
             "ShipConfigFile": None,  # Ship config to load on start - deprecated
             "TargetScale": 1.0,  # Scaling of the target when a system is selected
             "ScreenScale": 1.0,  # Scaling of the target when a system is selected
@@ -455,7 +451,6 @@ class EDAutopilot:
         self.target_align_outer_lim = self.config['target_align_outer_lim']
         self.target_align_inner_lim = self.config['target_align_inner_lim']
 
-        self.cv_view = self.config['Enable_CV_View']
         self.debug_show_compass_overlay = self.config['Debug_ShowCompassOverlay']
         self.debug_show_target_overlay = self.config['Debug_ShowTargetOverlay']
         self.debug_overlay = self.config['DebugOverlay']
@@ -682,15 +677,6 @@ class EDAutopilot:
             self.overlay.overlay_floating_text('compass', f'Fixed region', c_left - border, c_top - border - 45, (0, 255, 0))
             self.overlay.overlay_floating_text('compass_rpy', f'r: {round(final_roll_deg, 2)} p: {round(final_pit_deg, 2)} y: {round(final_yaw_deg, 2)}', c_left - border, c_bottom + border, (0, 255, 0))
             self.overlay.overlay_paint()
-
-        if self.cv_view:
-            icompass_image_d = compass_image.copy()
-            icompass_image_d = cv2.rectangle(icompass_image_d, (0, 0), (comp_w, 45), (0, 0, 0), -1)
-            cv2.putText(icompass_image_d, f'x: {final_x_pct:5.2f} y: {final_y_pct:5.2f} z: {final_z_pct:5.2f}', (1, 12), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
-            cv2.putText(icompass_image_d, f'r: {final_roll_deg:5.2f}deg p: {final_pit_deg:5.2f}deg y: {final_yaw_deg:5.2f}deg', (1, 27), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
-            cv2.imshow('compass', icompass_image_d)
-            cv2.moveWindow('compass', self.cv_view_x - 400, self.cv_view_y + 600)
-            cv2.waitKey(30)
 
         # Debug: save compass detection images with pit/yaw in filename
         if False:  # set True for navball calibration
@@ -1989,17 +1975,6 @@ class EDAutopilot:
         if not enable and self.dss_assist_enabled:
             self._stop_event.set()
         self.dss_assist_enabled = enable
-
-    def set_cv_view(self, enable=True, x=0, y=0):
-        self.cv_view = enable
-        self.config['Enable_CV_View'] = int(self.cv_view)  # update the config
-        self.update_config()  # save the config
-        if enable == True:
-            self.cv_view_x = x
-            self.cv_view_y = y
-        else:
-            cv2.destroyAllWindows()
-            cv2.waitKey(50)
 
     def set_randomness(self, enable=False):
         self.config["EnableRandomness"] = enable

@@ -1,4 +1,4 @@
-# EDAPGui - Elite Dangerous Autopilot
+# EDBob - Boring Operations Bot
 
 Automated waypoint autopilot for Elite Dangerous. Flies trade routes, buys and sells commodities, docks at stations and fleet carriers -- all hands-off using screen capture and galaxy map bookmarks.
 
@@ -36,7 +36,7 @@ Alternative: run `install_requirements.bat` first, then `start_ed_ap.bat`.
 
 1. In Elite Dangerous, set **galaxy map bookmarks** for the systems you want to visit
 2. Create a waypoint JSON file in the `waypoints/` folder (see below)
-3. Start EDAPGui
+3. Start EDBob
 4. Go to the **Waypoints** tab, click **Open**, load your file
 5. Go to the **Main** tab, enable **Waypoint Assist**
 6. The autopilot takes over -- it jumps, navigates, docks, trades, and loops

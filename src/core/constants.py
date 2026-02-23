@@ -4,7 +4,7 @@ Single source of truth -- import from here, don't redefine elsewhere.
 """
 
 # Application version
-EDAP_VERSION = "V1.9.0 b4"
+EDAP_VERSION = "V1.3.0"
 
 # GUI form field types
 FORM_TYPE_CHECKBOX = 0

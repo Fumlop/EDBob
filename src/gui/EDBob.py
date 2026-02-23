@@ -137,8 +137,6 @@ class APGui:
         self.lab_ck = {}
         self.WP_A_running = False
 
-        self.cv_view = False
-
         self.msgList = self.gui_gen(root)
 
         self.checkboxvar['Enable Randomness'].set(self.ed_ap.config['EnableRandomness'])
@@ -416,87 +414,6 @@ class APGui:
         # self.ed_ap.ship_tst_yaw_new(360)
         self.ed_ap.ship_tst_yaw_enabled = True
 
-    def start_region_picker(self):
-        """Launch background thread to pick two screen corners via right-click."""
-        self.log_msg("Region Picker: RIGHT-click first corner on ED window...")
-        threading.Thread(target=self._region_picker_thread, daemon=True).start()
-
-    @staticmethod
-    def _wait_for_rightclick():
-        """Block until right mouse button is pressed, return (x, y)."""
-        from pynput.mouse import Listener, Button
-        result = {}
-
-        def on_click(x, y, button, pressed):
-            if button == Button.right and pressed:
-                result['x'] = x
-                result['y'] = y
-                return False  # stop listener
-
-        with Listener(on_click=on_click) as ls:
-            ls.join()
-        return result['x'], result['y']
-
-    def _region_picker_thread(self):
-        from src.screen.Screen import Screen
-
-        ed_rect = Screen.get_elite_client_rect()
-        if not ed_rect or ed_rect == (0, 0, 0, 0):
-            self.root.after(0, lambda: self.log_msg("Region Picker: Elite Dangerous window not found."))
-            return
-
-        ed_left, ed_top = ed_rect[0], ed_rect[1]
-
-        abs_x1, abs_y1 = self._wait_for_rightclick()
-        gx1 = abs_x1 - ed_left
-        gy1 = abs_y1 - ed_top
-        self.root.after(0, lambda: self.log_msg(f"Corner 1: ({gx1}, {gy1}) -- RIGHT-click second corner..."))
-
-        abs_x2, abs_y2 = self._wait_for_rightclick()
-        gx2 = abs_x2 - ed_left
-        gy2 = abs_y2 - ed_top
-
-        x1, x2 = min(gx1, gx2), max(gx1, gx2)
-        y1, y2 = min(gy1, gy2), max(gy1, gy2)
-        w = x2 - x1
-        h = y2 - y1
-
-        self.ed_ap.overlay.overlay_rect('picker', (x1, y1), (x2, y2), (255, 255, 0), 2, duration=10.0)
-        self.ed_ap.overlay.overlay_floating_text('picker_info',
-            f'[{x1}, {y1}, {x2}, {y2}]  {w}x{h}px', x1, y1 - 20, (255, 255, 0), duration=10.0)
-        self.ed_ap.overlay.overlay_paint()
-
-        result = f"[{x1}, {y1}, {x2}, {y2}]  ({w}x{h})"
-        self.root.after(0, lambda: self.region_result_label.config(text=result))
-        self.root.after(0, lambda: self.log_msg(f"Region Picker result: {result}"))
-
-    def ship_tst_pitch_30(self):
-        self.ed_ap.ship_tst_pitch(30)
-
-    def ship_tst_roll_30(self):
-        self.ed_ap.ship_tst_roll(30)
-
-    def ship_tst_yaw_30(self):
-        self.ed_ap.ship_tst_yaw(30)
-
-    def ship_tst_pitch_45(self):
-        self.ed_ap.ship_tst_pitch(45)
-
-    def ship_tst_roll_45(self):
-        self.ed_ap.ship_tst_roll(45)
-
-    def ship_tst_yaw_45(self):
-        self.ed_ap.ship_tst_yaw(45)
-
-    def ship_tst_pitch_90(self):
-        self.ed_ap.ship_tst_pitch(90)
-
-    def ship_tst_roll_90(self):
-        self.ed_ap.ship_tst_roll(90)
-
-    def ship_tst_yaw_90(self):
-        self.ed_ap.ship_tst_yaw(90)
-
     def save_settings(self):
         self.entry_update(None)
         self.ed_ap.update_config()
@@ -648,15 +565,6 @@ class APGui:
         else:
             self.ed_ap.set_overlay(False)
 
-        if self.checkboxvar['Enable CV View'].get() == 1:
-            self.cv_view = True
-            x = self.root.winfo_x() + self.root.winfo_width() + 4
-            y = self.root.winfo_y()
-            self.ed_ap.set_cv_view(True, x, y)
-        else:
-            self.cv_view = False
-            self.ed_ap.set_cv_view(False)
-
         self.ed_ap.config['DSSButton'] = self.radiobuttonvar['dss_button'].get()
 
         if self.radiobuttonvar['debug_mode'].get() == "Error":
@@ -742,10 +650,6 @@ class APGui:
         page1 = ttk.Frame(nb)
         page1.grid_columnconfigure(0, weight=1)
         nb.add(page1, text="Settings")  # options page
-
-        page2 = ttk.Frame(nb)
-        page2.grid_columnconfigure([0, 1], weight=1)
-        nb.add(page2, text="Debug/Test")  # debug/test page
 
         # === MAIN TAB ===
         # main options block
@@ -899,101 +803,53 @@ class APGui:
         btn_save = ttk.Button(blk_settings_buttons, text='Save All Settings', command=self.save_settings, style="Accent.TButton")
         btn_save.grid(row=0, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
 
-        # ==== DEBUG/TEST TAB ====
-        # File Actions
-        blk_file_actions = ttk.LabelFrame(page2, text="File Actions", padding=(10, 5))
-        blk_file_actions.grid(row=0, column=0, padx=10, pady=5, sticky="NSEW")
-        self.checkboxvar['Enable CV View'] = tk.IntVar()
-        self.checkboxvar['Enable CV View'].set(int(self.ed_ap.config['Enable_CV_View']))
-        cb_enable_cv_view = ttk.Checkbutton(blk_file_actions, text='Enable CV View', variable=self.checkboxvar['Enable CV View'], command=(lambda field='Enable CV View': self.check_cb(field)))
-        cb_enable_cv_view.grid(row=2, column=0, padx=2, pady=2, sticky=tk.W)
-        btn_restart = ttk.Button(blk_file_actions, text="Restart", command=self.restart_program)
-        btn_restart.grid(row=3, column=0, padx=2, pady=2, sticky=tk.W)
-        btn_exit = ttk.Button(blk_file_actions, text="Exit", command=self.close_window)
-        btn_exit.grid(row=4, column=0, padx=2, pady=2, sticky=tk.W)
+        # === LOGGING & DEBUG (on Settings tab) ===
+        blk_logging = ttk.LabelFrame(page1, text="LOGGING", padding=(10, 5))
+        blk_logging.grid(row=6, column=0, padx=10, pady=5, sticky="NSEW")
+        blk_logging.columnconfigure([0, 1], weight=1, minsize=100)
 
-        # Help Actions
-        blk_help_actions = ttk.LabelFrame(page2, text="Help Actions", padding=(10, 5))
-        blk_help_actions.grid(row=0, column=1, padx=10, pady=5, sticky="NSEW")
-        btn_check_updates = ttk.Button(blk_help_actions, text="Check for Updates", command=self.check_updates)
-        btn_check_updates.grid(row=0, column=0, padx=2, pady=2, sticky=tk.W)
-        btn_view_changelog = ttk.Button(blk_help_actions, text="View Changelog", command=self.open_changelog)
-        btn_view_changelog.grid(row=1, column=0, padx=2, pady=2, sticky=tk.W)
-        btn_join_discord = ttk.Button(blk_help_actions, text="Join Discord", command=self.open_discord)
-        btn_join_discord.grid(row=2, column=0, padx=2, pady=2, sticky=tk.W)
-        btn_about = ttk.Button(blk_help_actions, text="About", command=self.about)
-        btn_about.grid(row=3, column=0, padx=2, pady=2, sticky=tk.W)
-
-        # # debug block
-        # blk_debug = ttk.Frame(page2)
-        # blk_debug.grid(row=1, column=0, padx=10, pady=5, sticky=(tk.E, tk.W))
-        # blk_debug.columnconfigure([0, 1], weight=1, minsize=100, uniform="group2")
-
-        # Debug Settings frame
-        blk_debug_settings = ttk.LabelFrame(page2, text="Debug Settings", padding=(10, 5))
-        blk_debug_settings.grid(row=1, column=0, padx=10, pady=5, sticky="NSEW")
         self.radiobuttonvar['debug_mode'] = tk.StringVar()
-        rb_debug_debug = ttk.Radiobutton(blk_debug_settings, text="Debug + Info + Errors", variable=self.radiobuttonvar['debug_mode'], value="Debug", command=(lambda field='debug_mode': self.check_cb(field)))
-        rb_debug_debug.grid(row=0, column=1, columnspan=2, sticky=tk.W)
-        rb_debug_info = ttk.Radiobutton(blk_debug_settings, text="Info + Errors", variable=self.radiobuttonvar['debug_mode'], value="Info", command=(lambda field='debug_mode': self.check_cb(field)))
-        rb_debug_info.grid(row=1, column=1, columnspan=2, sticky=tk.W)
-        rb_debug_error = ttk.Radiobutton(blk_debug_settings, text="Errors only (default)", variable=self.radiobuttonvar['debug_mode'], value="Error", command=(lambda field='debug_mode': self.check_cb(field)))
-        rb_debug_error.grid(row=2, column=1, columnspan=2, sticky=tk.W)
-        btn_open_logfile = ttk.Button(blk_debug_settings, text='Open Log File', command=self.open_logfile)
+        rb_debug_debug = ttk.Radiobutton(blk_logging, text="Debug + Info + Errors", variable=self.radiobuttonvar['debug_mode'], value="Debug", command=(lambda field='debug_mode': self.check_cb(field)))
+        rb_debug_debug.grid(row=0, column=0, sticky=tk.W)
+        rb_debug_info = ttk.Radiobutton(blk_logging, text="Info + Errors", variable=self.radiobuttonvar['debug_mode'], value="Info", command=(lambda field='debug_mode': self.check_cb(field)))
+        rb_debug_info.grid(row=1, column=0, sticky=tk.W)
+        rb_debug_error = ttk.Radiobutton(blk_logging, text="Errors only (default)", variable=self.radiobuttonvar['debug_mode'], value="Error", command=(lambda field='debug_mode': self.check_cb(field)))
+        rb_debug_error.grid(row=2, column=0, sticky=tk.W)
+        btn_open_logfile = ttk.Button(blk_logging, text='Open Log File', command=self.open_logfile)
         btn_open_logfile.grid(row=3, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
 
-        blk_debug_buttons = ttk.Frame(page2)
-        blk_debug_buttons.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="NSEW")
-        blk_debug_buttons.columnconfigure([0, 1], weight=1, minsize=100)
-
         self.checkboxvar['Debug Overlay'] = tk.BooleanVar()
-        cb_debug_overlay = ttk.Checkbutton(blk_debug_buttons, text='Debug Overlay', variable=self.checkboxvar['Debug Overlay'], command=(lambda field='Debug Overlay': self.check_cb(field)))
-        cb_debug_overlay.grid(row=6, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
+        cb_debug_overlay = ttk.Checkbutton(blk_logging, text='Debug Overlay', variable=self.checkboxvar['Debug Overlay'], command=(lambda field='Debug Overlay': self.check_cb(field)))
+        cb_debug_overlay.grid(row=4, column=0, padx=2, pady=2, sticky=tk.W)
         tip = ToolTip(cb_debug_overlay, msg=self.tooltips['Debug Overlay'], delay=1.0, bg="#808080", fg="#FFFFFF")
 
         self.checkboxvar['Debug OCR'] = tk.BooleanVar()
-        cb_debug_ocr = ttk.Checkbutton(blk_debug_buttons, text="Debug OCR - Writes OCR output to 'ocr-output' folder", variable=self.checkboxvar['Debug OCR'], command=(lambda field='Debug OCR': self.check_cb(field)))
-        cb_debug_ocr.grid(row=7, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
+        cb_debug_ocr = ttk.Checkbutton(blk_logging, text='Debug OCR', variable=self.checkboxvar['Debug OCR'], command=(lambda field='Debug OCR': self.check_cb(field)))
+        cb_debug_ocr.grid(row=5, column=0, padx=2, pady=2, sticky=tk.W)
         tip = ToolTip(cb_debug_ocr, msg=self.tooltips['Debug OCR'], delay=1.0, bg="#808080", fg="#FFFFFF")
 
         self.checkboxvar['Debug Images'] = tk.BooleanVar()
-        cb_debug_images = ttk.Checkbutton(blk_debug_buttons, text="Debug Images - Writes debug images to 'debug-output' folder", variable=self.checkboxvar['Debug Images'], command=(lambda field='Debug Images': self.check_cb(field)))
-        cb_debug_images.grid(row=8, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
+        cb_debug_images = ttk.Checkbutton(blk_logging, text='Debug Images', variable=self.checkboxvar['Debug Images'], command=(lambda field='Debug Images': self.check_cb(field)))
+        cb_debug_images.grid(row=6, column=0, padx=2, pady=2, sticky=tk.W)
         tip = ToolTip(cb_debug_images, msg=self.tooltips['Debug Images'], delay=1.0, bg="#808080", fg="#FFFFFF")
 
-        btn_save = ttk.Button(blk_debug_buttons, text='Save All Settings', command=self.save_settings, style="Accent.TButton")
-        btn_save.grid(row=9, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
+        # === HELP & APP (on Settings tab) ===
+        blk_app = ttk.LabelFrame(page1, text="APPLICATION", padding=(10, 5))
+        blk_app.grid(row=7, column=0, padx=10, pady=5, sticky="NSEW")
+        blk_app.columnconfigure([0, 1], weight=1, minsize=100)
 
-        btn_pick_region = ttk.Button(blk_debug_buttons, text='Pick Region', command=self.start_region_picker)
-        btn_pick_region.grid(row=10, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
-
-        self.region_result_label = ttk.Label(blk_debug_buttons, text="")
-        self.region_result_label.grid(row=11, column=0, padx=2, pady=2, columnspan=2, sticky=tk.W)
-
-        blk_rpy = ttk.LabelFrame(page2, text="RPY Test", padding=(10, 5))
-        blk_rpy.grid(row=12, column=0, columnspan=2, padx=2, pady=2, sticky="NSEW")
-        blk_rpy.columnconfigure([0, 1, 2], weight=1, minsize=100)
-
-        btn_tst_roll_30 = ttk.Button(blk_rpy, text='Test Roll Rate (30 deg)', command=self.ship_tst_roll_30)
-        btn_tst_roll_30.grid(row=1, column=0, padx=2, pady=2, columnspan=1, sticky="NSEW")
-        btn_tst_pitch_30 = ttk.Button(blk_rpy, text='Test Pitch Rate (30 deg)', command=self.ship_tst_pitch_30)
-        btn_tst_pitch_30.grid(row=1, column=1, padx=2, pady=2, columnspan=1, sticky="NSEW")
-        btn_tst_yaw_30 = ttk.Button(blk_rpy, text='Test Yaw Rate (30 deg)', command=self.ship_tst_yaw_30)
-        btn_tst_yaw_30.grid(row=1, column=2, padx=2, pady=2, columnspan=1, sticky="NSEW")
-
-        btn_tst_roll_45 = ttk.Button(blk_rpy, text='Test Roll Rate (45 deg)', command=self.ship_tst_roll_45)
-        btn_tst_roll_45.grid(row=2, column=0, padx=2, pady=2, columnspan=1, sticky="NSEW")
-        btn_tst_pitch_45 = ttk.Button(blk_rpy, text='Test Pitch Rate (45 deg)', command=self.ship_tst_pitch_45)
-        btn_tst_pitch_45.grid(row=2, column=1, padx=2, pady=2, columnspan=1, sticky="NSEW")
-        btn_tst_yaw_45 = ttk.Button(blk_rpy, text='Test Yaw Rate (45 deg)', command=self.ship_tst_yaw_45)
-        btn_tst_yaw_45.grid(row=2, column=2, padx=2, pady=2, columnspan=1, sticky="NSEW")
-
-        btn_tst_roll_90 = ttk.Button(blk_rpy, text='Test Roll Rate (90 deg)', command=self.ship_tst_roll_90)
-        btn_tst_roll_90.grid(row=3, column=0, padx=2, pady=2, columnspan=1, sticky="NSEW")
-        btn_tst_pitch_90 = ttk.Button(blk_rpy, text='Test Pitch Rate (90 deg)', command=self.ship_tst_pitch_90)
-        btn_tst_pitch_90.grid(row=3, column=1, padx=2, pady=2, columnspan=1, sticky="NSEW")
-        btn_tst_yaw_90 = ttk.Button(blk_rpy, text='Test Yaw Rate (90 deg)', command=self.ship_tst_yaw_90)
-        btn_tst_yaw_90.grid(row=3, column=2, padx=2, pady=2, columnspan=1, sticky="NSEW")
+        btn_check_updates = ttk.Button(blk_app, text="Check for Updates", command=self.check_updates)
+        btn_check_updates.grid(row=0, column=0, padx=2, pady=2, sticky="NSEW")
+        btn_about = ttk.Button(blk_app, text="About", command=self.about)
+        btn_about.grid(row=0, column=1, padx=2, pady=2, sticky="NSEW")
+        btn_view_changelog = ttk.Button(blk_app, text="View Changelog", command=self.open_changelog)
+        btn_view_changelog.grid(row=1, column=0, padx=2, pady=2, sticky="NSEW")
+        btn_join_discord = ttk.Button(blk_app, text="Join Discord", command=self.open_discord)
+        btn_join_discord.grid(row=1, column=1, padx=2, pady=2, sticky="NSEW")
+        btn_restart = ttk.Button(blk_app, text="Restart", command=self.restart_program)
+        btn_restart.grid(row=2, column=0, padx=2, pady=2, sticky="NSEW")
+        btn_exit = ttk.Button(blk_app, text="Exit", command=self.close_window)
+        btn_exit.grid(row=2, column=1, padx=2, pady=2, sticky="NSEW")
 
         # === Status Bar ===
         statusbar = ttk.Frame(win)
