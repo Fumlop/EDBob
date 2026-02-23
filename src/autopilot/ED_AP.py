@@ -57,6 +57,18 @@ https://github.com/Fumlo/EDBob
 """
 
 
+def read_json_file(filepath: str) -> dict | None:
+    if os.path.exists(filepath):
+        with open(filepath, 'r') as f:
+            return json.load(f)
+    return None
+
+
+def write_json_file(data: dict, filepath: str):
+    with open(filepath, 'w') as f:
+        json.dump(data, f, indent=4)
+
+
 # Exception class used to unroll the call tree to to stop execution
 class EDAP_Interrupt(Exception):
     pass
