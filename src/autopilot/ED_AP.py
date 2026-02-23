@@ -69,6 +69,17 @@ def write_json_file(data: dict, filepath: str):
         json.dump(data, f, indent=4)
 
 
+def delete_old_log_files():
+    """Delete .log files older than 5 days from the main folder."""
+    current_time = time.time()
+    day = 86400
+    for filename in os.listdir('.'):
+        if filename.endswith('.log') and os.path.isfile(filename):
+            if os.path.getmtime(filename) < current_time - day * 5:
+                logger.debug(f"Deleting old log: '{filename}'")
+                os.remove(filename)
+
+
 # Exception class used to unroll the call tree to to stop execution
 class EDAP_Interrupt(Exception):
     pass
