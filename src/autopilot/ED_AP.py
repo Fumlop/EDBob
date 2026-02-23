@@ -41,7 +41,6 @@ from src.ed import EDJournal
 from src.ed import EDKeys
 from src.ed.EDInternalStatusPanel import EDInternalStatusPanel
 from src.ed.NavRouteParser import NavRouteParser
-from src.screen.OCR import OCR
 from src.ed.EDNavigationPanel import EDNavigationPanel
 from src.screen.Overlay import Overlay
 from src.ed.StatusParser import StatusParser
@@ -87,7 +86,6 @@ class EDAutopilot:
         }
         self._prev_star_system = None
         self.speed_demand = None
-        self._ocr = None
         self.ship_tst_roll_enabled = False
         self.ship_tst_pitch_enabled = False
         self.ship_tst_yaw_enabled = False
@@ -181,7 +179,6 @@ class EDAutopilot:
         self.update_overlay()
 
         self.debug_overlay = False
-        self.debug_ocr = False
         self.debug_images = False
         self.debug_image_folder = './debug-output/images'
         if not os.path.exists(self.debug_image_folder):
@@ -201,13 +198,6 @@ class EDAutopilot:
 
         # Process config[] settings to update classes as necessary
         self.process_config_settings()
-
-    @property
-    def ocr(self) -> OCR:
-        """ Load OCR class when needed. """
-        if not self._ocr:
-            self._ocr = OCR(self, self.scr)
-        return self._ocr
 
     def update_config(self):
         # Get values from classes
@@ -260,17 +250,13 @@ class EDAutopilot:
             "AutomaticLogout": False,  # Logout when we are done with the mission
             "OCDepartureAngle": 75.0,  # Angle to pitch up when departing non-starport stations
             "Language": 'en',  # Language (matching ./locales/xx.json file)
-            "OCRLanguage": 'en',  # Language for OCR detection (see OCR language doc in \docs)
-
             "DebugOverlay": False,
             "HotkeysEnable": False,  # Enable hotkeys
             "WaypointFilepath": "",  # The previous waypoint file path
-            "DebugOCR": False,  # For debug, write all OCR data to output folder
             "DebugImages": False,  # For debug, write debug images to output folder
             "Key_ModDelay": 0.01,  # Delay for key modifiers to ensure modifier is detected before/after the key
             "Key_DefHoldTime": 0.2,  # Default hold time for a key press
             "Key_RepeatDelay": 0.1,  # Delay between key press repeats
-            "DisengageUseMatch": False,  # For 'Disengage' use old image match instead of OCR
             "target_align_outer_lim": 1.0,  # For test
             "target_align_inner_lim": 0.5,  # For test
             "Debug_ShowCompassOverlay": False,  # For test
@@ -454,7 +440,6 @@ class EDAutopilot:
         self.debug_show_compass_overlay = self.config['Debug_ShowCompassOverlay']
         self.debug_show_target_overlay = self.config['Debug_ShowTargetOverlay']
         self.debug_overlay = self.config['DebugOverlay']
-        self.debug_ocr = self.config['DebugOCR']
         self.debug_images = self.config['DebugImages']
 
     def have_destination(self, scr_reg) -> bool:

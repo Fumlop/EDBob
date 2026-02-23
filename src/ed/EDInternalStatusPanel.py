@@ -6,10 +6,10 @@ import os
 from copy import copy
 from time import sleep
 import cv2
+import numpy as np
 from src.core import EDAP_data
 # from src.ed.EDKeys import EDKeys
 from src.ed.EDNavigationPanel import rects_to_quadrilateral, image_perspective_transform, image_reverse_perspective_transform
-# from src.screen.OCR import OCR
 from src.screen.Screen import Screen, crop_image_by_pct
 from src.screen.Screen_Regions import Quad, load_calibrated_regions
 from src.ed.StatusParser import StatusParser
@@ -21,7 +21,6 @@ class EDInternalStatusPanel:
 
     def __init__(self, ed_ap, screen, keys, cb):
         self.ap = ed_ap
-        self.ocr = ed_ap.ocr
         self.screen = screen
         self.keys = keys
         self.ap_ckb = cb
@@ -189,6 +188,21 @@ class EDInternalStatusPanel:
         if self.status_parser.get_gui_focus() == EDAP_data.GuiFocusInternalPanel:
             self.ap.ship_control.goto_cockpit_view()
 
+    @staticmethod
+    def _detect_highlighted_tab_index(tab_bar_image, num_tabs) -> int:
+        """Detect which tab is highlighted by finding the orange highlight position."""
+        if tab_bar_image is None:
+            return -1
+        img_h, img_w = tab_bar_image.shape[:2]
+        hsv = cv2.cvtColor(tab_bar_image, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv, np.array([0, 100, 180]), np.array([255, 255, 255]))
+        coords = cv2.findNonZero(mask)
+        if coords is None:
+            return -1
+        avg_x = np.mean(coords[:, 0, 0])
+        tab_width = img_w / num_tabs
+        return min(int(avg_x / tab_width), num_tabs - 1)
+
     def is_panel_active(self) -> (bool, str):
         """ Determine if the Internal Panel is open and if so, which tab is active.
             Uses pixel color detection to find the highlighted tab position.
@@ -217,7 +231,7 @@ class EDInternalStatusPanel:
             if tab_bar is None:
                 return False, ""
 
-            tab_index = self.ocr.detect_highlighted_tab_index(tab_bar, len(tab_names))
+            tab_index = self._detect_highlighted_tab_index(tab_bar, len(tab_names))
             if tab_index >= 0:
                 tab_text = tab_names[tab_index]
                 logger.debug(f"is_panel_active: detected tab index {tab_index} -> {tab_text}")

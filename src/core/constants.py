@@ -13,6 +13,3 @@ FORM_TYPE_ENTRY = 2
 
 # Elite Dangerous window title (used for focus detection and overlay)
 ED_WINDOW_TITLE = "Elite - Dangerous (CLIENT)"
-
-# Galaxy map favorites list region in percent [L, T, R, B]
-FAV_LIST_REGION_PCT = [0.076, 0.172, 0.215, 0.522]

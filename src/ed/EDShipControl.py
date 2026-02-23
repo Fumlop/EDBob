@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from src.core import EDAP_data
-# from src.screen.OCR import OCR
 from src.ed.StatusParser import StatusParser
 from src.ed import MenuNav
 
@@ -9,7 +8,6 @@ from src.ed import MenuNav
 class EDShipControl:
     """ Handles ship control, FSD, SC, etc. """
     def __init__(self, ed_ap, screen, keys, cb):
-        self.ocr = ed_ap.ocr
         self.screen = screen
         self.keys = keys
         self.status_parser = StatusParser()

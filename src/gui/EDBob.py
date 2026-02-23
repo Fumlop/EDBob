@@ -12,7 +12,6 @@ from datetime import datetime
 import os
 import queue
 import subprocess
-from typing import TypedDict
 
 import keyboard
 import webbrowser
@@ -61,28 +60,6 @@ def str_to_float(input_str: str) -> float:
         return 0.0  # Assign a default value on error
 
 
-class SubRegion(TypedDict):
-    """ """
-    rect: list[float]
-    text: str
-
-
-class Objects(TypedDict):
-    """ """
-    width: float
-    height: float
-    text: str
-
-
-class MyRegion(TypedDict):
-    """ """
-    rect: list[float]
-    text: str
-    readonly: bool
-    regions: dict[str, SubRegion]
-    objects: dict[str, Objects]
-
-
 class APGui:
 
     def __init__(self, root):
@@ -117,7 +94,6 @@ class APGui:
             'Calibrate': "Will iterate through a set of scaling values \ngetting the best match for your system. \nSee HOWTO-Calibrate.md",
             'Cap Mouse XY': "This will provide the StationCoord value of the Station in the SystemMap. \nSelecting this button and then clicking on the Station in the SystemMap \nwill return the x,y value that can be pasted in the waypoints file",
             'Debug Overlay': "Enables debug data to be displayed over the \nElite Dangerous screen while playing the game.",
-            'Debug OCR': "Enables OCR debug output to be stored in the 'ocr_output' folder.",
             'Debug Images': "Enables debug images to be stored in the 'debug_output' folder.",
             'Modifier Key Delay': "Delay for key modifiers to ensure modifier is detected before/after the key.",
             'Default Hold Time': "Default hold time for a key press.",
@@ -145,7 +121,6 @@ class APGui:
         self.checkboxvar['Enable Overlay'].set(self.ed_ap.config['OverlayTextEnable'])
         self.checkboxvar['Enable Hotkeys'].set(self.ed_ap.config['HotkeysEnable'])
         self.checkboxvar['Debug Overlay'].set(self.ed_ap.config['DebugOverlay'])
-        self.checkboxvar['Debug OCR'].set(self.ed_ap.config['DebugOCR'])
         self.checkboxvar['Debug Images'].set(self.ed_ap.config['DebugImages'])
         self.radiobuttonvar['dss_button'].set(self.ed_ap.config['DSSButton'])
 
@@ -522,7 +497,6 @@ class APGui:
             self.ed_ap.config['HotKey_StopAllAssists'] = str(self.entries['buttons']['Stop All'].get())
             self.ed_ap.config['DebugOverlay'] = self.checkboxvar['Debug Overlay'].get()
             self.ed_ap.config['HotkeysEnable'] = self.checkboxvar['Enable Hotkeys'].get()
-            self.ed_ap.config['DebugOCR'] = self.checkboxvar['Debug OCR'].get()
             self.ed_ap.config['DebugImages'] = self.checkboxvar['Debug Images'].get()
             self.ed_ap.config['Key_ModDelay'] = float(self.entries['keys']['Modifier Key Delay'].get())
             self.ed_ap.config['Key_DefHoldTime'] = float(self.entries['keys']['Default Hold Time'].get())
@@ -583,9 +557,6 @@ class APGui:
         if field == 'Enable Hotkeys':
             self.ed_ap.config['HotkeysEnable'] = self.checkboxvar['Enable Hotkeys'].get()
             self.setup_hotkeys()
-
-        if field == 'Debug OCR':
-            self.ed_ap.debug_ocr = self.checkboxvar['Debug OCR'].get()
 
         if field == 'Debug Images':
             self.ed_ap.debug_images = self.checkboxvar['Debug Images'].get()
@@ -823,14 +794,9 @@ class APGui:
         cb_debug_overlay.grid(row=4, column=0, padx=2, pady=2, sticky=tk.W)
         tip = ToolTip(cb_debug_overlay, msg=self.tooltips['Debug Overlay'], delay=1.0, bg="#808080", fg="#FFFFFF")
 
-        self.checkboxvar['Debug OCR'] = tk.BooleanVar()
-        cb_debug_ocr = ttk.Checkbutton(blk_logging, text='Debug OCR', variable=self.checkboxvar['Debug OCR'], command=(lambda field='Debug OCR': self.check_cb(field)))
-        cb_debug_ocr.grid(row=5, column=0, padx=2, pady=2, sticky=tk.W)
-        tip = ToolTip(cb_debug_ocr, msg=self.tooltips['Debug OCR'], delay=1.0, bg="#808080", fg="#FFFFFF")
-
         self.checkboxvar['Debug Images'] = tk.BooleanVar()
         cb_debug_images = ttk.Checkbutton(blk_logging, text='Debug Images', variable=self.checkboxvar['Debug Images'], command=(lambda field='Debug Images': self.check_cb(field)))
-        cb_debug_images.grid(row=6, column=0, padx=2, pady=2, sticky=tk.W)
+        cb_debug_images.grid(row=5, column=0, padx=2, pady=2, sticky=tk.W)
         tip = ToolTip(cb_debug_images, msg=self.tooltips['Debug Images'], delay=1.0, bg="#808080", fg="#FFFFFF")
 
         # === HELP & APP (on Settings tab) ===

@@ -28,13 +28,12 @@ class EDStationServicesInShip:
     """ Handles Station Services In Ship. """
     def __init__(self, ed_ap, screen, keys, cb):
         self.ap = ed_ap
-        self.ocr = ed_ap.ocr
         self.locale = self.ap.locale
         self.screen = screen
         self.keys = keys
         self.ap_ckb = cb
-        self.passenger_lounge = PassengerLounge(self, self.ap, self.ocr, self.keys, self.screen, self.ap_ckb)
-        self.commodities_market = CommoditiesMarket(self, self.ap, self.ocr, self.keys, self.screen, self.ap_ckb)
+        self.passenger_lounge = PassengerLounge(self, self.ap, self.keys, self.screen, self.ap_ckb)
+        self.commodities_market = CommoditiesMarket(self, self.ap, self.keys, self.screen, self.ap_ckb)
         self.status_parser = StatusParser()
         self.market_parser = MarketParser()
         # The rect is top left x, y, and bottom right x, y in fraction of screen resolution
@@ -161,10 +160,9 @@ class EDStationServicesInShip:
 
 
 class PassengerLounge:
-    def __init__(self, station_services_in_ship: EDStationServicesInShip, ed_ap, ocr, keys, screen, cb):
+    def __init__(self, station_services_in_ship: EDStationServicesInShip, ed_ap, keys, screen, cb):
         self.parent = station_services_in_ship
         self.ap = ed_ap
-        self.ocr = ocr
         self.keys = keys
         self.screen = screen
         self.ap_ckb = cb
@@ -184,10 +182,9 @@ class PassengerLounge:
 
 
 class CommoditiesMarket:
-    def __init__(self, station_services_in_ship: EDStationServicesInShip, ed_ap, ocr, keys, screen, cb):
+    def __init__(self, station_services_in_ship: EDStationServicesInShip, ed_ap, keys, screen, cb):
         self.parent = station_services_in_ship
         self.ap = ed_ap
-        self.ocr = ocr
         self.keys = keys
         self.screen = screen
         self.ap_ckb = cb
@@ -200,49 +197,6 @@ class CommoditiesMarket:
         self.commodity_row_width = 422  # Buy/sell item width in pixels at 1920x1080
         self.commodity_row_height = 35  # Buy/sell item height in pixels at 1920x1080
         self._cursor_pos = 0  # current row in commodity list
-
-    def _ocr_quantity(self) -> int:
-        """Read the buy/sell quantity from the screen using OCR.
-        Returns the current quantity value, or -1 if OCR fails.
-        The quantity field shows 'NNN / MAX' -- we want the left number.
-        """
-        import numpy as np
-        try:
-            import easyocr
-        except ImportError:
-            return -1
-
-        # Capture the quantity input box (left number only, we already know max)
-        img = self.screen.get_screen_full()
-        # Crop the quantity input box (NNN/MAX field inside buy popup)
-        # Absolute pixel coords at 1920x1080, calibrated from OCR Area Value Commodity.png
-        x1, x2 = 460, 729
-        y1, y2 = 356, 421
-        crop = img[y1:y2, x1:x2]
-
-        # Threshold for orange text on dark background
-        hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
-        # Orange text: H=10-25, S>100, V>150
-        mask = cv2.inRange(hsv, np.array([5, 100, 150]), np.array([30, 255, 255]))
-        # Also white text
-        mask2 = cv2.inRange(hsv, np.array([0, 0, 200]), np.array([180, 40, 255]))
-        mask = cv2.bitwise_or(mask, mask2)
-
-        # Make white text on black bg for OCR
-        ocr_img = mask
-
-        from src.ed.EDGalaxyMap import _get_ocr_reader
-        reader = _get_ocr_reader()
-        results = reader.readtext(ocr_img, allowlist='0123456789', detail=0)
-        if results:
-            # Take only the first detected number (left side = current qty, ignore /MAX)
-            digits = ''.join(c for c in results[0] if c.isdigit())
-            if digits:
-                val = int(digits)
-                logger.info(f"OCR quantity: {val} (raw: {results})")
-                return val
-        logger.info(f"OCR quantity: failed (results: {results})")
-        return -1
 
     def _set_buy_sell_quantity(self, keys, target_qty: int, max_qty: int, sell=False):
         """Set the buy/sell quantity in the popup dialog.
@@ -472,25 +426,6 @@ class CommoditiesMarket:
 
         return True, actual_qty
 
-    def capture_goods_panel(self):
-        """ Get the location panel from within the nav panel.
-        Returns an image, or None.
-        """
-        # Scale the regions based on the target resolution.
-        region = self.parent.reg['commodity_column']
-        img = self.ocr.capture_region_pct(region)
-        if img is None:
-            return False
-
-        if self.ap.debug_overlay:
-            # Offset to match the nav panel offset
-            q = Quad.from_rect(self.parent.reg['commodity_column']['rect'])
-            self.ap.overlay.overlay_quad_pix('capture_goods_panel', q, (0, 255, 0), 2, 5)
-            self.ap.overlay.overlay_paint()
-
-        return img
-
-
 def dummy_cb(msg, body=None):
     pass
 
@@ -501,8 +436,6 @@ if __name__ == "__main__":
     test_ed_ap = EDAutopilot(cb=dummy_cb)
     test_ed_ap.keys.activate_window = True
     svcs = EDStationServicesInShip(test_ed_ap, test_ed_ap.scr, test_ed_ap.keys, test_ed_ap.ap_ckb)
-    #svcs.goto_station_services()
-    #svcs.goto_commodities_market()
 
     while 1:
         load_calibrated_regions('EDStationServicesInShip', svcs.reg)
@@ -510,16 +443,6 @@ if __name__ == "__main__":
         for key, value in svcs.reg.items():
             commodities_market = Quad.from_rect(svcs.reg[key]['rect'])
             test_ed_ap.overlay.overlay_quad_pct(key, commodities_market, (0, 255, 0), 2, 7)
-
-        # commodities_market = Quad.from_rect(svcs.reg['commodities_market']['rect'])
-        # test_ed_ap.overlay.overlay_quad_pct('commodities_market', commodities_market, (0, 255, 0), 2, 7)
-        #
-        # commodity_column = Quad.from_rect(svcs.reg['commodity_column']['rect'])
-        # test_ed_ap.overlay.overlay_quad_pct('commodity_column', commodity_column, (0, 255, 0), 2, 7)
-        #
-        # buy_qty_box = Quad.from_rect(svcs.reg['buy_qty_box']['rect'])
-        # test_ed_ap.overlay.overlay_quad_pct('buy_qty_box', buy_qty_box, (0, 255, 0), 2, 7)
-
         test_ed_ap.overlay.overlay_paint()
 
         sleep(0.5)
