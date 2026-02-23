@@ -8,6 +8,7 @@ import win32gui
 from numpy import array
 import mss
 import json
+import threading
 
 from src.core.EDlogger import logger
 from src.screen.Screen_Regions import Quad
@@ -92,7 +93,8 @@ def crop_image_pix(image, quad: Quad):
 class Screen:
     def __init__(self, cb):
         self.ap_ckb = cb
-        self.mss = mss.mss()
+        self._mss_init = mss.mss()   # main-thread instance for __init__ monitor detection
+        self._tls = threading.local() # thread-local storage for worker-thread grabs
         self.using_screen = True  # True to use screen, false to use an image. Set screen_image to the image
         self._screen_image = None  # Screen image captured from screen, or loaded by user for testing.
         self.screen_width = 0
@@ -116,7 +118,7 @@ class Screen:
         ed_client_rect = self.get_elite_client_rect()
 
         # Examine all monitors to determine match with ED
-        self.mons = self.mss.monitors
+        self.mons = self._mss_init.monitors
         mon_num = 0
         default = True
         for item in self.mons:
@@ -126,7 +128,7 @@ class Screen:
                     if item['left'] == ed_rect[0] and item['top'] == ed_rect[1]:
                         # Get information of monitor
                         self.monitor_number = mon_num
-                        self.mon = self.mss.monitors[self.monitor_number]
+                        self.mon = self._mss_init.monitors[self.monitor_number]
                         default = False
 
                         # Use ED client area dimensions instead of monitor dimensions
@@ -150,7 +152,7 @@ class Screen:
             # Store the first monitor incase we need it as default
             if mon_num == 1:
                 self.monitor_number = mon_num
-                self.mon = self.mss.monitors[self.monitor_number]
+                self.mon = self._mss_init.monitors[self.monitor_number]
                 if ed_client_rect is not None:
                     self.screen_width = ed_client_rect[2] - ed_client_rect[0]
                     self.screen_height = ed_client_rect[3] - ed_client_rect[1]
@@ -220,6 +222,13 @@ class Screen:
         logger.debug('screen size: w='+str(self.screen_width)+" h="+str(self.screen_height))
         logger.debug('screen position: x='+str(self.screen_left)+" y="+str(self.screen_top))
         logger.debug('Default scale X, Y: '+str(self.scaleX)+", "+str(self.scaleY))
+
+    @property
+    def _mss(self):
+        """Get thread-local mss instance (safe for worker threads)."""
+        if not hasattr(self._tls, 'mss'):
+            self._tls.mss = mss.mss()
+        return self._tls.mss
 
     @staticmethod
     def get_elite_window_rect() -> typing.Tuple[int, int, int, int] | None:
@@ -302,7 +311,7 @@ class Screen:
             "height": int(y_bot - y_top),
             "mon": self.monitor_number,
         }
-        image = array(self.mss.grab(monitor))
+        image = array(self._mss.grab(monitor))
         # TODO - mss.grab returns the image in BGR format, so no need to convert to RGB2BGR
         if rgb:
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)

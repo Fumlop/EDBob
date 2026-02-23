@@ -84,12 +84,8 @@ class APGui:
             'Refuel Threshold': "If fuel level get below this level, \nit will attempt refuel.",
             'Scoop Timeout': "Number of second to wait for full tank, \nmight mean we are not scooping well or got a small scooper",
             'Fuel Threshold Abort': "Level at which AP will terminate, \nbecause we are not scooping well.",
-            'X Offset': "Offset left the screen to start place overlay text.",
-            'Y Offset': "Offset down the screen to start place overlay text.",
-            'Font Size': "Font size of the overlay.",
             'Calibrate': "Will iterate through a set of scaling values \ngetting the best match for your system. \nSee HOWTO-Calibrate.md",
             'Cap Mouse XY': "This will provide the StationCoord value of the Station in the SystemMap. \nSelecting this button and then clicking on the Station in the SystemMap \nwill return the x,y value that can be pasted in the waypoints file",
-            'Debug Overlay': "Enables debug data to be displayed over the \nElite Dangerous screen while playing the game.",
             'Debug Images': "Enables debug images to be stored in the 'debug_output' folder.",
             'Modifier Key Delay': "Delay for key modifiers to ensure modifier is detected before/after the key.",
             'Default Hold Time': "Default hold time for a key press.",
@@ -114,9 +110,7 @@ class APGui:
         self.checkboxvar['Enable Randomness'].set(self.ed_ap.config['EnableRandomness'])
         self.checkboxvar['Activate Elite for each key'].set(self.ed_ap.config['ActivateEliteEachKey'])
         self.checkboxvar['Automatic logout'].set(self.ed_ap.config['AutomaticLogout'])
-        self.checkboxvar['Enable Overlay'].set(self.ed_ap.config['OverlayTextEnable'])
         self.checkboxvar['Enable Hotkeys'].set(self.ed_ap.config['HotkeysEnable'])
-        self.checkboxvar['Debug Overlay'].set(self.ed_ap.config['DebugOverlay'])
         self.checkboxvar['Debug Images'].set(self.ed_ap.config['DebugImages'])
         self.radiobuttonvar['dss_button'].set(self.ed_ap.config['DSSButton'])
 
@@ -135,10 +129,6 @@ class APGui:
         self.entries['refuel']['Refuel Threshold'].delete(0, tk.END)
         self.entries['refuel']['Scoop Timeout'].delete(0, tk.END)
         self.entries['refuel']['Fuel Threshold Abort'].delete(0, tk.END)
-
-        self.entries['overlay']['X Offset'].delete(0, tk.END)
-        self.entries['overlay']['Y Offset'].delete(0, tk.END)
-        self.entries['overlay']['Font Size'].delete(0, tk.END)
 
         self.entries['buttons']['Start FSD'].delete(0, tk.END)
         self.entries['buttons']['Start SC'].delete(0, tk.END)
@@ -162,10 +152,6 @@ class APGui:
         self.entries['refuel']['Refuel Threshold'].insert(0, int(self.ed_ap.config['RefuelThreshold']))
         self.entries['refuel']['Scoop Timeout'].insert(0, int(self.ed_ap.config['FuelScoopTimeOut']))
         self.entries['refuel']['Fuel Threshold Abort'].insert(0, int(self.ed_ap.config['FuelThresholdAbortAP']))
-        self.entries['overlay']['X Offset'].insert(0, int(self.ed_ap.config['OverlayTextXOffset']))
-        self.entries['overlay']['Y Offset'].insert(0, int(self.ed_ap.config['OverlayTextYOffset']))
-        self.entries['overlay']['Font Size'].insert(0, int(self.ed_ap.config['OverlayTextFontSize']))
-
         self.entries['buttons']['Start FSD'].insert(0, str(self.ed_ap.config['HotKey_StartFSD']))
         self.entries['buttons']['Start SC'].insert(0, str(self.ed_ap.config['HotKey_StartSC']))
         self.entries['buttons']['Stop All'].insert(0, str(self.ed_ap.config['HotKey_StopAllAssists']))
@@ -215,7 +201,7 @@ class APGui:
         elif msg == 'log+vce':
             self.log_msg(body)
         elif msg == 'statusline':
-            self.update_statusline(body)
+            self.root.after(0, self.update_statusline, body)
         elif msg == 'waypoint_stop':
             logger.debug("Detected 'waypoint_stop' callback msg")
             self.root.after(0, lambda: (self.checkboxvar['Waypoint Assist'].set(0), self.check_cb('Waypoint Assist')))
@@ -226,9 +212,9 @@ class APGui:
             self.root.after(0, lambda: (self.checkboxvar['Waypoint Assist'].set(0), self.check_cb('Waypoint Assist')))
 
         elif msg == 'jumpcount':
-            self.update_jumpcount(body)
+            self.root.after(0, self.update_jumpcount, body)
         elif msg == 'update_ship_cfg':
-            self.update_ship_cfg()
+            self.root.after(0, self.update_ship_cfg)
 
     def update_ship_cfg(self):
         # load up the display with what we read from ED_AP for the current ship
@@ -479,13 +465,9 @@ class APGui:
             self.ed_ap.config['RefuelThreshold'] = int(self.entries['refuel']['Refuel Threshold'].get())
             self.ed_ap.config['FuelScoopTimeOut'] = int(self.entries['refuel']['Scoop Timeout'].get())
             self.ed_ap.config['FuelThresholdAbortAP'] = int(self.entries['refuel']['Fuel Threshold Abort'].get())
-            self.ed_ap.config['OverlayTextXOffset'] = int(self.entries['overlay']['X Offset'].get())
-            self.ed_ap.config['OverlayTextYOffset'] = int(self.entries['overlay']['Y Offset'].get())
-            self.ed_ap.config['OverlayTextFontSize'] = int(self.entries['overlay']['Font Size'].get())
             self.ed_ap.config['HotKey_StartFSD'] = str(self.entries['buttons']['Start FSD'].get())
             self.ed_ap.config['HotKey_StartSC'] = str(self.entries['buttons']['Start SC'].get())
             self.ed_ap.config['HotKey_StopAllAssists'] = str(self.entries['buttons']['Stop All'].get())
-            self.ed_ap.config['DebugOverlay'] = self.checkboxvar['Debug Overlay'].get()
             self.ed_ap.config['HotkeysEnable'] = self.checkboxvar['Enable Hotkeys'].get()
             self.ed_ap.config['DebugImages'] = self.checkboxvar['Debug Images'].get()
             self.ed_ap.config['Key_ModDelay'] = float(self.entries['keys']['Modifier Key Delay'].get())
@@ -524,11 +506,6 @@ class APGui:
         else:
             self.ed_ap.set_automatic_logout(False)
 
-        if self.checkboxvar['Enable Overlay'].get():
-            self.ed_ap.set_overlay(True)
-        else:
-            self.ed_ap.set_overlay(False)
-
         self.ed_ap.config['DSSButton'] = self.radiobuttonvar['dss_button'].get()
 
         if self.radiobuttonvar['debug_mode'].get() == "Error":
@@ -537,12 +514,6 @@ class APGui:
             self.ed_ap.set_log_debug(True)
         elif self.radiobuttonvar['debug_mode'].get() == "Info":
             self.ed_ap.set_log_info(True)
-
-        if field == 'Debug Overlay':
-            if self.checkboxvar['Debug Overlay'].get():
-                self.ed_ap.debug_overlay = True
-            else:
-                self.ed_ap.debug_overlay = False
 
         if field == 'Enable Hotkeys':
             self.ed_ap.config['HotkeysEnable'] = self.checkboxvar['Enable Hotkeys'].get()
@@ -584,7 +555,6 @@ class APGui:
         autopilot_entry_fields = ('Sun Bright Threshold', 'Nav Align Tries', 'Jump Tries', 'Docking Retries', 'Wait For Autodock')
         buttons_entry_fields = ('Start FSD', 'Start SC', 'Stop All')
         refuel_entry_fields = ('Refuel Threshold', 'Scoop Timeout', 'Fuel Threshold Abort')
-        overlay_entry_fields = ('X Offset', 'Y Offset', 'Font Size')
         keys_entry_fields = ('Modifier Key Delay', 'Default Hold Time', 'Repeat Key Delay')
 
         # notebook pages
@@ -597,6 +567,9 @@ class APGui:
         btn_load.grid(row=0, column=0, padx=5, pady=5, sticky="W")
         btn_save = ttk.Button(blk_top_buttons, text='Save All Settings', command=self.save_settings, style="Accent.TButton")
         btn_save.grid(row=0, column=1, padx=2, pady=5, sticky="W")
+
+        win.grid_rowconfigure(1, weight=1)
+        win.grid_columnconfigure(0, weight=1)
 
         nb = ttk.Notebook(win)
         nb.grid(row=1, padx=10, pady=5, sticky="NSEW")
@@ -724,14 +697,6 @@ class APGui:
         blk_fuel.grid(row=1, column=0, padx=2, pady=2, sticky="NSEW")
         self.entries['refuel'] = self.makeform(blk_fuel, FORM_TYPE_SPINBOX, refuel_entry_fields)
 
-        # overlay settings block
-        blk_overlay = ttk.LabelFrame(blk_settings, text="OVERLAY", padding=(10, 5))
-        blk_overlay.grid(row=1, column=1, padx=2, pady=2, sticky="NSEW")
-        self.checkboxvar['Enable Overlay'] = tk.BooleanVar()
-        cb_enable = ttk.Checkbutton(blk_overlay, text='Enable', variable=self.checkboxvar['Enable Overlay'], command=(lambda field='Enable Overlay': self.check_cb(field)))
-        cb_enable.grid(row=0, column=0, columnspan=2, sticky=tk.W)
-        self.entries['overlay'] = self.makeform(blk_overlay, FORM_TYPE_SPINBOX, overlay_entry_fields, 1, 1.0, 0.0, 3000.0)
-
         # Keys settings block
         blk_keys = ttk.LabelFrame(blk_settings, text="KEYS", padding=(10, 5))
         blk_keys.grid(row=2, column=0, padx=2, pady=2, sticky="NSEW")
@@ -779,11 +744,6 @@ class APGui:
         btn_open_logfile = ttk.Button(blk_logging, text='Open Log File', command=self.open_logfile)
         btn_open_logfile.grid(row=3, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
 
-        self.checkboxvar['Debug Overlay'] = tk.BooleanVar()
-        cb_debug_overlay = ttk.Checkbutton(blk_logging, text='Debug Overlay', variable=self.checkboxvar['Debug Overlay'], command=(lambda field='Debug Overlay': self.check_cb(field)))
-        cb_debug_overlay.grid(row=4, column=0, padx=2, pady=2, sticky=tk.W)
-        tip = ToolTip(cb_debug_overlay, msg=self.tooltips['Debug Overlay'], delay=1.0, bg="#808080", fg="#FFFFFF")
-
         self.checkboxvar['Debug Images'] = tk.BooleanVar()
         cb_debug_images = ttk.Checkbutton(blk_logging, text='Debug Images', variable=self.checkboxvar['Debug Images'], command=(lambda field='Debug Images': self.check_cb(field)))
         cb_debug_images.grid(row=5, column=0, padx=2, pady=2, sticky=tk.W)
@@ -809,7 +769,7 @@ class APGui:
 
         # === Status Bar ===
         statusbar = ttk.Frame(win)
-        statusbar.grid(row=4, column=0)
+        statusbar.grid(row=2, column=0, sticky="EW")
         self.status = ttk.Label(win, text="Status: ", relief=tk.SUNKEN, anchor=tk.W, justify=tk.LEFT, width=29)
         self.jumpcount = ttk.Label(statusbar, text="<info> ", relief=tk.SUNKEN, anchor=tk.W, justify=tk.LEFT, width=40)
         self.status.pack(in_=statusbar, side=tk.LEFT, fill=tk.BOTH, expand=True)
