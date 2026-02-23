@@ -21,8 +21,6 @@ class EDGraphicsSettings:
         display = self._read_xml(self.display_settings_filepath)['DisplayConfig']
         self.screenwidth = display['ScreenWidth']
         self.screenheight = display['ScreenHeight']
-        self.fullscreen = display['FullScreen']  # 0=Windowed, 1=Fullscreen, 2=Borderless
-        self.monitor = display['Monitor']
 
         settings = self._read_xml(self.settings_filepath)
         self.fov = settings['GraphicsOptions']['FOV']
