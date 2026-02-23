@@ -9,6 +9,7 @@ import win32con
 import win32gui
 import win32ui
 from src.screen.Screen_Regions import Quad, Point
+from src.core.constants import ED_WINDOW_TITLE
 
 """
 File:Overlay.py    
@@ -40,7 +41,6 @@ floating_text = {}
 quadrilaterals = {}
 fnt = ["Times New Roman", 12, 12]
 pos = [0,0]
-elite_dangerous_window = "Elite - Dangerous (CLIENT)"
 
 class Vector:
     def __init__(self, x, y, w, h):
@@ -59,7 +59,7 @@ class Overlay:
 
         self.parent = parent_window
         if elite == 1:
-            self.parent = elite_dangerous_window
+            self.parent = ED_WINDOW_TITLE
         
         self.hWindow = None
         self.overlay_thr = threading.Thread(target=self.overlay_win32_run, daemon=True)

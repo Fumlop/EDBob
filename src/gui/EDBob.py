@@ -35,6 +35,7 @@ from src.core.MousePt import MousePoint
 from src.autopilot import ED_AP
 
 from src.core.EDlogger import logger
+from src.core.constants import EDAP_VERSION, FORM_TYPE_CHECKBOX, FORM_TYPE_SPINBOX, FORM_TYPE_ENTRY
 
 """
 File:EDBob.py
@@ -53,16 +54,6 @@ Ideas taken from:  https://github.com/skai2/EDAutopilot
 Author: sumzer0@yahoo.com
 """
 
-# ---------------------------------------------------------------------------
-# must be updated with a new release so that the update check works properly!
-# contains the names of the release.
-EDAP_VERSION = "V1.9.0 b4"
-# depending on how release versions are best marked you could also change it to the release tag, see function check_update.
-# ---------------------------------------------------------------------------
-
-FORM_TYPE_CHECKBOX = 0
-FORM_TYPE_SPINBOX = 1
-FORM_TYPE_ENTRY = 2
 
 
 def str_to_float(input_str: str) -> float:

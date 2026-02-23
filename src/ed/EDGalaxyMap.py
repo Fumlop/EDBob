@@ -7,6 +7,7 @@ import numpy as np
 import easyocr
 
 from src.core.EDAP_data import GuiFocusGalaxyMap
+from src.core.constants import FAV_LIST_REGION_PCT
 from src.screen.Screen_Regions import scale_region, Quad, load_calibrated_regions
 from src.ed.StatusParser import StatusParser
 from time import sleep
@@ -22,10 +23,6 @@ def _get_ocr_reader():
         _easyocr_reader = easyocr.Reader(['en'], gpu=False, verbose=False)
     return _easyocr_reader
 
-
-# Favorites list text region as fraction of screen (for 1440x900 game window)
-# Excludes icon sidebar, captures only the text column of the favorites list
-FAV_LIST_REGION_PCT = [0.076, 0.172, 0.215, 0.522]  # [L, T, R, B] in percent
 
 
 class EDGalaxyMap:

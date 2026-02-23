@@ -27,7 +27,7 @@ Author: sumzer0@yahoo.com
 #    bbox = win32gui.GetWindowRect(hwnd)     will also then give me the resolution of the image
 #     img = ImageGrab.grab(bbox)
 
-elite_dangerous_window = "Elite - Dangerous (CLIENT)"
+from src.core.constants import ED_WINDOW_TITLE
 
 
 def set_focus_elite_window():
@@ -107,7 +107,7 @@ class Screen:
         # Find ED window position to determine which monitor it is on
         ed_rect = self.get_elite_window_rect()
         if ed_rect is None:
-            msg = f"Could not find window '{elite_dangerous_window}'. Once Elite Dangerous is running, restart EDAP."
+            msg = f"Could not find window '{ED_WINDOW_TITLE}'. Once Elite Dangerous is running, restart EDAP."
             self.ap_ckb('log', f"ERROR: {msg}")
             logger.error(msg)
         else:
@@ -227,7 +227,7 @@ class Screen:
         """ Gets the ED window rectangle.
         Returns (left, top, right, bottom) or None.
         """
-        hwnd = win32gui.FindWindow(None, elite_dangerous_window)
+        hwnd = win32gui.FindWindow(None, ED_WINDOW_TITLE)
         if hwnd:
             rect = win32gui.GetWindowRect(hwnd)
             return rect
@@ -239,7 +239,7 @@ class Screen:
         """ Gets the ED client area rectangle (game content, excluding title bar/borders).
         Returns (left, top, right, bottom) in screen coordinates, or None.
         """
-        hwnd = win32gui.FindWindow(None, elite_dangerous_window)
+        hwnd = win32gui.FindWindow(None, ED_WINDOW_TITLE)
         if hwnd:
             try:
                 client_rect = win32gui.GetClientRect(hwnd)  # relative to window
@@ -264,7 +264,7 @@ class Screen:
     def elite_window_exists() -> bool:
         """ Does the ED Client Window exist (i.e. is ED running)
         """
-        hwnd = win32gui.FindWindow(None, elite_dangerous_window)
+        hwnd = win32gui.FindWindow(None, ED_WINDOW_TITLE)
         if hwnd:
             return True
         else:
