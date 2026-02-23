@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from src.core.EDAP_data import GuiFocusGalaxyMap
-from src.screen.Screen_Regions import Quad, load_calibrated_regions
+from src.screen.Screen_Regions import Quad
 from src.ed.StatusParser import StatusParser
 from time import sleep
 from src.core.EDlogger import logger
@@ -22,8 +22,6 @@ class EDGalaxyMap:
                     }
         self.SystemSelectDelay = 0.5  # Delay selecting the system when in galaxy map
 
-        # Load custom regions from file
-        load_calibrated_regions('EDGalaxyMap', self.reg)
 
     def set_gal_map_dest_bookmark(self, ap, bookmark_type: str, bookmark_position: int) -> bool:
         """ Set the gal map destination using a bookmark.

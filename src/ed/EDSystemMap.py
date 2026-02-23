@@ -5,7 +5,7 @@ import os
 
 from src.core.EDAP_data import GuiFocusSystemMap
 from src.core.EDlogger import logger
-from src.screen.Screen_Regions import scale_region, Quad, load_calibrated_regions
+from src.screen.Screen_Regions import Quad
 from src.ed.StatusParser import StatusParser
 from time import sleep
 
@@ -24,9 +24,6 @@ class EDSystemMap:
         self.reg = {'full_panel': {'rect': [0.1, 0.1, 0.9, 0.9]},
                     'cartographics': {'rect': [0.0, 0.0, 0.25, 0.25]},
                     }
-
-        # Load custom regions from file
-        load_calibrated_regions('EDSystemMap', self.reg)
 
     def set_sys_map_dest_bookmark(self, ap, bookmark_type: str, bookmark_position: int) -> bool:
         """ Set the System Map destination using a bookmark.

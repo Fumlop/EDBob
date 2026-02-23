@@ -12,7 +12,7 @@ from src.ed.StatusParser import StatusParser
 from src.ed import MenuNav
 from time import sleep
 from src.core.EDlogger import logger
-from src.screen.Screen_Regions import Quad, scale_region, load_calibrated_regions
+from src.screen.Screen_Regions import Quad
 
 """
 File:StationServicesInShip.py    
@@ -47,8 +47,6 @@ class EDStationServicesInShip:
                     'commodity_name': {'rect': [0.0, 0.0, 1.0, 1.0]},
                     }
 
-        # Load custom regions from file
-        load_calibrated_regions('EDStationServicesInShip', self.reg)
 
     def goto_station_services(self) -> bool:
         """ Goto Station Services. Delegates to MenuNav.open_station_services. """
@@ -438,8 +436,6 @@ if __name__ == "__main__":
     svcs = EDStationServicesInShip(test_ed_ap, test_ed_ap.scr, test_ed_ap.keys, test_ed_ap.ap_ckb)
 
     while 1:
-        load_calibrated_regions('EDStationServicesInShip', svcs.reg)
-
         for key, value in svcs.reg.items():
             commodities_market = Quad.from_rect(svcs.reg[key]['rect'])
             test_ed_ap.overlay.overlay_quad_pct(key, commodities_market, (0, 255, 0), 2, 7)

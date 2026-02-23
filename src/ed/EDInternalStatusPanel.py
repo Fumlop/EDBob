@@ -11,7 +11,7 @@ from src.core import EDAP_data
 # from src.ed.EDKeys import EDKeys
 from src.ed.EDNavigationPanel import rects_to_quadrilateral, image_perspective_transform, image_reverse_perspective_transform
 from src.screen.Screen import Screen, crop_image_by_pct
-from src.screen.Screen_Regions import Quad, load_calibrated_regions
+from src.screen.Screen_Regions import Quad
 from src.ed.StatusParser import StatusParser
 from src.core.EDlogger import logger
 
@@ -49,8 +49,6 @@ class EDInternalStatusPanel:
         self._transform = None  # Warp transform to deskew the Nav panel
         self._rev_transform = None  # Reverse warp transform to skew to match the Nav panel
 
-        # Load custom regions from file
-        load_calibrated_regions('EDInternalStatusPanel', self.reg)
 
         self.customize_regions()
 

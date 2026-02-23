@@ -19,47 +19,6 @@ Author: sumzer0@yahoo.com
 """
 
 
-def scale_region(region_rect, sub_region_rect) -> [float, float, float, float]:
-    """ Converts a sub region scale to a region scale.
-    @param region_rect: A rectangle ([float, float, float, float]).
-    @param sub_region_rect: A rectangle ([float, float, float, float]).
-    @return: A rectangle ([float, float, float, float]).
-    """
-    r = Quad.from_rect(region_rect)
-    sr = Quad.from_rect(sub_region_rect)
-    r.subregion_from_quad(sr)
-    return r.to_rect_list()
-
-
-def load_calibrated_regions(prefix: str, reg: dict):
-    """ Read the custom region sizes from the calibration json file.
-    @param prefix: The dictionary key prefix (i.e. 'EDStationServicesInShip')
-    @param reg: Dictionary of regions which is modified.
-    """
-    if not prefix or prefix == '' or not reg:
-        return
-
-    calibration_file = 'configs/ocr_calibration.json'
-    if os.path.exists(calibration_file):
-        with open(calibration_file, 'r') as f:
-            calibrated_regions = json.load(f)
-
-        # Go through all regions in this class
-        for key1, value1 in reg.items():
-            calibrated_key = f"{prefix}.{key1}"
-            if calibrated_key in calibrated_regions:
-                # Use region details from the calibration file.
-                reg[key1]['rect'] = calibrated_regions[calibrated_key]['rect']
-
-                # Check if this region has any sub-regions
-                for key2, value2 in reg.items():
-                    calibrated_sub_key = f"{prefix}.{key1}.subregion.{key2}"
-                    if calibrated_sub_key in calibrated_regions:
-                        # Scale the regions based on the sub-region.
-                        reg[key2]['rect'] = scale_region(reg[key1]['rect'],
-                                                         calibrated_regions[calibrated_sub_key]['rect'])
-
-
 class Screen_Regions:
     # Map region names to their filter callback and color range
     _REGION_FILTERS = {
