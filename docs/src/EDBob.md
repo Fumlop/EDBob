@@ -1,10 +1,10 @@
-# EDAPGui.py -- Main GUI Application
+# EDBob.py -- Main GUI Application
 
 ## Purpose
 
-Main GUI application for the Elite Dangerous Autopilot. Provides a tkinter-based user interface
+Main GUI application for EDBob (Boring Operations Bot). Provides a tkinter-based user interface
 for controlling waypoint assist, managing configuration settings, loading waypoint files, and
-editing commodity quantities. Lives in `src/gui/EDAPGui.py`. Entry point is `APGui` class,
+editing commodity quantities. Lives in `src/gui/EDBob.py`. Entry point is `APGui` class,
 instantiated by `main()`.
 
 ## Architecture

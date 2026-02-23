@@ -111,4 +111,4 @@ No new dependencies required.
 - Hotkey binding: global hotkey (pynput) vs ED keybind? pynput already in deps?
 - Should regions be editable after creation (drag corners to resize)?
 - Store config per-resolution or auto-scale?
-- Integrate into existing EDAPGui main window or standalone tool?
+- Integrate into existing EDBob main window or standalone tool?

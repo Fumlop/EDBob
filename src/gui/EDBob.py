@@ -37,7 +37,7 @@ from src.autopilot import ED_AP
 from src.core.EDlogger import logger
 
 """
-File:EDAPGui.py
+File:EDBob.py
 
 Description:
 User interface for controlling the ED Autopilot
@@ -319,7 +319,7 @@ class APGui:
         self.update_statusline("Idle")
 
     def about(self):
-        webbrowser.open_new("https://github.com/SumZer0-git/EDAPGui")
+        webbrowser.open_new("https://github.com/Fumlop/EDBob")
 
     def check_for_updates(self, repo_path):
         try:
@@ -350,11 +350,11 @@ class APGui:
             return False
 
     def check_updates(self):
-        # response = requests.get("https://api.github.com/repos/SumZer0-git/EDAPGui/releases/latest")
+        # response = requests.get("https://api.github.com/repos/Fumlop/EDBob/releases/latest")
         # if EDAP_VERSION != response.json()["name"]:
         #     mb = messagebox.askokcancel("Update Check", "A new release version is available. Download now?")
         #     if mb == True:
-        #         webbrowser.open_new("https://github.com/SumZer0-git/EDAPGui/releases/latest")
+        #         webbrowser.open_new("https://github.com/Fumlop/EDBob/releases/latest")
 
         # Example usage:
         # repo_path = "/path/to/your/local/repo"
@@ -375,7 +375,7 @@ class APGui:
             self.log_msg("You have the latest version of EDAP!")
 
     def open_changelog(self):
-        webbrowser.open_new("https://github.com/SumZer0-git/EDAPGui/blob/main/ChangeLog.md")
+        webbrowser.open_new("https://github.com/Fumlop/EDBob/blob/main/ChangeLog.md")
 
     def open_discord(self):
         webbrowser.open_new("https://discord.gg/HCgkfSc")

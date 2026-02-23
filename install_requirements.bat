@@ -1,5 +1,5 @@
 @echo off
-echo === EDAPGui Installation ===
+echo === EDBob Installation ===
 echo.
 
 python --version >nul 2>&1

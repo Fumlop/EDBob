@@ -13,5 +13,5 @@ if not exist "venv\Scripts\python.exe" (
     venv\Scripts\python -m pip install -r requirements.txt
 )
 
-echo Starte EDAPGui...
-venv\Scripts\python.exe -m src.gui.EDAPGui
+echo Starte EDBob...
+venv\Scripts\python.exe -m src.gui.EDBob

@@ -1,4 +1,4 @@
-# EDAPGui Project Rules
+# EDBob Project Rules
 
 ## Screen Capture: Always use inv_col=False
 
