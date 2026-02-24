@@ -121,13 +121,15 @@ class EDAutopilot:
     yawfactor      = _ship_proxy('yawfactor')
     ship_configs   = _ship_proxy('ship_configs')
     current_ship_type = _ship_proxy('ship_type')
+    speed_demand   = _ship_proxy('speed_demand')
 
     del _ship_proxy  # clean up helper from class namespace
+
+    ZERO_THROTTLE_RATE_FACTOR = Ship.ZERO_THROTTLE_RATE_FACTOR
 
     def __init__(self, cb, doThread=True):
         self.config = {}
         self._prev_star_system = None
-        self.speed_demand = None
         # Load AP.json config
         self.load_config()
 
@@ -811,11 +813,7 @@ class EDAutopilot:
 
     def _axis_max_rate(self, axis):
         """Return the known max rate for an axis (from calibration or config)."""
-        if axis == 'pit':
-            return self.pitchrate
-        elif axis == 'yaw':
-            return self.yawrate
-        return self.rollrate
+        return self.ship.axis_max_rate(axis)
 
     def _axis_pick_key(self, axis, deg):
         """Pick the correct key for moving an axis toward center (or toward +-180 for roll).
@@ -972,8 +970,6 @@ class EDAutopilot:
     UNDOCK_SETTLE = 5           # seconds wait during undock sequences
     # Voting
     VOTE_COUNT = 3              # 3-of-3 consensus checks
-    # Turn rate at 0% throttle vs blue zone (50%) -- assumed ~65%
-    ZERO_THROTTLE_RATE_FACTOR = 0.60
     # Debug
     DEBUG_SNAP = False           # save debug snapshots to debug-output/
     DEBUG_COMPASS = False        # save compass detection images to lab/compass_debug/

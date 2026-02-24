@@ -31,6 +31,9 @@ SHIP_CONFIGS_PATH = './configs/ship_configs.json'
 class Ship:
     """Represents the player's current ship: identity, turn rates, config."""
 
+    # Rate at 0% throttle vs blue zone (50%) -- assumed ~60%
+    ZERO_THROTTLE_RATE_FACTOR = 0.60
+
     def __init__(self, ap_ckb=None):
         self.ap_ckb = ap_ckb or (lambda *a: None)
 
@@ -47,6 +50,9 @@ class Ship:
         self.pitchfactor = 12.0
         self.rollfactor = 20.0
         self.yawfactor = 12.0
+
+        # Throttle state
+        self.speed_demand = None
 
         # Cargo hold
         self.cargo_capacity = 0
@@ -71,6 +77,20 @@ class Ship:
         if ship_type and ship_type in ship_size_map:
             self.load_ship_configuration(ship_type)
         return old is not None  # True = switched (not first load)
+
+    # ------------------------------------------------------------------
+    # Axis rates
+    # ------------------------------------------------------------------
+
+    def axis_max_rate(self, axis: str) -> float:
+        """Return the known max rate (deg/s) for an axis.
+        axis: 'pit', 'yaw', or 'roll'.
+        """
+        if axis == 'pit':
+            return self.pitchrate
+        elif axis == 'yaw':
+            return self.yawrate
+        return self.rollrate
 
     # ------------------------------------------------------------------
     # Config persistence
