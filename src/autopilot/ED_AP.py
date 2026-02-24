@@ -1449,6 +1449,17 @@ class EDAutopilot:
     #
     # Setter routines for state variables
     #
+    def _stop_all_assists(self):
+        """Disable every assist and notify the GUI."""
+        self.sc_assist_enabled = False
+        self.waypoint_assist_enabled = False
+        self.dss_assist_enabled = False
+        self.calibrate_normal_enabled = False
+        self.calibrate_sc_enabled = False
+        self.ap_ckb('sc_stop')
+        self.ap_ckb('waypoint_stop')
+        self.ap_ckb('dss_stop')
+
     def _game_lost(self) -> bool:
         """Check if game window is gone or at main menu. Stops all assists if so."""
         window_gone = not Screen.Screen.elite_window_exists()
@@ -1457,9 +1468,7 @@ class EDAutopilot:
             reason = "window gone" if window_gone else "main menu"
             logger.error(f"Game lost ({reason}) -- stopping all assists")
             self.ap_ckb('log', f"ERROR: Game lost ({reason}). Stopping all assists.")
-            self.sc_assist_enabled = False
-            self.waypoint_assist_enabled = False
-            self.dss_assist_enabled = False
+            self._stop_all_assists()
             return True
         return False
 
@@ -1513,6 +1522,10 @@ class EDAutopilot:
         """Run an assist function with standard error handling.
         Returns True if _game_lost() was detected (caller should continue loop).
         """
+        if not Screen.Screen.elite_window_exists():
+            self.ap_ckb('log', f"Cannot start {name}: Elite Dangerous window not found.")
+            self._stop_all_assists()
+            return True
         self._stop_event.clear()
         set_focus_elite_window()
         try:
@@ -1523,16 +1536,8 @@ class EDAutopilot:
             logger.exception(f"{name} crashed")
             if self._game_lost():
                 return True
-            # Disable the assist so it doesn't silently restart
-            self.sc_assist_enabled = False
-            self.waypoint_assist_enabled = False
-            self.dss_assist_enabled = False
-            self.calibrate_normal_enabled = False
-            self.calibrate_sc_enabled = False
+            self._stop_all_assists()
             self.ap_ckb('log', f"{name} stopped due to error: {e}")
-            self.ap_ckb('sc_stop')
-            self.ap_ckb('waypoint_stop')
-            self.ap_ckb('dss_stop')
         return False
 
     def calibrate_rates(self, mode):
@@ -1542,18 +1547,23 @@ class EDAutopilot:
     def engine_loop(self):
         while not self.terminate:
             # Guard: require loaded screen regions before any autopilot action
-            if not self.scrReg.regions_loaded and (
-                self.sc_assist_enabled or self.waypoint_assist_enabled
-            ):
+            any_assist = (self.sc_assist_enabled or self.waypoint_assist_enabled
+                          or self.dss_assist_enabled
+                          or self.calibrate_normal_enabled or self.calibrate_sc_enabled)
+            if not self.scrReg.regions_loaded and any_assist:
                 w = self.scrReg.screen.screen_width
                 h = self.scrReg.screen.screen_height
-                msg = f"No screen region config found for resolution {w}x{h}. Cannot start autopilot."
+                msg = f"No screen region config found for resolution {w}x{h}. Cannot start."
                 logger.error(msg)
                 self.ap_ckb('log', msg)
                 self.sc_assist_enabled = False
                 self.waypoint_assist_enabled = False
+                self.dss_assist_enabled = False
+                self.calibrate_normal_enabled = False
+                self.calibrate_sc_enabled = False
                 self.ap_ckb('sc_stop')
                 self.ap_ckb('waypoint_stop')
+                self.ap_ckb('dss_stop')
 
             if self.sc_assist_enabled == True:
                 logger.debug("Running sc_assist")
