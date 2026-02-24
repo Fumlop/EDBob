@@ -293,7 +293,7 @@ class CommoditiesMarket:
             self._set_buy_sell_quantity(keys, act_qty, max_qty)
 
             keys.send('UI_Down')
-            self.ap.jn.ship['last_market_buy'] = None  # clear before buy so we detect the new event
+            self.ap.jn.set_field('last_market_buy', None)  # clear before buy so we detect the new event
             keys.send('UI_Select')  # Select Buy
 
             # Cross-check with journal for actual quantity bought
@@ -382,7 +382,7 @@ class CommoditiesMarket:
             logger.info(f"Attempting to sell all our units of {name}")
 
             keys.send('UI_Down')  # Down to the Sell button
-            self.ap.jn.ship['last_market_sell'] = None  # clear before sell so we detect the new event
+            self.ap.jn.set_field('last_market_sell', None)  # clear before sell so we detect the new event
             keys.send('UI_Select')  # Select to Sell
 
             # Cross-check with journal for actual quantity sold

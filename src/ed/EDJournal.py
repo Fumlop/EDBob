@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from enum import Enum
-from os import environ, listdir
-from os.path import join, isfile, getmtime, abspath
+from os import listdir
+from os.path import join, isfile, getmtime
 from json import loads
 from time import sleep, time
 from datetime import datetime
@@ -16,23 +17,15 @@ from src.core.WindowsKnownPaths import get_path, FOLDERID, UserHandle
 """
 File EDJournal.py
 
-Description: This file perform journal file processing.  It opens the latest updated Journal* 
-file in the Saved directory, loads in the entries.  Specific entries are stored in a dictionary.
-Every time the dictionary is access the file will be read and if new lines exist those will be loaded
-and parsed.
+Description: Threaded journal file processor. Opens the latest Journal* file,
+catches up on existing entries at startup, then continuously tails new lines
+in a background daemon thread.
 
-The dictionary can be accesses via:  
-    jn = EDJournal()
-
-    print("Ship = ", jn.ship_state())
-    ... jn.ship_state()['shieldsup']
-
-Design:
-  - open the file once
-  - when accessing a field in the ship_state() first see if more to read from open file, if so 
-    process it
-    - also check if a new journal file present, if so close current one and open new one
- 
+Access via:
+    jn = EDJournal(cb)
+    jn.start()          # start background tail thread
+    print(jn.ship_state())  # zero I/O, returns cached dict
+    jn.stop()           # clean shutdown
 """
 
 
@@ -140,11 +133,18 @@ def check_station_type(station_type: str, station_name: str, station_services: l
 class EDJournal:
     def __init__(self, cb):
         self.ap_ckb = cb
-        self.last_mod_time = None
         self.log_file = None
         self.current_log = self.get_latest_log()
         self.open_journal(self.current_log)
         self._prev_const_depot_details = None
+
+        # Threading
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._thread = None
+
+        # Event callbacks: { event_name: [callable, ...] }
+        self._event_callbacks = {}
 
         self.ship = {
             'time': (datetime.now() - datetime.fromtimestamp(getmtime(self.current_log))).seconds,
@@ -188,14 +188,145 @@ class EDJournal:
             'nav_route_cleared': False,
             'music_track': '',
         }
-        self.ship_state()    # load up from file
+
+        # Read existing journal entries to get current state
+        self._catchup()
         self.reset_items()
 
-    def get_file_modified_time(self) -> float:
-        return os.path.getmtime(self.current_log)
+    def start(self):
+        """Start the background journal tail thread."""
+        if self._thread is not None:
+            return
+        self._stop_event.clear()
+        self._thread = threading.Thread(target=self._tail_loop, daemon=True, name="EDJournal")
+        self._thread.start()
+        logger.info("Journal stream thread started")
+
+    def stop(self):
+        """Stop the background journal tail thread."""
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join(timeout=2)
+            self._thread = None
+        logger.info("Journal stream thread stopped")
+
+    def on_event(self, event_name, callback):
+        """Register a callback for a journal event.
+        callback(log_entry_dict) is called from the journal thread.
+        """
+        if event_name not in self._event_callbacks:
+            self._event_callbacks[event_name] = []
+        self._event_callbacks[event_name].append(callback)
+
+    def _fire_event(self, event_name, log):
+        """Fire registered callbacks for an event."""
+        for cb in self._event_callbacks.get(event_name, []):
+            try:
+                cb(log)
+            except Exception:
+                logger.exception(f"Error in journal event callback for {event_name}")
+
+    def set_field(self, key, value):
+        """Thread-safe field setter for external callers."""
+        with self._lock:
+            self.ship[key] = value
+
+    def ship_state(self):
+        """Returns the current ship state dict. Zero I/O -- just returns cached state."""
+        return self.ship
+
+    def _catchup(self):
+        """Read existing journal entries at startup to build current state."""
+        partial = None
+        while True:
+            pos = self.log_file.tell()
+            line = self.log_file.readline()
+            if not line:
+                break
+            if not line.endswith('\n'):
+                self.log_file.seek(pos)
+                break
+
+            log = self._try_parse(line, partial)
+            if log is None:
+                # Could be a partial line or fragment
+                stripped = line.strip()
+                if partial is None and stripped and not stripped.startswith('{'):
+                    continue
+                partial = stripped if partial is None else None
+                continue
+            partial = None
+
+            self.parse_line(log)
+
+    def _tail_loop(self):
+        """Background thread: continuously tail the journal file."""
+        partial = None
+        rotation_check = time()
+
+        while not self._stop_event.is_set():
+            # Journal file rotation check (every 5s)
+            if time() - rotation_check > 5:
+                latest = self.get_latest_log()
+                if latest and latest != self.current_log:
+                    logger.info(f"Journal rotated: {latest}")
+                    with self._lock:
+                        self.open_journal(latest)
+                    partial = None
+                rotation_check = time()
+
+            pos = self.log_file.tell()
+            line = self.log_file.readline()
+
+            if not line:
+                self._stop_event.wait(0.2)
+                continue
+
+            if not line.endswith('\n'):
+                self.log_file.seek(pos)
+                self._stop_event.wait(0.1)
+                continue
+
+            log = self._try_parse(line, partial)
+            if log is None:
+                stripped = line.strip()
+                if partial is None and stripped and not stripped.startswith('{'):
+                    continue
+                partial = stripped if partial is None else None
+                continue
+            partial = None
+
+            with self._lock:
+                self.parse_line(log)
+
+            # Fire event callbacks outside the lock
+            event_name = log.get('event')
+            if event_name:
+                self._fire_event(event_name, log)
+
+    @staticmethod
+    def _try_parse(line, partial):
+        """Try to parse a journal line, optionally joining with a buffered partial.
+        Returns parsed dict or None if unparseable.
+        """
+        if partial is not None:
+            joined = partial + line.strip()
+            try:
+                return loads(joined)
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        stripped = line.strip()
+        if not stripped or not stripped.startswith('{'):
+            return None
+
+        try:
+            return loads(stripped)
+        except (json.JSONDecodeError, ValueError):
+            return None
 
     # these items do not have respective log entries to clear them.  After initial reading of log file, clear these items
-    # also the App will need to reset these to False after detecting they were True    
+    # also the App will need to reset these to False after detecting they were True
     def reset_items(self):
         self.ship['under_attack'] = False
         self.ship['fighter_destroyed'] = False
@@ -220,7 +351,6 @@ class EDJournal:
         # open the latest journal
         self.log_file = open(log_name, encoding="utf-8")
         self.current_log = log_name
-        self.last_mod_time = None
 
     def _update_location(self, log, services_optional=False):
         """Update common location fields from a journal event."""
@@ -257,10 +387,10 @@ class EDJournal:
                 self.ship['fighter_destroyed'] = True
 
             elif  log_event == 'MissionCompleted':
-                self.ship['mission_completed'] = self.ship['mission_completed'] + 1  
+                self.ship['mission_completed'] = self.ship['mission_completed'] + 1
 
             elif  log_event == 'MissionRedirected':
-                self.ship['mission_redirected'] = self.ship['mission_redirected'] + 1  
+                self.ship['mission_redirected'] = self.ship['mission_redirected'] + 1
 
             elif log_event == 'StartJump':
                 self.ship['status'] = str('starting_'+log['JumpType']).lower()
@@ -293,7 +423,7 @@ class EDJournal:
 
             elif log_event == 'DockingCancelled':
                 self.ship['status'] = 'in_space'
-                
+
             elif log_event == 'Undocked':
                 self.ship['status'] = 'in_space'
 
@@ -304,21 +434,6 @@ class EDJournal:
                 self.ship['status'] = 'starting_docking'
 
             elif log_event == 'Docked':
-                # {"timestamp": "2024-09-29T00:47:08Z", "event": "Docked", "StationName": "Filipchenko City",
-                #  "StationType": "Coriolis", "Taxi": false, "Multicrew": false, "StarSystem": "G 139-50",
-                #  "SystemAddress": 13864557225401, "MarketID": 3229027584,
-                #  "StationFaction": {"Name": "Pixel Bandits Security Force"},
-                #  "StationGovernment": "$government_Democracy;", "StationGovernment_Localised": "Democracy",
-                #  "StationServices": ["dock", "autodock", "blackmarket", "commodities", "contacts", "exploration",
-                #                      "missions", "outfitting", "crewlounge", "rearm", "refuel", "repair", "shipyard",
-                #                      "tuning", "engineer", "missionsgenerated", "flightcontroller", "stationoperations",
-                #                      "powerplay", "searchrescue", "materialtrader", "stationMenu", "shop", "livery",
-                #                      "socialspace", "bartender", "vistagenomics", "pioneersupplies", "apexinterstellar",
-                #                      "frontlinesolutions"], "StationEconomy": "$economy_HighTech;",
-                #  "StationEconomy_Localised": "High Tech", "StationEconomies": [
-                #     {"Name": "$economy_HighTech;", "Name_Localised": "High Tech", "Proportion": 0.800000},
-                #     {"Name": "$economy_Refinery;", "Name_Localised": "Refinery", "Proportion": 0.200000}],
-                #  "DistFromStarLS": 6.950547, "LandingPads": {"Small": 6, "Medium": 12, "Large": 7}}
                 self.ship['status'] = 'in_station'
                 self._update_location(log)
 
@@ -420,23 +535,12 @@ class EDJournal:
                 self._update_location(log)
 
             elif log_event == 'ColonisationConstructionDepot':
-                # {"timestamp": "2025-06-24T02:20:26Z", "event": "ColonisationConstructionDepot",
-                #  "MarketID": 3953149698, "ConstructionProgress": 0.396292, "ConstructionComplete": false,
-                #  "ConstructionFailed": false, "ResourcesRequired": [
-                #      {"Name": "$aluminium_name;", "Name_Localised": "Aluminium", "RequiredAmount": 1278,
-                #       "ProvidedAmount": 1278, "Payment": 3239},
-                #      {"Name": "$fruitandvegetables_name;", "Name_Localised": "Fruit and Vegetables",
-                #       "RequiredAmount": 9, "ProvidedAmount": 9, "Payment": 865},
-                #      {"Name": "$waterpurifiers_name;", "Name_Localised": "Water Purifiers", "RequiredAmount": 13,
-                #       "ProvidedAmount": 13, "Payment": 849}]}
                 self._prev_const_depot_details = self.ship['ConstructionDepotDetails']
                 self.ship['ConstructionDepotDetails'] = {'MarketID': log['MarketID'],
                                                          'ConstructionProgress': log['ConstructionProgress'],
                                                          'ConstructionComplete': log['ConstructionComplete'],
                                                          'ConstructionFailed': log['ConstructionFailed'],
                                                          'ResourcesRequired': log['ResourcesRequired']}
-                # Process the construction depot details
-                self.process_construction_depot_details()
 
         # exceptions
         except Exception as e:
@@ -492,66 +596,6 @@ class EDJournal:
                 # Save file
                 write_construction(const)
 
-    def ship_state(self):
-        # Journal is opened once at init, just keep tailing it
-        # Check if file changed
-        if self.get_file_modified_time() == self.last_mod_time:
-            return self.ship
-
-        cnt = 0
-        partial = None  # buffered partial line from a split read
-        while True:
-            pos = self.log_file.tell()
-            line = self.log_file.readline()
-            # if end of file then break from while True
-            if not line:
-                break
-            # Incomplete line (no newline) -- game is mid-write, seek back and retry next call
-            if not line.endswith('\n'):
-                self.log_file.seek(pos)
-                break
-
-            # If we have a buffered partial, try joining with this line
-            if partial is not None:
-                joined = partial + line.strip()
-                partial = None
-                try:
-                    log = loads(joined)
-                except (json.JSONDecodeError, ValueError):
-                    logger.warning(f"Skipping corrupt journal line (joined): {joined[:100]}...")
-                    # Fall through to try parsing current line on its own
-                    if not line.strip().startswith('{'):
-                        continue
-                else:
-                    cnt += 1
-                    current_jrnl = self.ship.copy()
-                    self.parse_line(log)
-                    if self.ship != current_jrnl:
-                        logger.debug('Journal*.log: read: '+str(cnt)+' ship: '+str(self.ship))
-                    continue
-
-            # Line doesn't start with '{' -- tail half of a split read, skip
-            stripped = line.strip()
-            if stripped and not stripped.startswith('{'):
-                logger.debug(f"Skipping journal fragment (no opening brace): {stripped[:80]}...")
-                continue
-
-            try:
-                log = loads(line)
-            except (json.JSONDecodeError, ValueError):
-                # Might be the first half of a split line, buffer it
-                partial = line.strip()
-                continue
-            cnt = cnt + 1
-            current_jrnl = self.ship.copy()
-            self.parse_line(log)
-
-            if self.ship != current_jrnl:
-                logger.debug('Journal*.log: read: '+str(cnt)+' ship: '+str(self.ship))
-
-        self.last_mod_time = self.get_file_modified_time()
-        return self.ship
-
 
 def write_construction(data, filename='./configs/construction.json'):
     if data is None:
@@ -581,13 +625,14 @@ def dummy_cb(msg, body=None):
 
 def main():
     jn = EDJournal(cb=dummy_cb)
-    while True:
-        sleep(5)
-        print("Ship = ", jn.ship_state())
+    jn.start()
+    try:
+        while True:
+            sleep(5)
+            print("Ship = ", jn.ship_state())
+    except KeyboardInterrupt:
+        jn.stop()
 
 
 if __name__ == "__main__":
     main()
-
-
-

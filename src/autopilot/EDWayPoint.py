@@ -554,8 +554,7 @@ class EDWayPoint:
                         break
                 # After delivery at construction site, sync buy quantities from depot event
                 if next_waypoint.get('IsConstruction', False):
-                    sleep(1)  # journal catch-up for ColonisationConstructionDepot event
-                    self.ap.jn.ship_state()  # force journal read
+                    sleep(1)  # wait for journal thread to process ColonisationConstructionDepot event
                     self._sync_from_construction_depot()
 
                 self.mark_waypoint_complete(dest_key)

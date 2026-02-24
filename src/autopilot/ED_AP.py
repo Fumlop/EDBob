@@ -161,6 +161,9 @@ class EDAutopilot:
 
         self.scrReg = Screen_Regions.Screen_Regions(self.scr)
         self.jn = EDJournal.EDJournal(cb)
+        self.jn.on_event('ColonisationConstructionDepot',
+                         lambda log: self.jn.process_construction_depot_details())
+        self.jn.start()
         self.keys = EDKeys.EDKeys(cb)
         self.waypoint = EDWayPoint.EDWayPoint(self, self.jn.ship_state()['odyssey'])
         self.status = StatusParser()
@@ -362,7 +365,7 @@ class EDAutopilot:
         # Back to supercruise
         self.sc_engage()
 
-        self.jn.ship_state()['interdicted'] = False
+        self.jn.set_field('interdicted', False)
         return True
 
     def _capture_compass(self, scr_reg):
@@ -1130,8 +1133,7 @@ class EDAutopilot:
                     logger.info("Starport undock: waiting for Music:NoTrack journal event")
                     for i in range(48):
                         self.check_stop()
-                        self.jn.ship_state()
-                        track = self.jn.ship.get('music_track', '')
+                        track = self.jn.ship_state().get('music_track', '')
                         if track == 'NoTrack':
                             logger.info(f"Starport undock: Music:NoTrack after {(i+1)*5}s -- mail slot cleared")
                             break
@@ -1238,7 +1240,7 @@ class EDAutopilot:
         # Update jump counters
         self.total_dist_jumped += self.jn.ship_state()['dist_jumped']
         self.total_jumps = self.jump_cnt + self.jn.ship_state()['jumps_remains']
-        self.jn.ship_state()['jumps_remains'] = 0
+        self.jn.set_field('jumps_remains', 0)
 
         # Sun avoidance
         sun_was_ahead = self.sun_avoid(scr_reg)
@@ -1296,7 +1298,7 @@ class EDAutopilot:
 
         # Ensure we are in supercruise
         self.sc_engage()
-        self.jn.ship_state()['interdicted'] = False
+        self.jn.set_field('interdicted', False)
 
         # Verify we are actually in supercruise before proceeding (use status.json flag,
         # journal status can be stale if FSDJump line was corrupted during read)
@@ -1362,7 +1364,7 @@ class EDAutopilot:
             # Body proximity check -- ApproachBody journal event
             approach_body = self.jn.ship_state().get('approach_body')
             if approach_body:
-                self.jn.ship['approach_body'] = None  # clear so we don't re-trigger
+                self.jn.set_field('approach_body', None)  # clear so we don't re-trigger
                 sc_assist_cruising = False
                 self.ap_ckb('log+vce', f'Approaching body: {approach_body} -- evading')
                 logger.info(f"sc_assist: ApproachBody detected: {approach_body}")
@@ -1523,6 +1525,7 @@ class EDAutopilot:
     # have then then kill python exec
     def quit(self):
         self.terminate = True
+        self.jn.stop()
 
     #
     # This function will execute in its own thread and will loop forever until
