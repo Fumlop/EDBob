@@ -83,21 +83,19 @@ Setup and loop share local state. Splitting adds complexity, not clarity.
 ### engine_loop() -- DONE in Priority 2
 `_run_assist()` consolidation already shrank it.
 
-## Priority 4: Magic Numbers -> Constants
+## Priority 4: Magic Numbers -> Constants -- DONE
 
-Scattered sleep values with no explanation. Group by purpose:
+Only replaced values appearing 3+ times with same purpose:
 
-| Current | Where | Proposed Constant |
-|---------|-------|-------------------|
-| `sleep(2)` after key send | multiple | `KEY_SETTLE` or just use `ALIGN_SETTLE` |
-| `sleep(4)` after boost | dock, position | `BOOST_SETTLE` |
-| `sleep(4.5)` SCO burst | position | `SCO_BURST_TIME` |
-| `sleep(0.5)` quick waits | multiple | `QUICK_SETTLE` |
-| `sleep(3)` menu render | station services | `MENU_RENDER_WAIT` |
-| `sleep(5)` undock sleeps | waypoint_undock | already long enough to warrant names |
+| Constant | Value | Occurrences | Context |
+|----------|-------|-------------|---------|
+| `BOOST_SETTLE` | 4s | 4x | after UseBoostJuice in dock + undock |
+| `UNDOCK_SETTLE` | 5s | 4x | waits during waypoint_undock sequences |
 
-Only do this where the same value appears 3+ times with same purpose.
-Don't over-constant single-use sleeps.
+Skipped (different purposes at each site):
+- `sleep(2)` x6: retry waits, key settle, dock wait -- too varied
+- `sleep(0.5)` x5: throttle settle, null check, dss poll -- too varied
+- `sleep(3)` x2, `sleep(4.5)` x1, `sleep(1)` x2: too few or single-use
 
 ## Priority 5: Config Cleanup
 

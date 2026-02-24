@@ -132,8 +132,6 @@ class EDAutopilot:
         self.scr.scaleY = self.config['ScreenScale']
 
         self.gfx_settings = EDGraphicsSettings()
-        # Aspect ratio greater than 1920/1080 (1.7777) seems to be the magic cutoff. At > 1920/1080 (1.7777), the FOV
-        # appears to be the top of the screen. Looks like FDev made the FOV for 1920x1080 resolution height.
         if self.scr.aspect_ratio >= 1.7777:
             self.ver_fov = round(float(self.gfx_settings.fov), 4)
             logger.debug(f'Vertical FOV: {self.ver_fov} deg (-{self.ver_fov / 2} to {self.ver_fov / 2} deg).')
@@ -777,7 +775,7 @@ class EDAutopilot:
 
         # Boost toward station then pitch up to clear construction geometry
         self.keys.send('UseBoostJuice')
-        sleep(4)
+        sleep(self.BOOST_SETTLE)
 
         self._debug_snap(self.scrReg, 'approach')
 
@@ -792,7 +790,7 @@ class EDAutopilot:
         pitch_time = 65.0 / self.pitchrate
         self.keys.send('PitchUpButton', hold=pitch_time)
         self.set_speed_100()
-        sleep(4)
+        sleep(self.BOOST_SETTLE)
 
         self.set_speed_0()
         self.ap_ckb('log+vce', "Initiating Docking Procedure")
@@ -1045,6 +1043,8 @@ class EDAutopilot:
     KEY_WAIT = 0.125
     # Dock approach
     DOCK_PRE_PITCH = 1.0        # seconds pitch up before boost toward station
+    BOOST_SETTLE = 4            # seconds wait after boost for speed to stabilize
+    UNDOCK_SETTLE = 5           # seconds wait during undock sequences
     # Voting
     VOTE_COUNT = 3              # 3-of-3 consensus checks
     # Turn rate at 0% throttle vs blue zone (50%) -- assumed ~65%
@@ -1390,19 +1390,19 @@ class EDAutopilot:
                             logger.info(f"Starport undock: Music:NoTrack after {(i+1)*5}s -- mail slot cleared")
                             break
                         logger.debug(f"Starport undock: music_track='{track}', waiting...")
-                        sleep(5)
+                        sleep(self.UNDOCK_SETTLE)
                     else:
                         logger.warning("Starport undock: 240s timeout waiting for NoTrack, proceeding anyway")
                     self.set_speed_100()
                 else:
                     # All non-starport stations: brief wait, then pitch away, boost, clear
-                    sleep(5)
+                    sleep(self.UNDOCK_SETTLE)
                     self.ap_ckb('log+vce', 'Maneuvering away from station')
                     self.set_speed_50()
                     pitch_time = self.config['OCDepartureAngle'] / self.pitchrate
                     self.keys.send('PitchUpButton', hold=pitch_time)
                     self.keys.send('UseBoostJuice')
-                    sleep(4)
+                    sleep(self.BOOST_SETTLE)
 
                 self.update_ap_status("Undock Complete, accelerating")
                 self.sc_engage()
@@ -1419,7 +1419,7 @@ class EDAutopilot:
 
                 # Undock from port
                 self.undock()
-                sleep(5)
+                sleep(self.UNDOCK_SETTLE)
 
             elif self.status.get_flag(FlagsLanded):
                 # We are on planet surface (not docked at planet landing pad)
@@ -1432,7 +1432,7 @@ class EDAutopilot:
             pitch_time = self.config['OCDepartureAngle'] / self.pitchrate
             self.keys.send('PitchUpButton', hold=pitch_time)
             self.keys.send('UseBoostJuice')
-            sleep(4)
+            sleep(self.BOOST_SETTLE)
             self.update_ap_status("Undock Complete, accelerating")
             self.sc_engage()
 
@@ -1452,7 +1452,7 @@ class EDAutopilot:
             if not self.status.get_flag(FlagsFsdMassLocked):
                 break
             self.keys.send('UseBoostJuice')
-            sleep(5)
+            sleep(self.UNDOCK_SETTLE)
 
     def sc_engage(self) -> bool:
         """ Engages supercruise. Clears masslock first (boosting), then SC.
