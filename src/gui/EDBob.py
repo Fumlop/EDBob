@@ -107,7 +107,6 @@ class APGui:
 
         self.msgList = self.gui_gen(root)
 
-        self.checkboxvar['Enable Randomness'].set(self.ed_ap.config['EnableRandomness'])
         self.checkboxvar['Activate Elite for each key'].set(self.ed_ap.config['ActivateEliteEachKey'])
         self.checkboxvar['Automatic logout'].set(self.ed_ap.config['AutomaticLogout'])
         self.checkboxvar['Enable Hotkeys'].set(self.ed_ap.config['HotkeysEnable'])
@@ -351,18 +350,12 @@ class APGui:
         self.log_msg(f"Status update: {txt}")
 
     def ship_tst_pitch(self):
-        # self.ed_ap.ship_tst_pitch(360)
-        # self.ed_ap.ship_tst_pitch_new(360)
         self.ed_ap.ship_tst_pitch_enabled = True
 
     def ship_tst_roll(self):
-        # self.ed_ap.ship_tst_roll(360)
-        # self.ed_ap.ship_tst_roll_new(360)
         self.ed_ap.ship_tst_roll_enabled = True
 
     def ship_tst_yaw(self):
-        # self.ed_ap.ship_tst_yaw(360)
-        # self.ed_ap.ship_tst_yaw_new(360)
         self.ed_ap.ship_tst_yaw_enabled = True
 
     def save_settings(self):
@@ -488,11 +481,6 @@ class APGui:
 
             elif self.checkboxvar['Waypoint Assist'].get() == 0 and self.WP_A_running == True:
                 self.stop_waypoint()
-
-        if self.checkboxvar['Enable Randomness'].get():
-            self.ed_ap.set_randomness(True)
-        else:
-            self.ed_ap.set_randomness(False)
 
         if self.checkboxvar['Activate Elite for each key'].get():
             self.ed_ap.set_activate_elite_eachkey(True)
@@ -668,9 +656,6 @@ class APGui:
         blk_ap = ttk.LabelFrame(blk_settings, text="AUTOPILOT", padding=(10, 5))
         blk_ap.grid(row=0, column=0, padx=2, pady=2, sticky="NSEW")
         self.entries['autopilot'] = self.makeform(blk_ap, FORM_TYPE_SPINBOX, autopilot_entry_fields)
-        self.checkboxvar['Enable Randomness'] = tk.BooleanVar()
-        cb_random = ttk.Checkbutton(blk_ap, text='Enable Randomness', variable=self.checkboxvar['Enable Randomness'], command=(lambda field='Enable Randomness': self.check_cb(field)))
-        cb_random.grid(row=5, column=0, columnspan=2, sticky=tk.W)
         self.checkboxvar['Automatic logout'] = tk.BooleanVar()
         cb_logout = ttk.Checkbutton(blk_ap, text='Automatic logout', variable=self.checkboxvar['Automatic logout'], command=(lambda field='Automatic logout': self.check_cb(field)))
         cb_logout.grid(row=6, column=0, columnspan=2, sticky=tk.W)

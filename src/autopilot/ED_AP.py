@@ -7,7 +7,6 @@ from copy import copy
 from datetime import datetime, timedelta
 from time import sleep
 from math import asin, atan, degrees
-import random
 from tkinter import messagebox
 
 import cv2
@@ -241,7 +240,6 @@ class EDAutopilot:
             "HotKey_StartFSD": "home",  # if going to use other keys, need to look at the python keyboard package
             "HotKey_StartSC": "ins",  # to determine other keynames, make sure these keys are not used in ED bindings
             "HotKey_StopAllAssists": "ctrl+x",
-            "EnableRandomness": False,  # add some additional random sleep times to avoid AP detection (0-3sec at specific locations)
             "ActivateEliteEachKey": False,  # Activate Elite window before each key or group of keys
             "DiscordWebhook": False,  # discord not implemented yet
             "DiscordWebhookURL": "",
@@ -640,93 +638,6 @@ class EDAutopilot:
             cv2.imwrite(f'{dbg_dir}/{tag}_annotated.png', annotated)
 
         return result
-
-    def is_target_arc_visible(self, scr_reg) -> bool:
-        """Check if the orange target arc is visible using center_normalcruise region.
-        Detects partial arcs by checking that orange pixels lie at a consistent
-        radius from the screen center (~395,260 within the box). Text has scattered
-        distances (high std), arc pixels cluster at one radius (low std).
-        @return: True if arc-like orange pattern is found (min 30px, radius std < 12).
-        """
-        if 'center_normalcruise' not in scr_reg.reg:
-            if self.DEBUG_FINEALIGN:
-                logger.warning(f"[FINEALIGN] 'center_normalcruise' not in scr_reg.reg (available: {list(scr_reg.reg.keys())})")
-            return False
-        raw = scr_reg.capture_region(self.scr, 'center_normalcruise')
-        if raw is None:
-            if self.DEBUG_FINEALIGN:
-                logger.warning("[FINEALIGN] capture_region returned None")
-            return False
-        hsv = cv2.cvtColor(raw, cv2.COLOR_BGR2HSV)
-        orange_mask = cv2.inRange(hsv, (12, 140, 140), (98, 255, 255))
-        count = cv2.countNonZero(orange_mask)
-
-        if count < self.MIN_ARC_PIXELS:
-            if self.DEBUG_FINEALIGN:
-                logger.info(f"[FINEALIGN] arc check: orange={count}px (need {self.MIN_ARC_PIXELS}) -- no arc")
-            return False
-
-        # Check if orange pixels form an arc (consistent radius from box center)
-        # Screen center (960,540) maps to ~(395,260) in center_normalcruise [565,280,1365,625]
-        box_x1 = scr_reg.reg['center_normalcruise']['rect'][0]
-        box_y1 = scr_reg.reg['center_normalcruise']['rect'][1]
-        cx = 960 - box_x1  # ~395
-        cy = 540 - box_y1  # ~260
-        ys, xs = np.where(orange_mask > 0)
-        dists = np.sqrt((xs - cx)**2 + (ys - cy)**2)
-        r_std = dists.std()
-        r_mean = dists.mean()
-
-        is_arc = r_std < self.ARC_STD_THRESHOLD
-        if self.DEBUG_FINEALIGN:
-            logger.info(f"[FINEALIGN] arc check: orange={count}px r_mean={r_mean:.1f} r_std={r_std:.1f} (threshold={self.ARC_STD_THRESHOLD}) -> {'ARC' if is_arc else 'no arc'}")
-        return is_arc
-
-    def target_fine_align(self, scr_reg) -> bool:
-        """Single-shot fine alignment using target circle.
-        If screen center is inside the circle, accept immediately.
-        If not, one gentle correction per axis to bring it inside.
-        @return: True if target circle found, False otherwise.
-        """
-        _dbg = self.DEBUG_FINEALIGN
-        target_off = self.get_target_offset(scr_reg)
-        if target_off is None:
-            if _dbg:
-                logger.info("[FINEALIGN] no target circle found, skipping fine align")
-            return False
-
-        pit = target_off['pit']
-        yaw = target_off['yaw']
-        dist = (pit**2 + yaw**2)**0.5
-        if _dbg:
-            logger.info(f"[FINEALIGN] circle offset: pit={pit:.1f} yaw={yaw:.1f} dist={dist:.1f}deg (threshold={self.FINE_ALIGN_CLOSE})")
-
-        # Inside circle? Done.
-        if abs(pit) < self.FINE_ALIGN_CLOSE and abs(yaw) < self.FINE_ALIGN_CLOSE:
-            if _dbg:
-                logger.info("[FINEALIGN] inside circle -- accepting")
-            return True
-
-        # One correction per axis -- 50% approach, no re-read, no verify
-        if abs(pit) >= self.FINE_ALIGN_CLOSE:
-            key = 'PitchUpButton' if pit > 0 else 'PitchDownButton'
-            hold = (abs(pit) * 0.5) / self.pitchrate
-            hold = max(0.10, min(1.0, hold))
-            if _dbg:
-                logger.info(f"[FINEALIGN] pitch correction: {pit:.1f}deg -> {key} hold={hold:.2f}s (rate={self.pitchrate})")
-            self.keys.send(key, hold=hold)
-
-        if abs(yaw) >= self.FINE_ALIGN_CLOSE:
-            key = 'YawRightButton' if yaw > 0 else 'YawLeftButton'
-            hold = (abs(yaw) * 0.5) / self.yawrate
-            hold = max(0.10, min(1.0, hold))
-            if _dbg:
-                logger.info(f"[FINEALIGN] yaw correction: {yaw:.1f}deg -> {key} hold={hold:.2f}s (rate={self.yawrate})")
-            self.keys.send(key, hold=hold)
-
-        if _dbg:
-            logger.info("[FINEALIGN] single correction applied -- done")
-        return True
 
     def is_sc_assist_gone(self, scr_reg) -> bool:
         """3-of-3 check whether SC Assist has actually disappeared.
@@ -1138,50 +1049,6 @@ class EDAutopilot:
             'yaw': sum(r['yaw'] for r in reads) / 3,
         }
 
-    NUDGE_SAMPLES = 5
-    NUDGE_HOLD = 0.4
-
-    NUDGE_BOTH_THRESHOLD = 5.0
-
-    def nudge_align(self, scr_reg) -> bool:
-        """Minimal realignment using 5-of-5 navball consensus.
-        Nudges both axes if both are above threshold, otherwise worst axis only.
-        Returns True if a nudge was applied, False if reads failed."""
-        offsets = []
-        for _ in range(self.NUDGE_SAMPLES):
-            off = self.get_nav_offset(scr_reg)
-            if off is None:
-                return False
-            offsets.append(off)
-
-        avg_pit = sum(o['pit'] for o in offsets) / self.NUDGE_SAMPLES
-        avg_yaw = sum(o['yaw'] for o in offsets) / self.NUDGE_SAMPLES
-        logger.info(f"nudge_align: avg pit={avg_pit:.1f} yaw={avg_yaw:.1f} (5 samples)")
-
-        if abs(avg_pit) < self.FINE_ALIGN_CLOSE and abs(avg_yaw) < self.FINE_ALIGN_CLOSE:
-            logger.info("nudge_align: already aligned, no nudge needed")
-            return True
-
-        pit_bad = abs(avg_pit) >= self.FINE_ALIGN_CLOSE
-        yaw_bad = abs(avg_yaw) >= self.FINE_ALIGN_CLOSE
-        both_bad = abs(avg_pit) >= self.NUDGE_BOTH_THRESHOLD and abs(avg_yaw) >= self.NUDGE_BOTH_THRESHOLD
-
-        if both_bad:
-            pit_key = self._axis_pick_key('pit', avg_pit)
-            yaw_key = self._axis_pick_key('yaw', avg_yaw)
-            logger.info(f"nudge_align: both axes off, {pit_key}+{yaw_key} hold={self.NUDGE_HOLD}s")
-            self.keys.send(pit_key, hold=self.NUDGE_HOLD)
-            self.keys.send(yaw_key, hold=self.NUDGE_HOLD)
-        elif pit_bad and (not yaw_bad or abs(avg_pit) > abs(avg_yaw)):
-            key = self._axis_pick_key('pit', avg_pit)
-            logger.info(f"nudge_align: {key} hold={self.NUDGE_HOLD}s")
-            self.keys.send(key, hold=self.NUDGE_HOLD)
-        else:
-            key = self._axis_pick_key('yaw', avg_yaw)
-            logger.info(f"nudge_align: {key} hold={self.NUDGE_HOLD}s")
-            self.keys.send(key, hold=self.NUDGE_HOLD)
-        return True
-
     # Threshold for roll and coarse alignment -- roll to centerline and trigger coarse
     # correction when pit or yaw exceeds this value
     ROLE_YAW_PITCH_CLOSE = 6.0
@@ -1194,16 +1061,10 @@ class EDAutopilot:
     ALIGN_CLOSE = 4.0           # degrees -- compass jitter is ~3-4 deg
     ALIGN_SETTLE = 2.0          # seconds to let ship/compass settle after pitch/yaw
     ALIGN_TIMEOUT = 25.0        # seconds per axis (allows ~6 cycles with settle)
-    # Fine align thresholds
-    FINE_ALIGN_CLOSE = 2.0      # degrees -- "already aligned" for target circle
-    FINE_ALIGN_OK = 3.0         # degrees -- "close enough" after correction
     # SC Assist detection
     SC_ASSIST_GONE_RATIO = 0.50 # cyan ratio below this = indicator gone
     SC_ASSIST_CHECK_INTERVAL = 3   # seconds between gone checks
     SC_SETTLE_TIME = 5          # seconds to let SC assist settle after engage
-    # Target arc detection
-    MIN_ARC_PIXELS = 100        # minimum orange pixels to consider as arc
-    ARC_STD_THRESHOLD = 12      # radius std below this = arc shape (not text)
     # Evasion pitch angles and cruise time
     OCCLUSION_PITCH = 65
     BODY_EVADE_PITCH = 90
@@ -1222,7 +1083,6 @@ class EDAutopilot:
     DEBUG_SNAP = False           # save debug snapshots to debug-output/
     DEBUG_COMPASS = False        # save compass detection images to lab/compass_debug/
     DEBUG_TARGET_CIRCLE = True   # verbose logging for target circle detection
-    DEBUG_FINEALIGN = False      # verbose logging for arc detection + fine align (re-enable for planet approach)
 
     def compass_align(self, scr_reg) -> bool:
         """ Align ship to compass nav target.
@@ -1265,13 +1125,6 @@ class EDAutopilot:
                 continue  # no-compass doesn't count as alignment try
 
             logger.debug(f"Compass: roll={off['roll']:.1f} pit={off['pit']:.1f} yaw={off['yaw']:.1f} z={off['z']}")
-
-            # if self.is_target_arc_visible(scr_reg):
-            #     if self.DEBUG_FINEALIGN:
-            #         logger.info(f"[FINEALIGN] arc detected at compass pit={off['pit']:.1f} yaw={off['yaw']:.1f} -- switching to fine align")
-            #     self.target_fine_align(scr_reg)
-            #     self.ap_ckb('log', 'Compass Align complete (arc fine tune)')
-            #     return True
 
             # Target behind -- pitch UP in 90° steps with compass check between each
             # Sequence: 90°, 90°, 90°, 45° (max 4 attempts)
@@ -1929,9 +1782,6 @@ class EDAutopilot:
             self._stop_event.set()
         self.dss_assist_enabled = enable
 
-    def set_randomness(self, enable=False):
-        self.config["EnableRandomness"] = enable
-
     def set_activate_elite_eachkey(self, enable=False):
         self.config["ActivateEliteEachKey"] = enable
 
@@ -2179,26 +2029,11 @@ class EDAutopilot:
     def ship_tst_pitch_new(self, angle: float):
         self._ship_tst_axis_calibrate('pitch')
 
-    def ship_tst_roll(self, angle: float):
-        set_focus_elite_window()
-        sleep(0.25)
-        self.roll_clockwise_anticlockwise(angle)
-
     def ship_tst_roll_new(self, angle: float):
         self._ship_tst_axis_calibrate('roll')
 
-    def ship_tst_yaw(self, angle: float):
-        set_focus_elite_window()
-        sleep(0.25)
-        self.yaw_right_left(angle)
-
     def ship_tst_yaw_new(self, angle: float):
         self._ship_tst_axis_calibrate('yaw')
-
-    def ship_tst_pitch(self, angle: float):
-        set_focus_elite_window()
-        sleep(0.25)
-        self.pitch_up_down(angle)
 
     _SPEED_CONFIG = {
         0:   {'demand': 'Speed0',   'sc_demand': 'SCSpeed0',   'key': 'SetSpeedZero'},
