@@ -61,31 +61,27 @@ Body proximity evasion and occlusion evasion are nearly identical:
 pitch up N degrees, cruise for M seconds, pitch down. Extract to
 `_evade_pitch(degrees, cruise_time)`.
 
-## Priority 3: Method Splitting (biggest methods)
+## Priority 3: Method Splitting (biggest methods) -- DONE
 
-### get_nav_offset() -- 185 lines
+### get_nav_offset() -- 185 lines -> 23-line orchestrator + 5 helpers
 Split into:
-- `_capture_compass(scr_reg)` -> returns upscaled BGR image
-- `_detect_ring_center(compass_hsv, orange_mask, comp_w, comp_h)` -> returns (cx, cy, r)
-- `_detect_nav_dot(compass_hsv, orange_mask, comp_w, comp_h)` -> returns (cx, cy, z)
-- `_calc_nav_angles(dot_cx, dot_cy, ring_cx, ring_cy, ring_r, z)` -> returns offset dict
-- Keep `get_nav_offset()` as thin orchestrator calling these 4
+- `_capture_compass(scr_reg)` -> (bgr, hsv, orange_mask, w, h)
+- `_detect_ring_center(scr_reg, orange_mask, w, h)` -> (cx, cy, r)
+- `_detect_nav_dot(hsv, orange_mask, w, h)` -> (cx, cy, z, mask, contours)
+- `_calc_nav_angles(dot_cx, dot_cy, ring_cx, ring_cy, ring_r, z)` -> offset dict
+- `_save_compass_debug(...)` -> debug image output
+- `get_nav_offset()` is now a thin orchestrator
 
-### compass_align() -- 131 lines
-Split into:
-- `_flip_if_behind(off, scr_reg)` -> pitches up, returns new offset or None
-- Keep roll/pitch/yaw alignment inline (already delegates to helpers)
+### compass_align() -- 120 lines -- SKIPPED
+After Priority 2, flip logic is 20 lines. Extracting adds parameter passing
+overhead for minimal gain. The method reads fine as-is.
 
-### sc_assist() -- 170+ lines
-Split into:
-- `_sc_assist_setup(scr_reg)` -> undock check, SC engage, nav panel, sun avoid
-- `_sc_assist_loop(scr_reg)` -> main polling loop
-- `_handle_body_proximity(scr_reg)` -> body evasion
-- `_handle_occlusion(scr_reg)` -> occlusion evasion
+### sc_assist() -- 170 lines -- SKIPPED
+After `_evade_pitch` extraction (Priority 2), the evasion code is 1 line each.
+Setup and loop share local state. Splitting adds complexity, not clarity.
 
-### engine_loop() -- 125+ lines
-Already covered by assist handler consolidation above. After that it should
-be under 60 lines.
+### engine_loop() -- DONE in Priority 2
+`_run_assist()` consolidation already shrank it.
 
 ## Priority 4: Magic Numbers -> Constants
 

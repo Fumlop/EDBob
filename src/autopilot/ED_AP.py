@@ -449,45 +449,33 @@ class EDAutopilot:
         self.jn.ship_state()['interdicted'] = False
         return True
 
-    def get_nav_offset(self, scr_reg, disable_auto_cal: bool = False):
-        """ Determine the x,y offset from center of the compass of the nav point.
-        @return: {'x': x.xx, 'y': y.yy, 'z': -1|0|+1, 'roll': r.rr, 'pit': p.pp, 'yaw': y.yy} | None
-        Where:
-            'pit':  0 = dead ahead, +90 = top edge, -90 = bottom edge,
-                    +180 = dead behind (over top), -180 = dead behind (under bottom)
-            'roll': 0 = 12 o'clock, +180 = 6 o'clock clockwise, -180 = 6 o'clock anticlockwise
-            'z':    +1 = target in front, -1 = target behind
+    def _capture_compass(self, scr_reg):
+        """Capture compass region and prepare images for detection.
+        Returns (compass_bgr, compass_hsv, orange_mask, comp_w, comp_h) or None on failure.
         """
-        import time as _time
-        _t0 = _time.perf_counter()
-
-        # Capture compass region directly (fixed bounding box from config)
         compass_image = scr_reg.capture_region(self.scr, 'compass')
-
-        c_left = scr_reg.reg['compass']['rect'][0]
-        c_top = scr_reg.reg['compass']['rect'][1]
-
-        _t1 = _time.perf_counter()
+        if compass_image is None:
+            return None
 
         # 2x upscale for sub-pixel centroid accuracy (~0.75 deg instead of ~1.5 deg)
         compass_image = cv2.resize(compass_image, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
         comp_h, comp_w = compass_image.shape[:2]
 
-        logger.debug(f"Compass capture: {comp_w}x{comp_h} (2x upscaled) capture={_t1-_t0:.3f}s")
-
-        # Find nav dot by color instead of template matching
-        # Convert to HSV for color-based detection
         if compass_image.shape[2] == 4:
             compass_bgr = cv2.cvtColor(compass_image, cv2.COLOR_BGRA2BGR)
         else:
             compass_bgr = compass_image
         compass_hsv = cv2.cvtColor(compass_bgr, cv2.COLOR_BGR2HSV)
 
-        # Mask out the orange compass ring (hue ~5-25, high saturation)
+        # Orange compass ring mask (hue ~5-25, high saturation)
         orange_mask = cv2.inRange(compass_hsv, (5, 100, 100), (25, 255, 255))
 
-        # Detect compass ring center: 3-of-5 vote with HoughCircles
-        # Take 5 captures, keep results with hough_r >= 55, use median if 3+ valid
+        return compass_bgr, compass_hsv, orange_mask, comp_w, comp_h
+
+    def _detect_ring_center(self, scr_reg, orange_mask, comp_w, comp_h):
+        """Detect compass ring center via 3-of-5 vote with HoughCircles.
+        Returns (ring_cx, ring_cy, ring_r).
+        """
         ring_r = 60.0  # Fixed: 30px real * 2x upscale
         valid_centers = []
         for _vote in range(5):
@@ -511,7 +499,6 @@ class EDAutopilot:
                                        maxRadius=comp_w // 2)
             if circles is not None:
                 best = min(circles[0], key=lambda c: (c[0] - comp_w/2)**2 + (c[1] - comp_h/2)**2)
-                # Reject: radius too small OR center too far from ROI center
                 dx = abs(best[0] - comp_w/2)
                 dy = abs(best[1] - comp_h/2)
                 if best[2] >= 55 and dx < 15 and dy < 15:
@@ -520,7 +507,6 @@ class EDAutopilot:
         ring_cx = comp_w / 2.0
         ring_cy = comp_h / 2.0
         if len(valid_centers) >= 3:
-            # Median of valid centers
             valid_centers.sort(key=lambda c: c[0])
             ring_cx = valid_centers[len(valid_centers) // 2][0]
             valid_centers.sort(key=lambda c: c[1])
@@ -530,18 +516,19 @@ class EDAutopilot:
         else:
             logger.debug(f"Ring: {len(valid_centers)}/5 valid, using ROI center ({ring_cx:.0f},{ring_cy:.0f})")
 
-        # Look for cyan dot (front target): hue ~75-105, val 170+
-        # Front dot is cyan (hue~90, sat~80, val~204)
+        return ring_cx, ring_cy, ring_r
+
+    def _detect_nav_dot(self, compass_hsv, orange_mask, comp_w, comp_h):
+        """Detect cyan nav dot in compass image.
+        Returns (dot_cx, dot_cy, z, front_mask, valid_contours) where z=1.0 if found, 0.0 if behind.
+        """
         front_mask = cv2.inRange(compass_hsv, (75, 40, 170), (105, 255, 255))
         front_mask = cv2.bitwise_and(front_mask, cv2.bitwise_not(orange_mask))
-
-        # Try front dot by color
-        final_z_pct = 0.0
-        dot_cx, dot_cy = ring_cx, ring_cy  # default to ring center
 
         contours, _ = cv2.findContours(front_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         all_areas = [cv2.contourArea(c) for c in contours]
         valid = [c for c in contours if 2 < cv2.contourArea(c) < comp_w * comp_h * 0.3]
+
         if valid:
             largest = max(valid, key=cv2.contourArea)
             area = cv2.contourArea(largest)
@@ -549,89 +536,87 @@ class EDAutopilot:
             if M["m00"] > 0:
                 dot_cx = M["m10"] / M["m00"]
                 dot_cy = M["m01"] / M["m00"]
-                final_z_pct = 1.0
-                _t3 = _time.perf_counter()
-                logger.debug(f"Dot: pos=({dot_cx:.1f},{dot_cy:.1f}) area={area:.1f} comp={comp_w}x{comp_h} contours={len(contours)} valid={len(valid)} total={_t3-_t0:.3f}s")
+                logger.debug(f"Dot: pos=({dot_cx:.1f},{dot_cy:.1f}) area={area:.1f} comp={comp_w}x{comp_h} contours={len(contours)} valid={len(valid)}")
+                return dot_cx, dot_cy, 1.0, front_mask, valid
 
-        # Store debug data for saving after angle calc (so filename includes pit/yaw)
-        _dbg_compass_bgr = compass_bgr
-        _dbg_front_mask = front_mask
-        _dbg_valid = valid
-        _dbg_dot_cx = dot_cx
-        _dbg_dot_cy = dot_cy
-        _dbg_z = final_z_pct
+        logger.debug(f"Dot: BEHIND comp={comp_w}x{comp_h} contours={len(contours)} areas={all_areas[:5]}")
+        return 0.0, 0.0, 0.0, front_mask, valid
 
-        if final_z_pct == 0.0:
-            # No cyan front dot = target is behind.
-            _t3 = _time.perf_counter()
-            logger.debug(f"Dot: BEHIND comp={comp_w}x{comp_h} contours={len(contours)} areas={all_areas[:5]} total={_t3-_t0:.3f}s")
+    def _calc_nav_angles(self, dot_cx, dot_cy, ring_cx, ring_cy, ring_r, z):
+        """Calculate roll/pitch/yaw angles from dot position relative to ring center.
+        Returns offset dict {'x', 'y', 'z', 'roll', 'pit', 'yaw'}.
+        """
+        # Dot offset from ring center, normalized to ring radius
+        x_pct = (dot_cx - ring_cx) / ring_r - self._nav_cor_x
+        x_pct = max(min(x_pct, 1.0), -1.0)
+
+        y_pct = -(dot_cy - ring_cy) / ring_r - self._nav_cor_y  # flip Y (screen Y is inverted)
+        y_pct = max(min(y_pct, 1.0), -1.0)
+
+        # Roll: 0 deg at 12 o'clock, clockwise positive
+        roll_deg = 0.0
+        if x_pct > 0.0:
+            roll_deg = 90 - degrees(atan(y_pct / x_pct))
+        elif x_pct < 0.0:
+            roll_deg = -90 - degrees(atan(y_pct / x_pct))
+        elif y_pct < 0.0:
+            roll_deg = 180.0
+
+        # Spherical angle mapping: navball is orthographic projection, position = sin(angle)
+        cx = max(-1.0, min(1.0, x_pct))
+        cy = max(-1.0, min(1.0, y_pct))
+        if z > 0:
+            pit_deg = degrees(asin(cy))
+            yaw_deg = degrees(asin(cx))
+        else:
+            pit_deg = (180.0 - degrees(asin(cy))) if cy > 0 else (-180.0 - degrees(asin(cy)))
+            yaw_deg = (180.0 - degrees(asin(cx))) if cx > 0 else (-180.0 - degrees(asin(cx)))
+
+        return {'x': round(x_pct, 4), 'y': round(y_pct, 4), 'z': round(z, 2),
+                'roll': round(roll_deg, 2), 'pit': round(pit_deg, 2), 'yaw': round(yaw_deg, 2)}
+
+    def _save_compass_debug(self, compass_bgr, front_mask, valid_contours,
+                            dot_cx, dot_cy, ring_cx, ring_cy, comp_w, comp_h, z, result):
+        """Save compass detection debug images when DEBUG_COMPASS is enabled."""
+        if not self.DEBUG_COMPASS:
+            return
+        dbg_dir = 'lab/compass_debug'
+        os.makedirs(dbg_dir, exist_ok=True)
+        _seq = getattr(self, '_dbg_compass_seq', 0)
+        self._dbg_compass_seq = _seq + 1
+        z_str = 'F' if z > 0 else 'B'
+        tag = f"{_seq:03d}_p{result['pit']:+05.1f}_y{result['yaw']:+05.1f}_{z_str}"
+        cv2.imwrite(f'{dbg_dir}/{tag}_compass.png', compass_bgr)
+        cv2.imwrite(f'{dbg_dir}/{tag}_cyan.png', front_mask)
+        annotated = compass_bgr.copy()
+        cv2.drawContours(annotated, valid_contours, -1, (0, 255, 0), 1)
+        if z > 0:
+            cv2.drawMarker(annotated, (int(dot_cx), int(dot_cy)), (0, 0, 255), cv2.MARKER_CROSS, 8, 1)
+        cv2.drawMarker(annotated, (comp_w // 2, comp_h // 2), (0, 255, 255), cv2.MARKER_CROSS, 8, 1)
+        cv2.drawMarker(annotated, (int(ring_cx), int(ring_cy)), (255, 0, 0), cv2.MARKER_TILTED_CROSS, 10, 1)
+        cv2.imwrite(f'{dbg_dir}/{tag}_annotated.png', annotated)
+
+    def get_nav_offset(self, scr_reg, disable_auto_cal: bool = False):
+        """ Determine the x,y offset from center of the compass of the nav point.
+        @return: {'x': x.xx, 'y': y.yy, 'z': -1|0|+1, 'roll': r.rr, 'pit': p.pp, 'yaw': y.yy} | None
+        """
+        capture = self._capture_compass(scr_reg)
+        if capture is None:
+            return None
+        compass_bgr, compass_hsv, orange_mask, comp_w, comp_h = capture
+
+        ring_cx, ring_cy, ring_r = self._detect_ring_center(scr_reg, orange_mask, comp_w, comp_h)
+
+        dot_cx, dot_cy, z, front_mask, valid_contours = self._detect_nav_dot(
+            compass_hsv, orange_mask, comp_w, comp_h)
+
+        if z == 0.0:
             return {'x': 0, 'y': 0, 'z': -1, 'roll': 180.0, 'pit': 180.0, 'yaw': 0}
 
-        # Convert dot position relative to detected ring center (-1.0 to 1.0)
-        ring_radius = ring_r
+        result = self._calc_nav_angles(dot_cx, dot_cy, ring_cx, ring_cy, ring_r, z)
 
-        # Dot offset from ring center, normalized to ring radius
-        final_x_pct = (dot_cx - ring_cx) / ring_radius
-        final_x_pct = final_x_pct - self._nav_cor_x
-        final_x_pct = max(min(final_x_pct, 1.0), -1.0)
-
-        final_y_pct = -(dot_cy - ring_cy) / ring_radius  # flip Y (screen Y is inverted)
-        final_y_pct = final_y_pct - self._nav_cor_y
-        final_y_pct = max(min(final_y_pct, 1.0), -1.0)
-
-        # Calc angle in degrees starting at 0 deg at 12 o'clock and increasing clockwise
-        # so 3 o'clock is +90° and 9 o'clock is -90°.
-        final_roll_deg = 0.0
-        if final_x_pct > 0.0:
-            final_roll_deg = 90 - degrees(atan(final_y_pct/final_x_pct))
-        elif final_x_pct < 0.0:
-            final_roll_deg = -90 - degrees(atan(final_y_pct/final_x_pct))
-        elif final_y_pct < 0.0:
-            final_roll_deg = 180.0
-
-        # Spherical angle mapping: navball is a sphere rendered flat (orthographic projection)
-        # dot position = sin(angle), so angle = asin(position)
-        if final_z_pct > 0:
-            # Front hemisphere: clamp to [-1,1] for asin safety
-            clamped_y = max(-1.0, min(1.0, final_y_pct))
-            clamped_x = max(-1.0, min(1.0, final_x_pct))
-            final_pit_deg = degrees(asin(clamped_y))
-            final_yaw_deg = degrees(asin(clamped_x))
-        else:
-            # Behind hemisphere
-            clamped_y = max(-1.0, min(1.0, final_y_pct))
-            clamped_x = max(-1.0, min(1.0, final_x_pct))
-            if clamped_y > 0:
-                final_pit_deg = 180.0 - degrees(asin(clamped_y))
-            else:
-                final_pit_deg = -180.0 - degrees(asin(clamped_y))
-            if clamped_x > 0:
-                final_yaw_deg = 180.0 - degrees(asin(clamped_x))
-            else:
-                final_yaw_deg = -180.0 - degrees(asin(clamped_x))
-
-        result = {'x': round(final_x_pct, 4), 'y': round(final_y_pct, 4), 'z': round(final_z_pct, 2),
-                  'roll': round(final_roll_deg, 2), 'pit': round(final_pit_deg, 2), 'yaw': round(final_yaw_deg, 2)}
-
-        # Debug: save compass detection images with pit/yaw in filename
-        if self.DEBUG_COMPASS:
-            import os
-            dbg_dir = 'lab/compass_debug'
-            os.makedirs(dbg_dir, exist_ok=True)
-            _seq = getattr(self, '_dbg_compass_seq', 0)
-            self._dbg_compass_seq = _seq + 1
-            z_str = 'F' if _dbg_z > 0 else 'B'
-            tag = f"{_seq:03d}_p{final_pit_deg:+05.1f}_y{final_yaw_deg:+05.1f}_{z_str}"
-            cv2.imwrite(f'{dbg_dir}/{tag}_compass.png', _dbg_compass_bgr)
-            cv2.imwrite(f'{dbg_dir}/{tag}_cyan.png', _dbg_front_mask)
-            annotated = _dbg_compass_bgr.copy()
-            cv2.drawContours(annotated, _dbg_valid, -1, (0, 255, 0), 1)
-            if _dbg_z > 0:
-                cv2.drawMarker(annotated, (int(_dbg_dot_cx), int(_dbg_dot_cy)), (0, 0, 255), cv2.MARKER_CROSS, 8, 1)
-            # Yellow + = ROI center, Cyan x = detected ring center
-            cv2.drawMarker(annotated, (comp_w // 2, comp_h // 2), (0, 255, 255), cv2.MARKER_CROSS, 8, 1)
-            cv2.drawMarker(annotated, (int(ring_cx), int(ring_cy)), (255, 0, 0), cv2.MARKER_TILTED_CROSS, 10, 1)
-            cv2.imwrite(f'{dbg_dir}/{tag}_annotated.png', annotated)
+        self._save_compass_debug(compass_bgr, front_mask, valid_contours,
+                                 dot_cx, dot_cy, ring_cx, ring_cy, comp_w, comp_h, z, result)
 
         return result
 
