@@ -73,6 +73,10 @@ class Screen_Regions:
 
         # Build reg dict from config + filter definitions
         self.reg = {}
+        if config_data is None:
+            logger.warning(f"No screen region config found for {w}x{h}")
+            self.regions_loaded = False
+            return
         for name, region_info in config_data['regions'].items():
             rect = region_info['rect']
             width = rect[2] - rect[0]
