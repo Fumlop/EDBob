@@ -215,6 +215,32 @@ class EDWayPoint:
             self.ap.ap_ckb('log', 'Synced commodity counts from construction depot')
             self.ap.ap_ckb('refresh_commodities')
 
+    def _update_buy_after_sell(self, sell_dest_key, sold_totals):
+        """After selling at a waypoint, subtract sold quantities from buy entries on other waypoints.
+        Only updates waypoints that have UpdateCommodityCount enabled.
+        @param sell_dest_key: the waypoint key where we just sold
+        @param sold_totals: dict {commodity_name: qty_sold}
+        """
+        updated = False
+        for key in self.waypoints:
+            if key == sell_dest_key:
+                continue
+            wp = self.waypoints[key]
+            if not wp.get('UpdateCommodityCount', False):
+                continue
+            buy = wp.get('BuyCommodities', {})
+            for commodity, sold_qty in sold_totals.items():
+                if commodity in buy and isinstance(buy[commodity], (int, float)) and buy[commodity] > 0:
+                    old_qty = buy[commodity]
+                    buy[commodity] = max(0, old_qty - sold_qty)
+                    logger.info(f"Sold {sold_qty} {commodity} -> waypoint #{key} buy: {old_qty} -> {buy[commodity]}")
+                    updated = True
+
+        if updated:
+            self.write_waypoints(data=None, filename=self._waypoint_path)
+            self.ap.ap_ckb('log', 'Updated buy quantities after sell')
+            self.ap.ap_ckb('refresh_commodities')
+
     def _buy_one(self, ap, name, qty, cargo_capacity):
         """Buy one commodity, wait for status update. Returns (bought, full)."""
         curr_cargo_qty = int(ap.status.get_cleaned_data()['Cargo'])
@@ -329,6 +355,7 @@ class EDWayPoint:
             logger.info(f"Execute trade: Ship's max cargo capacity: {cargo_capacity}")
 
             # --------- SELL ----------
+            sold_totals = {}  # {commodity: total_qty_sold}
             if len(sell_commodities) > 0:
                 # Select the SELL option
                 self.ap.stn_svcs_in_ship.commodities_market.select_sell(ap.keys)
@@ -349,6 +376,7 @@ class EDWayPoint:
 
                             # If we sold any goods, wait for cargo parser file to update with cargo available to sell
                             if qty > 0:
+                                sold_totals[name_loc] = sold_totals.get(name_loc, 0) + qty
                                 self.cargo_parser.wait_for_file_change(cargo_parser_timestamp, 5)
 
                                 # Check if we have any of the item to sell
@@ -363,12 +391,18 @@ class EDWayPoint:
                         # Sell the commodity
                         result, qty = self.ap.stn_svcs_in_ship.commodities_market.sell_commodity(ap.keys, key, sell_commodities[key], self.cargo_parser)
 
-                        # Update counts if necessary
-                        if qty > 0 and self.waypoints[dest_key]['UpdateCommodityCount']:
-                            sell_commodities[key] = sell_commodities[key] - qty
+                        if qty > 0:
+                            sold_totals[key] = sold_totals.get(key, 0) + qty
+                            # Update sell counts if necessary
+                            if self.waypoints[dest_key]['UpdateCommodityCount']:
+                                sell_commodities[key] = sell_commodities[key] - qty
 
                 # Save changes
                 self.write_waypoints(data=None, filename=self._waypoint_path)
+
+            # After sell, update buy quantities on other waypoints
+            if sold_totals:
+                self._update_buy_after_sell(dest_key, sold_totals)
 
             sleep(1)
 
