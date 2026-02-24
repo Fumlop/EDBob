@@ -351,14 +351,11 @@ class APGui:
         self.status.configure(text="Status: " + txt)
         self.log_msg(f"Status update: {txt}")
 
-    def ship_tst_pitch(self):
-        self.ed_ap.ap_ckb('log', 'Pitch calibration not implemented yet')
+    def start_calibrate_normal(self):
+        self.ed_ap.calibrate_normal_enabled = True
 
-    def ship_tst_roll(self):
-        self.ed_ap.ap_ckb('log', 'Roll calibration not implemented yet')
-
-    def ship_tst_yaw(self):
-        self.ed_ap.ap_ckb('log', 'Yaw calibration not implemented yet')
+    def start_calibrate_sc(self):
+        self.ed_ap.calibrate_sc_enabled = True
 
     def save_settings(self):
         self.entry_update(None)
@@ -704,10 +701,10 @@ class APGui:
         spn_sun_pitch_up.bind('<FocusOut>', self.entry_update)
         self.entries['ship']['SunPitchUp+Time'] = spn_sun_pitch_up
 
-        btn_tst_pitch = ttk.Button(blk_ship, text='Calibrate Pitch Rate', command=self.ship_tst_pitch)
-        btn_tst_pitch.grid(row=6, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
-        btn_tst_yaw = ttk.Button(blk_ship, text='Calibrate Yaw Rate', command=self.ship_tst_yaw)
-        btn_tst_yaw.grid(row=7, column=0, padx=2, pady=2, columnspan=2, sticky="NSEW")
+        btn_cal_normal = ttk.Button(blk_ship, text='Calibrate Normal', command=self.start_calibrate_normal)
+        btn_cal_normal.grid(row=6, column=0, padx=2, pady=2, sticky="NSEW")
+        btn_cal_sc = ttk.Button(blk_ship, text='Calibrate SC (0%)', command=self.start_calibrate_sc)
+        btn_cal_sc.grid(row=6, column=1, padx=2, pady=2, sticky="NSEW")
 
         # settings button block
         blk_settings_buttons = ttk.Frame(page1)

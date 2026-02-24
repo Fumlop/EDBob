@@ -124,6 +124,8 @@ class EDAutopilot:
         self.sc_assist_enabled = False
         self.waypoint_assist_enabled = False
         self.dss_assist_enabled = False
+        self.calibrate_normal_enabled = False
+        self.calibrate_sc_enabled = False
         self._stop_event = threading.Event()  # safe interrupt signal for assist threads
 
         # Create instance of each of the needed Classes
@@ -997,9 +999,9 @@ class EDAutopilot:
     AVG_DELAY = 0.01  # 10ms between reads
 
     def _avg_offset(self, scr_reg, get_offset_fn):
-        """Take 3 reads with 10ms gaps, return average pit/yaw.
-        @param get_offset_fn: callable(scr_reg) -> dict with 'pit','yaw' or None
-        @return: dict with avg 'pit','yaw' or None if any read fails.
+        """Take 3 reads with 10ms gaps, return average pit/yaw/roll.
+        @param get_offset_fn: callable(scr_reg) -> dict with 'pit','yaw','roll' or None
+        @return: dict with avg 'pit','yaw','roll' or None if any read fails.
         """
         reads = []
         for i in range(3):
@@ -1012,6 +1014,7 @@ class EDAutopilot:
         return {
             'pit': sum(r['pit'] for r in reads) / 3,
             'yaw': sum(r['yaw'] for r in reads) / 3,
+            'roll': sum(r['roll'] for r in reads) / 3,
         }
 
     # Threshold for roll and coarse alignment -- roll to centerline and trigger coarse
@@ -1795,6 +1798,119 @@ class EDAutopilot:
                 return True
         return False
 
+    # Calibration sequence: (key, hold_time, axis_to_measure_or_None)
+    CAL_HOLD = 2.0
+    CAL_SETTLE = 0.5
+    CAL_SEQUENCE = [
+        ('YawLeftButton',   CAL_HOLD, 'yaw'),
+        ('YawLeftButton',   CAL_HOLD, 'yaw'),
+        ('RollRightButton', CAL_HOLD, 'roll'),
+        ('RollRightButton', CAL_HOLD, 'roll'),
+        ('PitchDownButton', CAL_HOLD, 'pitch'),
+        ('PitchDownButton', CAL_HOLD, 'pitch'),
+        ('YawRightButton',  CAL_HOLD, 'yaw'),
+        ('YawRightButton',  CAL_HOLD, 'yaw'),
+        ('RollLeftButton',  CAL_HOLD, 'roll'),
+        ('RollLeftButton',  CAL_HOLD, 'roll'),
+        ('PitchDownButton', 6.0, None),  # recovery to center, not measured
+        ('PitchUpButton',   CAL_HOLD, 'pitch'),
+        ('PitchUpButton',   CAL_HOLD, 'pitch'),
+    ]
+    # Which offset key to read per axis
+    _CAL_AXIS_KEY = {'pitch': 'pit', 'yaw': 'yaw', 'roll': 'roll'}
+
+    def calibrate_rates(self, mode):
+        """Run the calibration sequence measuring pitch/roll/yaw rates.
+        @param mode: 'normal' for normal space, 'sc_zero' for SC at 0% throttle.
+        """
+        mode_label = 'Normal Space' if mode == 'normal' else 'Supercruise (0%)'
+        self.ap_ckb('log', f'Starting {mode_label} calibration...')
+        self.ap_ckb('log', 'Center target on compass, then hold still.')
+        sleep(1)
+
+        scr_reg = self.scrReg
+        samples = {'pitch': [], 'roll': [], 'yaw': []}
+
+        for step, (key, hold, axis) in enumerate(self.CAL_SEQUENCE, 1):
+            self.check_stop()
+
+            if axis is None:
+                # Recovery move, not measured
+                self.ap_ckb('log', f'Step {step}/13: recovery pitch (not measured)')
+                self.keys.send(key, hold=hold)
+                sleep(self.CAL_SETTLE)
+                continue
+
+            axis_key = self._CAL_AXIS_KEY[axis]
+
+            # 3-of-3 average before
+            before = self._avg_offset(scr_reg, self.get_nav_offset)
+            if before is None:
+                self.ap_ckb('log', f'Step {step}: compass read failed (before), skipping')
+                self.keys.send(key, hold=hold)
+                sleep(self.CAL_SETTLE)
+                continue
+
+            # Hold the key
+            self.keys.send(key, hold=hold)
+            sleep(self.CAL_SETTLE)
+
+            # 3-of-3 average after
+            after = self._avg_offset(scr_reg, self.get_nav_offset)
+            if after is None:
+                self.ap_ckb('log', f'Step {step}: compass read failed (after), skipping')
+                continue
+
+            delta = abs(after[axis_key] - before[axis_key])
+            rate = delta / hold
+            samples[axis].append(rate)
+            self.ap_ckb('log', f'Step {step}/13: {axis} = {rate:.1f} deg/s (delta {delta:.1f})')
+
+        # Calculate averages
+        rates = {}
+        for axis in ('pitch', 'roll', 'yaw'):
+            if samples[axis]:
+                avg = sum(samples[axis]) / len(samples[axis])
+                rates[axis] = round(avg, 1)
+                self.ap_ckb('log', f'{axis.capitalize()} rate: {avg:.1f} deg/s ({len(samples[axis])} samples)')
+            else:
+                self.ap_ckb('log', f'{axis.capitalize()}: no valid samples!')
+
+        if not rates:
+            self.ap_ckb('log', 'Calibration failed -- no valid measurements')
+            return
+
+        # Save to ship_configs.json
+        mode_key = 'Normalspace' if mode == 'normal' else 'Supercruise-zero'
+        ship = self.current_ship_type
+        if ship and ship in ship_size_map:
+            if ship not in self.ship_configs['Ship_Configs']:
+                self.ship_configs['Ship_Configs'][ship] = {}
+            cfg = self.ship_configs['Ship_Configs'][ship]
+
+            cfg[mode_key] = {
+                'PitchRate': rates.get('pitch', 0),
+                'RollRate': rates.get('roll', 0),
+                'YawRate': rates.get('yaw', 0),
+            }
+
+            # Also update flat keys (used by current alignment code)
+            if 'pitch' in rates:
+                cfg['PitchRate'] = rates['pitch']
+                self.pitchrate = rates['pitch']
+            if 'roll' in rates:
+                cfg['RollRate'] = rates['roll']
+                self.rollrate = rates['roll']
+            if 'yaw' in rates:
+                cfg['YawRate'] = rates['yaw']
+                self.yawrate = rates['yaw']
+
+            write_json_file(self.ship_configs, filepath='./configs/ship_configs.json')
+            self.ap_ckb('log', f'Saved {mode_label} rates for {ship}')
+            self.ap_ckb('update_ship_cfg')
+        else:
+            self.ap_ckb('log', 'Cannot save -- no ship detected')
+
     def engine_loop(self):
         while not self.terminate:
             # Guard: require loaded screen regions before any autopilot action
@@ -1839,7 +1955,18 @@ class EDAutopilot:
                     continue
                 self.dss_assist_enabled = False
                 self.ap_ckb('dss_stop')
-    
+
+            elif self.calibrate_normal_enabled:
+                logger.debug("Running calibration: normal space")
+                if self._run_assist("Calibrate Normal", self.calibrate_rates, 'normal'):
+                    continue
+                self.calibrate_normal_enabled = False
+
+            elif self.calibrate_sc_enabled:
+                logger.debug("Running calibration: SC 0% throttle")
+                if self._run_assist("Calibrate SC", self.calibrate_rates, 'sc_zero'):
+                    continue
+                self.calibrate_sc_enabled = False
 
             # Check once EDAPGUI loaded to prevent errors logging to the listbox before loaded
             if self.gui_loaded:
