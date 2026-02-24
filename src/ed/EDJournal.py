@@ -35,8 +35,6 @@ Design:
  
 """
 
-"""
-
 
 class StationType(Enum):
     Unknown = 0
