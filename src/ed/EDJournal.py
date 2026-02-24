@@ -177,6 +177,7 @@ class EDJournal:
             'ship_size': None,
             'has_fuel_scoop': None,
             'SupercruiseDestinationDrop_type': None,
+            'no_fire_zone': False,
             'has_adv_dock_comp': None,
             'has_std_dock_comp': None,
             'has_sco_fsd': None,
@@ -404,6 +405,7 @@ class EDJournal:
             elif log_event == 'SupercruiseEntry' or log_event == 'FSDJump':
                 self.ship['status'] = 'in_supercruise'
                 self.ship['approach_body'] = None
+                self.ship['no_fire_zone'] = False
 
             elif log_event == "DockingGranted":
                 self.ship['status'] = 'dockinggranted'
@@ -411,6 +413,13 @@ class EDJournal:
             elif log_event == "DockingDenied":
                 self.ship['status'] = 'dockingdenied'
                 self.ship['no_dock_reason'] = log['Reason']
+
+            elif log_event == 'ReceiveText':
+                msg = log.get('Message', '')
+                if 'NoFireZone_entered' in msg:
+                    self.ship['no_fire_zone'] = True
+                elif 'NoFireZone_exited' in msg:
+                    self.ship['no_fire_zone'] = False
 
             elif log_event == 'SupercruiseExit':
                 self.ship['status'] = 'in_space'

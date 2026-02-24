@@ -700,8 +700,13 @@ class EDAutopilot:
         """ Request docking from Nav Panel. """
         self.nav_panel.request_docking()
 
+    DOCK_RANGE_TIMEOUT = 60     # seconds to fly toward station before giving up
+    DOCK_DRIFT_TIME = 4         # seconds to drift (zero throttle) between retries
+    DOCK_APPROACH_TIME = 4      # seconds to fly at 50% between retries
+
     def dock(self):
-        """ Docking sequence. Boost toward station, request docking, let autodock handle it.
+        """ Docking sequence: fly into no-fire zone at 50%, request docking,
+        retry with drift if denied. Let autodock handle final approach.
         Perform Refueling and Repair once docked.
         """
         # Wait for normal space after SC drop
@@ -712,51 +717,77 @@ class EDAutopilot:
             logger.error('In dock(), still not in_space after wait')
             raise Exception('Docking failed (not in space)')
 
-        # Boost toward station then pitch up to clear construction geometry
-        self.keys.send('UseBoostJuice')
-        sleep(self.BOOST_SETTLE)
-
         self._debug_snap(self.scrReg, 'approach')
 
-        # Roll off the strut plane for rotating stations (Coriolis/Orbis/Ocellus)
-        # Construction sites have no rotating struts, skip roll there
-        drop_type = self.jn.ship_state().get('SupercruiseDestinationDrop_type') or ''
-        if 'Construction' not in drop_type:
-            self.ship.send_roll(30.0)
-
-        # Pitch up toward station, then fly at full speed
-        self.ship.send_pitch(self.DOCK_PRE_PITCH)
-        self.set_speed_100()
-        sleep(self.DOCK_PRE_WAIT)
-
+        # Fly at 50% until no-fire zone or masslock
+        self.ap_ckb('log', 'Approaching station at 50%')
+        self.set_speed_50()
+        self._wait_for_dock_range()
         self.set_speed_0()
-        self.ap_ckb('log+vce', "Initiating Docking Procedure")
-        self.request_docking()
-        sleep(1.5)  # journal catch-up
 
-        if self.jn.ship_state()['status'] == "dockingdenied":
-            self.ap_ckb('log', 'Docking denied, retrying in 30s...')
-            logger.warning('Docking denied: '+str(self.jn.ship_state()['no_dock_reason']))
-            sleep(30)
-            self.request_docking()
-            sleep(1.5)
-            if self.jn.ship_state()['status'] != "dockinggranted":
-                self.ap_ckb('log', 'Docking denied again: '+str(self.jn.ship_state()['no_dock_reason']))
-                raise Exception('Docking failed (denied twice)')
+        self._request_docking_with_retry()
 
-        self.ap_ckb('log+vce', "Docking request granted")
-        # Wait for autodock to complete -- check journal for docked status
+        # Wait for autodock to complete
         for i in range(self.config['WaitForAutoDockTimer']):
             self.check_stop()
             if self.jn.ship_state()['status'] == "in_station":
-                sleep(2)  # settle before continuing
+                sleep(2)
                 MenuNav.refuel_repair_rearm(self.keys, self.status)
                 return True
             sleep(2)
 
-        self.ap_ckb('log+vce', 'Auto dock timer timed out.')
-        logger.warning('Auto dock timer timed out. Aborting Docking.')
+        self.ap_ckb('log+vce', 'Auto dock timer timed out. Cancelling docking.')
+        logger.warning('Auto dock timer timed out. Cancelling docking via nav panel.')
+        self.request_docking()
         return False
+
+    def _wait_for_dock_range(self):
+        """Fly until no-fire zone entered (journal) or masslocked (status), or timeout."""
+        start = time.time()
+        while (time.time() - start) < self.DOCK_RANGE_TIMEOUT:
+            self.check_stop()
+            if self.jn.ship_state().get('no_fire_zone'):
+                logger.info('Approach: no-fire zone entered')
+                self.ap_ckb('log', 'No-fire zone')
+                return
+            if self.status.get_flag(FlagsFsdMassLocked):
+                logger.info('Approach: masslocked')
+                self.ap_ckb('log', 'Masslocked')
+                return
+            sleep(1)
+        logger.warning('Approach: dock range timeout')
+        self.ap_ckb('log', 'Dock range timeout')
+
+    def _request_docking_with_retry(self):
+        """Request docking. If denied, drift and retry up to DockingRetries times."""
+        for attempt in range(self.config['DockingRetries']):
+            self.check_stop()
+            self.ap_ckb('log+vce', "Requesting docking")
+            self.request_docking()
+            sleep(1.5)
+
+            status = self.jn.ship_state()['status']
+            if status == 'dockinggranted':
+                self.ap_ckb('log+vce', "Docking request granted")
+                return True
+            if status == 'dockingdenied':
+                reason = self.jn.ship_state().get('no_dock_reason', 'unknown')
+                logger.info(f'Docking denied ({reason}), drift and retry {attempt+1}/{self.config["DockingRetries"]}')
+                self.ap_ckb('log', f'Docking denied ({reason}), repositioning...')
+                # Fly 50% for a few seconds then drift to change position
+                self.set_speed_50()
+                sleep(self.DOCK_APPROACH_TIME)
+                self.set_speed_0()
+                sleep(self.DOCK_DRIFT_TIME)
+                continue
+
+            # Unknown status (maybe already docking?)
+            logger.info(f'Docking request status: {status}')
+            self.ap_ckb('log+vce', "Docking request granted")
+            return True
+
+        self.ap_ckb('log+vce', 'Docking denied after all retries')
+        raise Exception('Docking failed (denied after all retries)')
 
     def is_sun_dead_ahead(self, scr_reg):
         return scr_reg.sun_percent(scr_reg.screen) > 5
@@ -925,7 +956,7 @@ class EDAutopilot:
             # Target behind -- pitch UP with decreasing steps: 180°, 90°, 45°
             if off['z'] < 0:
                 flip_count = getattr(self, '_flip_count', 0)
-                flip_steps = [180.0, 90.0, 45.0]
+                flip_steps = [180.0, 180.0, 90.0]
                 if flip_count < len(flip_steps):
                     flip_deg = flip_steps[flip_count]
                 else:
@@ -989,16 +1020,16 @@ class EDAutopilot:
                 self.ap_ckb('log', 'Compass Align complete')
                 return True
 
-            # Verify failed -- alignment was applied, accept anyway
-            # (compass jitter ~3-4deg can cause verify to fail even when close)
-            self.ap_ckb('log', 'Compass Align complete')
-            return True
+            # Verify failed -- retry if we have attempts left
+            logger.info(f"Compass: verify failed (pit={med['pit']:.1f} yaw={med['yaw']:.1f}), retrying")
+            off = med  # use verified reading for next attempt
 
         self.ap_ckb('log+vce', 'Compass Align failed - exhausted all retries')
         return False
 
-    def mnvr_to_target(self, scr_reg):
-        """ Maneuver to Target using compass then target before performing a jump."""
+    def mnvr_to_target(self, scr_reg) -> bool:
+        """ Maneuver to Target using compass then target before performing a jump.
+        Returns True if aligned and FSD started, False if alignment failed."""
         logger.debug('mnvr_to_target entered')
 
         if not (self.jn.ship_state()['status'] == 'in_supercruise' or self.jn.ship_state()['status'] == 'in_space'):
@@ -1007,13 +1038,17 @@ class EDAutopilot:
 
         sun_was_ahead = self.sun_avoid(scr_reg)
 
-        res = self.compass_align(scr_reg)
+        if not self.compass_align(scr_reg):
+            logger.error('mnvr_to_target: compass align failed, aborting jump')
+            self.ap_ckb('log+vce', 'Alignment failed, aborting jump')
+            return False
 
         # Aligned -- start FSD charge now (after align to avoid drift)
         logger.info('mnvr_to_target: compass align done, starting FSD')
         self.ap_ckb('log', 'Compass aligned, starting FSD')
         self.keys.send('HyperSuperCombination')
         self.set_speed_100()
+        return True
 
     # position() happens after a refuel and performs
     #   - accelerate past sun
@@ -1235,7 +1270,8 @@ class EDAutopilot:
         """Single FSD jump: sun avoid, align, jump, fly away from star.
         Used by waypoint loop which handles multi-jump routes one jump at a time."""
         self.update_ap_status("Align")
-        self.mnvr_to_target(scr_reg)
+        if not self.mnvr_to_target(scr_reg):
+            raise Exception('Alignment failed, cannot jump')
 
         self.update_ap_status("Jump")
         self.jump(scr_reg)

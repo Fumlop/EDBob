@@ -349,14 +349,7 @@ class Ship:
 
         while remaining > close and (time.time() - start) < timeout:
             self.check_stop()
-            if remaining < 10:
-                approach_pct = 0.4
-            elif remaining < 20:
-                approach_pct = 0.6
-            else:
-                approach_pct = 0.8
-
-            hold_time = (remaining * approach_pct) / rate
+            hold_time = (remaining * 0.95) / rate
             hold_time = max(self.MIN_HOLD_TIME, min(self.MAX_HOLD_TIME, hold_time))
 
             logger.debug(f"Align {axis}: remaining={remaining:.1f}deg, hold={hold_time:.2f}s, rate={rate:.1f}, key={key}")
@@ -625,33 +618,13 @@ class Ship:
             self.sunpitchuptime = defaults.get('SunPitchUp+Time', 0.0)
             logger.info(f"Loaded community defaults for {ship_type}")
 
-        # Step 3: User's custom config (these are already factored runtime rates)
-        has_custom_rates = False
-        if ship_type in self.ship_configs['Ship_Configs']:
-            cfg = self.ship_configs['Ship_Configs'][ship_type]
-            if any(k in cfg for k in ['RollRate', 'PitchRate', 'YawRate', 'SunPitchUp+Time']):
-                self.rollrate = cfg.get('RollRate', self.rollrate)
-                self.pitchrate = cfg.get('PitchRate', self.pitchrate)
-                self.yawrate = cfg.get('YawRate', self.yawrate)
-                self.sunpitchuptime = cfg.get('SunPitchUp+Time', self.sunpitchuptime)
-                has_custom_rates = True
-                logger.info(f"Loaded custom config for {ship_type} from ship_configs.json")
-            if any(k in cfg for k in ['RollFactor', 'PitchFactor', 'YawFactor']):
-                self.rollfactor = cfg.get('RollFactor', self.rollfactor)
-                self.pitchfactor = cfg.get('PitchFactor', self.pitchfactor)
-                self.yawfactor = cfg.get('YawFactor', self.yawfactor)
-
-        # Derive operating rates from base values
-        # Community defaults are SC rates at 50% throttle, need factor for 0% throttle
-        # Custom config rates are already factored -- use directly
-        if has_custom_rates:
-            self._rates_normal = {'pitch': self.pitchrate, 'roll': self.rollrate, 'yaw': self.yawrate}
-            self._rates_sc = {'pitch': self.pitchrate, 'roll': self.rollrate, 'yaw': self.yawrate}
-        else:
-            nf = self.NORMAL_RATE_FACTOR * self.ZERO_THROTTLE_RATE_FACTOR   # 2.0 * 0.6 = 1.2
-            sf = self.ZERO_THROTTLE_RATE_FACTOR                             # 0.6
-            self._rates_normal = {'pitch': self.pitchrate * nf, 'roll': self.rollrate * nf, 'yaw': self.yawrate * nf}
-            self._rates_sc = {'pitch': self.pitchrate * sf, 'roll': self.rollrate * sf, 'yaw': self.yawrate * sf}
+        # Derive operating rates from community defaults (SC rates at 50% throttle)
+        # Normal space: 2x SC50, at 0% throttle: * 0.6
+        # SC at 0% throttle: SC50 * 0.6
+        nf = self.NORMAL_RATE_FACTOR * self.ZERO_THROTTLE_RATE_FACTOR   # 2.0 * 0.6 = 1.2
+        sf = self.ZERO_THROTTLE_RATE_FACTOR                             # 0.6
+        self._rates_normal = {'pitch': self.pitchrate * nf, 'roll': self.rollrate * nf, 'yaw': self.yawrate * nf}
+        self._rates_sc = {'pitch': self.pitchrate * sf, 'roll': self.rollrate * sf, 'yaw': self.yawrate * sf}
 
         # Load per-mode overrides from calibration sub-dicts
         if ship_type in self.ship_configs['Ship_Configs']:
@@ -677,21 +650,13 @@ class Ship:
         self._apply_mode_rates()
 
     def save_ship_configs(self):
-        """Save current rates to ship_configs.json for the current ship."""
+        """Save ship_configs.json to disk. Rates are stored only via calibration
+        sub-dicts (Normalspace/Supercruise-zero), not as top-level values."""
         if not self.ship_type or self.ship_type not in ship_size_map:
             return
         if self.ship_type not in self.ship_configs['Ship_Configs']:
             self.ship_configs['Ship_Configs'][self.ship_type] = {}
             logger.debug(f"Created new ship config entry for: {self.ship_type}")
-
-        cfg = self.ship_configs['Ship_Configs'][self.ship_type]
-        cfg['PitchRate'] = self.pitchrate
-        cfg['RollRate'] = self.rollrate
-        cfg['YawRate'] = self.yawrate
-        cfg['SunPitchUp+Time'] = self.sunpitchuptime
-        cfg['PitchFactor'] = self.pitchfactor
-        cfg['RollFactor'] = self.rollfactor
-        cfg['YawFactor'] = self.yawfactor
 
         _write_json(self.ship_configs, filepath=SHIP_CONFIGS_PATH)
         logger.debug(f"Saved ship config for: {self.ship_type}")
