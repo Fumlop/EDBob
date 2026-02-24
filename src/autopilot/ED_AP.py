@@ -794,18 +794,7 @@ class EDAutopilot:
         self.keys.send('UseBoostJuice')
         sleep(4)
 
-        # Debug snapshot after boost (closer to station)
-        if self.DEBUG_SNAP:
-            try:
-                snap = self.scrReg.capture_region(self.scr, 'center_normalcruise')
-                if snap is not None:
-                    snap_dir = os.path.join('debug-output', 'target-snap')
-                    os.makedirs(snap_dir, exist_ok=True)
-                    ts = time.strftime('%Y%m%d_%H%M%S')
-                    cv2.imwrite(os.path.join(snap_dir, f'approach_{ts}.png'), snap)
-                    logger.info(f"Debug snapshot saved: approach_{ts}.png")
-            except Exception as e:
-                logger.warning(f"Debug snapshot failed: {e}")
+        self._debug_snap(self.scrReg, 'approach')
 
         # Roll off the strut plane for rotating stations (Coriolis/Orbis/Ocellus)
         # Construction sites have no rotating struts, skip roll there
@@ -1079,6 +1068,33 @@ class EDAutopilot:
     DEBUG_SNAP = False           # save debug snapshots to debug-output/
     DEBUG_COMPASS = False        # save compass detection images to lab/compass_debug/
     DEBUG_TARGET_CIRCLE = True   # verbose logging for target circle detection
+
+    def _debug_snap(self, scr_reg, label):
+        """Save a debug snapshot if DEBUG_SNAP is enabled."""
+        if not self.DEBUG_SNAP:
+            return
+        try:
+            snap = scr_reg.capture_region(self.scr, 'center_normalcruise')
+            if snap is not None:
+                snap_dir = os.path.join('debug-output', 'target-snap')
+                os.makedirs(snap_dir, exist_ok=True)
+                ts = time.strftime('%Y%m%d_%H%M%S')
+                cv2.imwrite(os.path.join(snap_dir, f'{label}_{ts}.png'), snap)
+                logger.info(f"Debug snapshot saved: {label}_{ts}.png")
+        except Exception as e:
+            logger.warning(f"Debug snapshot failed: {e}")
+
+    def _evade_pitch(self, scr_reg, pitch_degrees):
+        """Pitch up to evade, cruise, then re-align and re-engage SC Assist."""
+        self.keys.send('SetSpeed25')
+        pitch_time = pitch_degrees / self.pitchrate
+        self.keys.send('PitchUpButton', hold=pitch_time)
+        self.set_speed_100()
+        sleep(self.PASSBODY_TIME)
+        self.set_speed_0()
+        self.compass_align(scr_reg)
+        self.keys.send('SetSpeed75')
+        sleep(self.SC_SETTLE_TIME)
 
     def compass_align(self, scr_reg) -> bool:
         """ Align ship to compass nav target.
@@ -1608,18 +1624,7 @@ class EDAutopilot:
                 else:
                     logger.debug("No longer in supercruise - SC Assist dropped us")
 
-                # Debug snapshot of what's ahead after SC drop
-                if self.DEBUG_SNAP:
-                    try:
-                        snap = scr_reg.capture_region(self.scr, 'center_normalcruise')
-                        if snap is not None:
-                            snap_dir = os.path.join('debug-output', 'target-snap')
-                            os.makedirs(snap_dir, exist_ok=True)
-                            ts = time.strftime('%Y%m%d_%H%M%S')
-                            cv2.imwrite(os.path.join(snap_dir, f'drop_{ts}.png'), snap)
-                            logger.info(f"Debug snapshot saved: drop_{ts}.png")
-                    except Exception as e:
-                        logger.warning(f"Debug snapshot failed: {e}")
+                self._debug_snap(scr_reg, 'drop')
 
                 break
 
@@ -1630,15 +1635,7 @@ class EDAutopilot:
                 sc_assist_cruising = False
                 self.ap_ckb('log+vce', f'Approaching body: {approach_body} -- evading')
                 logger.info(f"sc_assist: ApproachBody detected: {approach_body}")
-                self.keys.send('SetSpeed25')  # deactivate SC Assist
-                pitch_time = self.BODY_EVADE_PITCH / self.pitchrate
-                self.keys.send('PitchUpButton', hold=pitch_time)
-                self.set_speed_100()
-                sleep(self.PASSBODY_TIME)
-                self.set_speed_0()
-                self.compass_align(scr_reg)
-                self.keys.send('SetSpeed75')  # re-engage SC Assist
-                sleep(self.SC_SETTLE_TIME)
+                self._evade_pitch(scr_reg, self.BODY_EVADE_PITCH)
                 sc_assist_cruising = True
                 continue
 
@@ -1659,15 +1656,7 @@ class EDAutopilot:
                     logger.warning("sc_assist: gone -- target occluded, evading")
                     self.ap_ckb('log', 'Target occluded -- evading')
                     sc_assist_cruising = False
-                    self.keys.send('SetSpeed25')
-                    pitch_time = self.OCCLUSION_PITCH / self.pitchrate
-                    self.keys.send('PitchUpButton', hold=pitch_time)
-                    self.set_speed_100()
-                    sleep(self.PASSBODY_TIME)
-                    self.set_speed_0()
-                    self.compass_align(scr_reg)
-                    self.keys.send('SetSpeed75')
-                    sleep(self.SC_SETTLE_TIME)
+                    self._evade_pitch(scr_reg, self.OCCLUSION_PITCH)
                     sc_assist_cruising = True
                     last_align_check = time.time()
                     continue
@@ -1808,6 +1797,22 @@ class EDAutopilot:
     # This function will execute in its own thread and will loop forever until
     # the self.terminate flag is set
     #
+    def _run_assist(self, name, func, *args):
+        """Run an assist function with standard error handling.
+        Returns True if _game_lost() was detected (caller should continue loop).
+        """
+        self._stop_event.clear()
+        set_focus_elite_window()
+        try:
+            func(*args)
+        except EDAP_Interrupt:
+            logger.debug(f"Caught stop exception in {name}")
+        except Exception as e:
+            logger.exception(f"{name} trapped generic")
+            if self._game_lost():
+                return True
+        return False
+
     def engine_loop(self):
         while not self.terminate:
             # Guard: require loaded screen regions before any autopilot action
@@ -1826,19 +1831,9 @@ class EDAutopilot:
 
             if self.sc_assist_enabled == True:
                 logger.debug("Running sc_assist")
-                self._stop_event.clear()
-                set_focus_elite_window()
-    
-                try:
-                    self.update_ap_status("SC to Target")
-                    self.sc_assist(self.scrReg)
-                except EDAP_Interrupt:
-                    logger.debug("Caught stop exception")
-                except Exception as e:
-                    logger.exception("SC Assist trapped generic")
-                    if self._game_lost():
-                        continue
-
+                self.update_ap_status("SC to Target")
+                if self._run_assist("SC Assist", self.sc_assist, self.scrReg):
+                    continue
                 logger.debug("Completed sc_assist")
                 if not self.sc_assist_enabled:
                     self.ap_ckb('sc_stop')
@@ -1846,40 +1841,20 @@ class EDAutopilot:
 
             elif self.waypoint_assist_enabled == True:
                 logger.debug("Running waypoint_assist")
-                self._stop_event.clear()
-                set_focus_elite_window()
-    
                 self.jump_cnt = 0
                 self.refuel_cnt = 0
                 self.total_dist_jumped = 0
                 self.total_jumps = 0
-                try:
-                    self.waypoint_assist(self.keys, self.scrReg)
-                except EDAP_Interrupt:
-                    logger.debug("Caught stop exception")
-                except Exception as e:
-                    logger.exception("Waypoint Assist trapped generic")
-                    if self._game_lost():
-                        continue
-
+                if self._run_assist("Waypoint Assist", self.waypoint_assist, self.keys, self.scrReg):
+                    continue
                 if not self.waypoint_assist_enabled:
                     self.ap_ckb('waypoint_stop')
     
 
             elif self.dss_assist_enabled == True:
                 logger.debug("Running dss_assist")
-                self._stop_event.clear()
-                set_focus_elite_window()
-    
-                try:
-                    self.dss_assist()
-                except EDAP_Interrupt:
-                    logger.debug("Stopping DSS Assist")
-                except Exception as e:
-                    logger.exception("DSS Assist trapped generic")
-                    if self._game_lost():
-                        continue
-
+                if self._run_assist("DSS Assist", self.dss_assist):
+                    continue
                 self.dss_assist_enabled = False
                 self.ap_ckb('dss_stop')
     
