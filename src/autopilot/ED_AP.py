@@ -953,15 +953,32 @@ class EDAutopilot:
 
             logger.debug(f"Compass: roll={off['roll']:.1f} pit={off['pit']:.1f} yaw={off['yaw']:.1f} z={off['z']}")
 
-            # Target behind -- pitch UP with decreasing steps: 180°, 90°, 45°
+            # Target behind -- pitch UP with decreasing steps
             if off['z'] < 0:
                 flip_count = getattr(self, '_flip_count', 0)
                 flip_steps = [180.0, 180.0, 90.0]
+
                 if flip_count < len(flip_steps):
                     flip_deg = flip_steps[flip_count]
+                elif flip_count == len(flip_steps):
+                    # All steps done but still behind -- vote 5 readings to confirm
+                    z_votes = []
+                    for _ in range(5):
+                        r = self.get_nav_offset(scr_reg)
+                        if r is not None:
+                            z_votes.append(r['z'])
+                        sleep(0.15)
+                    z_front = sum(1 for z in z_votes if z > 0)
+                    logger.info(f"Compass: post-flip vote z_front={z_front}/{len(z_votes)}")
+                    if z_front >= 3:
+                        self._flip_count = flip_count + 1
+                        continue  # vote says front, re-read and proceed
+                    logger.error("Compass: all flip attempts exhausted, vote confirms still behind")
+                    break
                 else:
                     logger.error("Compass: all flip attempts exhausted, giving up")
                     break
+
                 logger.info(f"Compass: target behind, flip {flip_count+1}/{len(flip_steps)} pitch {flip_deg:.0f}deg")
                 self.ap_ckb('log', f'Target behind, flipping {flip_deg:.0f}deg')
                 self.ship.send_pitch(flip_deg)

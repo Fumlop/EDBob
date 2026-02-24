@@ -31,7 +31,7 @@ def goto_cockpit(keys, status_parser: StatusParser, max_tries: int = 10) -> bool
 
     for _ in range(max_tries):
         keys.send("UI_Back")
-        sleep(0.3)
+        sleep(0.4)
         if status_parser.get_gui_focus() == GuiFocusNoFocus:
             return True
 
@@ -42,7 +42,7 @@ def goto_cockpit(keys, status_parser: StatusParser, max_tries: int = 10) -> bool
 def realign_cursor(keys):
     """Move cursor to the top of any menu list. Hold UI_Up for 2s to reliably reach top."""
     keys.send('UI_Up', hold=2)
-    sleep(0.3)
+    sleep(0.4)
 
 
 def refuel_repair_rearm(keys, status_parser: StatusParser):
@@ -56,17 +56,17 @@ def refuel_repair_rearm(keys, status_parser: StatusParser):
     """
     realign_cursor(keys)
     keys.send('UI_Select')   # Refuel
-    sleep(0.5)
+    sleep(0.6)
     keys.send('UI_Right')    # move to Repair
-    sleep(0.25)
+    sleep(0.35)
     keys.send('UI_Select')   # Repair
-    sleep(0.5)
+    sleep(0.6)
     keys.send('UI_Right')    # move to Rearm
-    sleep(0.25)
+    sleep(0.35)
     keys.send('UI_Select')   # Rearm
-    sleep(0.5)
+    sleep(0.6)
     keys.send('UI_Left', repeat=2)  # back to Refuel column before leaving
-    sleep(0.3)
+    sleep(0.4)
     goto_cockpit(keys, status_parser)
 
 
@@ -81,9 +81,9 @@ def open_station_services(keys, status_parser: StatusParser) -> bool:
     goto_cockpit(keys, status_parser)
 
     realign_cursor(keys)
-    sleep(0.3)
+    sleep(0.4)
     keys.send('UI_Down')     # down to Station Services
-    sleep(0.3)
+    sleep(0.4)
     keys.send('UI_Select')   # open Station Services
 
     return status_parser.wait_for_gui_focus(GuiFocusStationServices, timeout=15)
@@ -101,9 +101,9 @@ def undock(keys, status_parser: StatusParser):
 
     realign_cursor(keys)
     keys.send('UI_Down')     # Station Services
-    sleep(0.2)
+    sleep(0.3)
     keys.send('UI_Down')     # Auto Undock
-    sleep(0.2)
+    sleep(0.3)
     keys.send('UI_Select')   # Launch
 
 
@@ -112,14 +112,14 @@ def open_nav_panel(keys, status_parser: StatusParser) -> bool:
     Returns True if panel opened, False on timeout.
     """
     keys.send('FocusLeftPanel')
-    sleep(0.5)
+    sleep(0.6)
     return status_parser.wait_for_gui_focus(GuiFocusExternalPanel, timeout=3)
 
 
 def close_nav_panel(keys):
     """Close the Navigation panel with UI_Back."""
     keys.send('UI_Back')
-    sleep(0.3)
+    sleep(0.4)
 
 
 def activate_sc_assist(keys, status_parser: StatusParser, is_target_row_fn, cb=None) -> bool:
@@ -142,7 +142,7 @@ def activate_sc_assist(keys, status_parser: StatusParser, is_target_row_fn, cb=N
     found = False
     seen_bracket = [False]
     for step in range(max_rows):
-        sleep(0.5)
+        sleep(0.6)
         if is_target_row_fn(seen_bracket):
             logger.info(f"activate_sc_assist: found target at step {step}")
             if cb:
@@ -156,7 +156,7 @@ def activate_sc_assist(keys, status_parser: StatusParser, is_target_row_fn, cb=N
         if cb:
             cb('log', 'SC Assist: target not found in nav panel')
         keys.send('UI_Back', repeat=2)
-        sleep(0.3)
+        sleep(0.4)
         return False
 
     # Open target detail page
@@ -165,9 +165,9 @@ def activate_sc_assist(keys, status_parser: StatusParser, is_target_row_fn, cb=N
 
     # Navigate to SC Assist button and select
     keys.send('UI_Right')
-    sleep(0.3)
+    sleep(0.4)
     keys.send('UI_Select')
-    sleep(0.5)
+    sleep(0.6)
 
     logger.info("activate_sc_assist: SC Assist activation sequence completed")
     if cb:
@@ -175,7 +175,7 @@ def activate_sc_assist(keys, status_parser: StatusParser, is_target_row_fn, cb=N
 
     # Close nav panel
     keys.send('UI_Back', repeat=2)
-    sleep(0.5)
+    sleep(0.6)
     return True
 
 
@@ -191,23 +191,23 @@ def request_docking(keys, status_parser: StatusParser) -> bool:
     # Navigation -> Contacts (2 tabs right)
     logger.info("request_docking: cycling to Contacts tab")
     keys.send('CycleNextPanel')
-    sleep(0.3)
+    sleep(0.4)
     keys.send('CycleNextPanel')
-    sleep(0.3)
+    sleep(0.4)
 
     # First entry is already selected (the target), UI_Right to action button
     logger.info("request_docking: selecting target action")
     keys.send('UI_Right')
-    sleep(0.3)
+    sleep(0.4)
     keys.send('UI_Select')
-    sleep(0.3)
+    sleep(0.4)
 
     # Back to Navigation tab so panel state is clean for later
     logger.info("request_docking: cycling back to Navigation tab")
     keys.send('CyclePreviousPanel')
-    sleep(0.3)
+    sleep(0.4)
     keys.send('CyclePreviousPanel')
-    sleep(0.3)
+    sleep(0.4)
 
     close_nav_panel(keys)
     return True
@@ -220,24 +220,24 @@ def transfer_all_to_colonisation(keys):
     Layout: table on left, buttons at bottom (RESET | CONFIRM TRANSFER | TRANSFER ALL).
     """
     keys.send('UI_Left', repeat=3)   # into table
-    sleep(0.2)
+    sleep(0.3)
     keys.send('UI_Down', hold=2)     # bottom of table
-    sleep(0.2)
+    sleep(0.3)
     keys.send('UI_Up')               # up to button row (RESET/CONFIRM/TRANSFER ALL)
-    sleep(0.2)
+    sleep(0.3)
     keys.send('UI_Left', repeat=2)   # leftmost = RESET
-    sleep(0.2)
+    sleep(0.3)
     keys.send('UI_Right', repeat=2)  # rightmost = TRANSFER ALL
-    sleep(0.2)
+    sleep(0.3)
     keys.send('UI_Select')           # select TRANSFER ALL
-    sleep(0.5)
+    sleep(0.6)
 
     keys.send('UI_Left')             # CONFIRM TRANSFER
-    sleep(0.2)
+    sleep(0.3)
     keys.send('UI_Select')           # confirm
     sleep(2)
 
     keys.send('UI_Down')             # EXIT
-    sleep(0.2)
+    sleep(0.3)
     keys.send('UI_Select')           # select EXIT
     sleep(2)
