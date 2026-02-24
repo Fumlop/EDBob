@@ -69,23 +69,23 @@ class Ship:
     ROLE_YAW_PITCH_CLOSE = 6.0  # roll and coarse alignment threshold
     ROLE_TRESHHOLD = 8.0        # only roll when yaw significantly off
 
-    # Calibration sequence
-    CAL_HOLD = 2.0
+    # Calibration: target degrees per axis (hold = target_deg / current_rate)
     CAL_SETTLE = 0.5
+    CAL_TARGET_DEG = {'pitch': 60, 'pitch2': 90, 'roll': 120, 'yaw': 60}
+    # Sequence: (key, axis, target_key) -- hold computed dynamically
     CAL_SEQUENCE = [
-        ('YawLeftButton',   CAL_HOLD, 'yaw'),
-        ('YawLeftButton',   CAL_HOLD, 'yaw'),
-        ('RollRightButton', CAL_HOLD, 'roll'),
-        ('RollRightButton', CAL_HOLD, 'roll'),
-        ('PitchDownButton', CAL_HOLD, 'pitch'),
-        ('PitchDownButton', CAL_HOLD, 'pitch'),
-        ('YawRightButton',  CAL_HOLD, 'yaw'),
-        ('YawRightButton',  CAL_HOLD, 'yaw'),
-        ('RollLeftButton',  CAL_HOLD, 'roll'),
-        ('RollLeftButton',  CAL_HOLD, 'roll'),
-        ('PitchDownButton', 6.0, None),  # recovery, not measured
-        ('PitchUpButton',   CAL_HOLD, 'pitch'),
-        ('PitchUpButton',   CAL_HOLD, 'pitch'),
+        # Round 1: yaw right, roll left, pitch down (ball stays up)
+        ('YawRightButton',  'yaw',   'yaw'),
+        ('RollLeftButton',  'roll',  'roll'),
+        ('PitchDownButton', 'pitch', 'pitch'),
+        # Round 2: yaw left, roll right, pitch up (reverses back)
+        ('YawLeftButton',   'yaw',   'yaw'),
+        ('RollRightButton', 'roll',  'roll'),
+        ('PitchUpButton',   'pitch', 'pitch2'),
+        # Round 3: pitch down, roll left, yaw right (ball stays up)
+        ('PitchDownButton', 'pitch', 'pitch'),
+        ('RollLeftButton',  'roll',  'roll'),
+        ('YawRightButton',  'yaw',   'yaw'),
     ]
     _CAL_AXIS_KEY = {'pitch': 'pit', 'yaw': 'yaw', 'roll': 'roll'}
 
@@ -501,22 +501,19 @@ class Ship:
         self.ap_ckb('log', 'Center target on compass, then hold still.')
         sleep(1)
 
+        total = len(self.CAL_SEQUENCE)
         samples = {'pitch': [], 'roll': [], 'yaw': []}
 
-        for step, (key, hold, axis) in enumerate(self.CAL_SEQUENCE, 1):
+        for step, (key, axis, target_key) in enumerate(self.CAL_SEQUENCE, 1):
             self.check_stop()
 
-            if axis is None:
-                self.ap_ckb('log', f'Step {step}/13: recovery pitch (not measured)')
-                self.keys.send(key, hold=hold)
-                sleep(self.CAL_SETTLE)
-                continue
-
+            rate = self.axis_max_rate(axis)
+            hold = self.CAL_TARGET_DEG[target_key] / rate
             axis_key = self._CAL_AXIS_KEY[axis]
 
             before = self.avg_offset(scr_reg, get_offset_fn)
             if before is None:
-                self.ap_ckb('log', f'Step {step}: compass read failed (before), skipping')
+                self.ap_ckb('log', f'Step {step}/{total}: compass read failed (before), skipping')
                 self.keys.send(key, hold=hold)
                 sleep(self.CAL_SETTLE)
                 continue
@@ -526,13 +523,13 @@ class Ship:
 
             after = self.avg_offset(scr_reg, get_offset_fn)
             if after is None:
-                self.ap_ckb('log', f'Step {step}: compass read failed (after), skipping')
+                self.ap_ckb('log', f'Step {step}/{total}: compass read failed (after), skipping')
                 continue
 
             delta = abs(after[axis_key] - before[axis_key])
-            rate = delta / hold
-            samples[axis].append(rate)
-            self.ap_ckb('log', f'Step {step}/13: {axis} = {rate:.1f} deg/s (delta {delta:.1f})')
+            measured_rate = delta / hold
+            samples[axis].append(measured_rate)
+            self.ap_ckb('log', f'Step {step}/{total}: {axis} = {measured_rate:.1f} deg/s (delta {delta:.1f}, hold {hold:.2f}s)')
 
         # Calculate averages
         rates = {}
