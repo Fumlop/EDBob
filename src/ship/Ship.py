@@ -17,6 +17,10 @@ from src.core.EDAP_data import (
     FlagsSupercruise, FlagsFsdJump,
 )
 from src.core.EDlogger import logger
+from src.ed.EDJournal import (
+    get_ship_size, check_fuel_scoop, check_adv_docking_computer,
+    check_std_docking_computer, check_sco_fsd,
+)
 
 
 def _read_json(filepath: str) -> dict | None:
@@ -102,11 +106,16 @@ class Ship:
         # Identity
         self.ship_type = None
 
-        # Turn rates (deg/s)
+        # Turn rates (deg/s) -- active values reflect current flight mode
         self.pitchrate = 33.0
         self.rollrate = 80.0
         self.yawrate = 8.0
         self.sunpitchuptime = 0.0
+
+        # Per-mode rate storage
+        self._rates_normal = {'pitch': 33.0, 'roll': 80.0, 'yaw': 8.0}
+        self._rates_sc = None  # None = no SC calibration, use normal rates
+        self._flight_mode = 'normal'  # 'normal' or 'sc'
 
         # Factors (kept for config compat, currently unused in alignment)
         self.pitchfactor = 12.0
@@ -120,9 +129,88 @@ class Ship:
         self.cargo_capacity = 0
         self.cargo_current = 0
 
+        # Module loadout (updated from journal Loadout events)
+        self.ship_size = ''
+        self.has_fuel_scoop = None
+        self.has_adv_dock_comp = None
+        self.has_std_dock_comp = None
+        self.has_sco_fsd = None
+
+        # Fuel state (updated from journal fuel events)
+        self.fuel_level = None
+        self.fuel_capacity = None
+        self.fuel_percent = None
+        self.is_scooping = False
+
         # Config persistence
         self.ship_configs = {"Ship_Configs": {}}
         self.load_ship_configs()
+
+    # ------------------------------------------------------------------
+    # Journal event integration
+    # ------------------------------------------------------------------
+
+    def register_journal_events(self, jn):
+        """Register for journal events that affect ship properties."""
+        jn.on_event('LoadGame', self._on_load_game)
+        jn.on_event('Loadout', self._on_loadout)
+        jn.on_event('_fuel_update', self._on_fuel_update)
+        # Sync current state from journal's catchup
+        self._sync_from_journal(jn.ship_state())
+
+    def _sync_from_journal(self, s):
+        """One-time sync of ship properties from journal state after catchup."""
+        if s.get('type'):
+            self.update_ship_type(s['type'])
+            self.ship_size = s.get('ship_size', '')
+        self.cargo_capacity = s.get('cargo_capacity') or 0
+        self.has_fuel_scoop = s.get('has_fuel_scoop')
+        self.has_adv_dock_comp = s.get('has_adv_dock_comp')
+        self.has_std_dock_comp = s.get('has_std_dock_comp')
+        self.has_sco_fsd = s.get('has_sco_fsd')
+        self.fuel_level = s.get('fuel_level')
+        self.fuel_capacity = s.get('fuel_capacity')
+        self.fuel_percent = s.get('fuel_percent')
+        self.is_scooping = s.get('is_scooping', False)
+
+    def _on_load_game(self, log):
+        """Handle LoadGame journal event."""
+        self.update_ship_type(log['Ship'].lower())
+        self.ship_size = get_ship_size(log['Ship'])
+
+    def _on_loadout(self, log):
+        """Handle Loadout journal event -- full ship state refresh."""
+        self.update_ship_type(log['Ship'].lower())
+        self.ship_size = get_ship_size(log['Ship'])
+        self.cargo_capacity = log['CargoCapacity']
+        self.has_fuel_scoop = check_fuel_scoop(log['Modules'])
+        self.has_adv_dock_comp = check_adv_docking_computer(log['Modules'])
+        self.has_std_dock_comp = check_std_docking_computer(log['Modules'])
+        self.has_sco_fsd = check_sco_fsd(log['Modules'])
+
+    def _on_fuel_update(self, log):
+        """Handle any journal event carrying fuel data."""
+        if 'FuelLevel' in log and self.ship_type != 'testbuggy':
+            self.fuel_level = log['FuelLevel']
+        if 'FuelCapacity' in log and self.ship_type != 'testbuggy':
+            try:
+                self.fuel_capacity = log['FuelCapacity']['Main']
+            except (KeyError, TypeError):
+                self.fuel_capacity = log['FuelCapacity']
+        if log.get('event') == 'FuelScoop' and 'Total' in log:
+            self.fuel_level = log['Total']
+        self._update_fuel_percent()
+        if log.get('event') == 'FuelScoop':
+            self.is_scooping = self.fuel_percent is not None and self.fuel_percent < 100
+        else:
+            self.is_scooping = False
+
+    def _update_fuel_percent(self):
+        """Recalculate fuel percentage from level and capacity."""
+        if self.fuel_level and self.fuel_capacity:
+            self.fuel_percent = round((self.fuel_level / self.fuel_capacity) * 100)
+        else:
+            self.fuel_percent = 10
 
     # ------------------------------------------------------------------
     # Identity
@@ -133,16 +221,36 @@ class Ship:
         Returns True if ship actually changed.
         """
         if ship_type == self.ship_type:
+            self.update_flight_mode()  # rates may need switching even if ship didn't change
             return False
         old = self.ship_type
         self.ship_type = ship_type
         if ship_type and ship_type in ship_size_map:
-            self.load_ship_configuration(ship_type)
+            self.load_ship_configuration(ship_type)  # calls _apply_mode_rates() internally
         return old is not None  # True = switched (not first load)
 
     # ------------------------------------------------------------------
     # Axis rates
     # ------------------------------------------------------------------
+
+    def update_flight_mode(self):
+        """Check status flags and switch active rates if flight mode changed."""
+        in_sc = self.status.get_flag(FlagsSupercruise)
+        new_mode = 'sc' if in_sc else 'normal'
+        if new_mode != self._flight_mode:
+            self._flight_mode = new_mode
+            self._apply_mode_rates()
+
+    def _apply_mode_rates(self):
+        """Set pitchrate/rollrate/yawrate from the current flight mode's rate set."""
+        if self._flight_mode == 'sc' and self._rates_sc is not None:
+            rates = self._rates_sc
+        else:
+            rates = self._rates_normal
+        self.pitchrate = rates['pitch']
+        self.rollrate = rates['roll']
+        self.yawrate = rates['yaw']
+        logger.info(f"Flight mode -> {self._flight_mode}: pitch={self.pitchrate} roll={self.rollrate} yaw={self.yawrate}")
 
     def axis_max_rate(self, axis: str) -> float:
         """Return the known max rate (deg/s) for an axis.
@@ -360,6 +468,24 @@ class Ship:
     def yaw_right_left(self, deg):
         self._move_axis('yaw', deg)
 
+    def send_pitch(self, deg, at_zero_throttle=False):
+        """Pitch by deg degrees (positive=up, negative=down). Uses current mode rate."""
+        rate = self.pitchrate
+        if at_zero_throttle and self._flight_mode == 'normal':
+            rate *= self.ZERO_THROTTLE_RATE_FACTOR
+        key = 'PitchUpButton' if deg > 0 else 'PitchDownButton'
+        self.keys.send(key, hold=abs(deg) / rate)
+
+    def send_roll(self, deg):
+        """Roll by deg degrees (positive=right, negative=left). Uses current mode rate."""
+        key = 'RollRightButton' if deg > 0 else 'RollLeftButton'
+        self.keys.send(key, hold=abs(deg) / self.rollrate)
+
+    def hold_time(self, axis, deg):
+        """Calculate hold time for a given axis and angle. For timeouts etc."""
+        rate = self.axis_max_rate(axis)
+        return abs(deg) / rate
+
     # ------------------------------------------------------------------
     # Calibration
     # ------------------------------------------------------------------
@@ -436,15 +562,25 @@ class Ship:
                 'YawRate': rates.get('yaw', 0),
             }
 
+            # Also update top-level rates for backward compat
             if 'pitch' in rates:
                 cfg['PitchRate'] = rates['pitch']
-                self.pitchrate = rates['pitch']
             if 'roll' in rates:
                 cfg['RollRate'] = rates['roll']
-                self.rollrate = rates['roll']
             if 'yaw' in rates:
                 cfg['YawRate'] = rates['yaw']
-                self.yawrate = rates['yaw']
+
+            # Store into the correct per-mode rate set
+            rate_dict = {
+                'pitch': rates.get('pitch', self.pitchrate),
+                'roll': rates.get('roll', self.rollrate),
+                'yaw': rates.get('yaw', self.yawrate),
+            }
+            if mode == 'normal':
+                self._rates_normal = rate_dict
+            else:
+                self._rates_sc = rate_dict
+            self._apply_mode_rates()
 
             _write_json(self.ship_configs, filepath=SHIP_CONFIGS_PATH)
             self.ap_ckb('log', f'Saved {mode_label} rates for {ship}')
@@ -507,6 +643,33 @@ class Ship:
                 self.rollfactor = cfg.get('RollFactor', self.rollfactor)
                 self.pitchfactor = cfg.get('PitchFactor', self.pitchfactor)
                 self.yawfactor = cfg.get('YawFactor', self.yawfactor)
+
+        # Store as normal-space baseline
+        self._rates_normal = {'pitch': self.pitchrate, 'roll': self.rollrate, 'yaw': self.yawrate}
+        self._rates_sc = None  # default: no SC calibration
+
+        # Load per-mode overrides from calibration sub-dicts
+        if ship_type in self.ship_configs['Ship_Configs']:
+            cfg = self.ship_configs['Ship_Configs'][ship_type]
+            if 'Normalspace' in cfg:
+                ns = cfg['Normalspace']
+                self._rates_normal = {
+                    'pitch': ns.get('PitchRate', self._rates_normal['pitch']),
+                    'roll':  ns.get('RollRate',  self._rates_normal['roll']),
+                    'yaw':   ns.get('YawRate',   self._rates_normal['yaw']),
+                }
+                logger.info(f"Loaded Normalspace calibration for {ship_type}")
+            if 'Supercruise-zero' in cfg:
+                sc = cfg['Supercruise-zero']
+                self._rates_sc = {
+                    'pitch': sc.get('PitchRate', self._rates_normal['pitch']),
+                    'roll':  sc.get('RollRate',  self._rates_normal['roll']),
+                    'yaw':   sc.get('YawRate',   self._rates_normal['yaw']),
+                }
+                logger.info(f"Loaded Supercruise-zero calibration for {ship_type}")
+
+        # Apply correct rates for current flight mode
+        self._apply_mode_rates()
 
     def save_ship_configs(self):
         """Save current rates to ship_configs.json for the current ship."""

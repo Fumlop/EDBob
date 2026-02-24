@@ -116,8 +116,6 @@ class EDAutopilot:
 
     del _ship_proxy  # clean up helper from class namespace
 
-    ZERO_THROTTLE_RATE_FACTOR = Ship.ZERO_THROTTLE_RATE_FACTOR
-
     def __init__(self, cb, doThread=True):
         self.config = {}
         self._prev_star_system = None
@@ -180,12 +178,7 @@ class EDAutopilot:
         # Ship: identity, rates, throttle, steering, calibration, config
         self.ship = Ship(self.keys, self.status, cb)
         self.ship.check_stop = self.check_stop
-
-        # Load ship config for currently detected ship (if journal available)
-        if self.jn:
-            ship = self.jn.ship_state()['type']
-            if ship:
-                self.ship.load_ship_configuration(ship)
+        self.ship.register_journal_events(self.jn)  # sync state + register for live updates
 
         self.jump_cnt = 0
         self._eta = 0
@@ -289,10 +282,8 @@ class EDAutopilot:
     def load_ship_configs(self):
         """Reload ship configs from disk and apply to current ship."""
         self.ship.load_ship_configs()
-        if self.jn:
-            ship = self.jn.ship_state()['type']
-            if ship:
-                self.ship.load_ship_configuration(ship)
+        if self.ship.ship_type:
+            self.ship.load_ship_configuration(self.ship.ship_type)
 
     def update_ship_configs(self):
         """Save current ship rates to ship_configs.json."""
@@ -704,12 +695,10 @@ class EDAutopilot:
         # Construction sites have no rotating struts, skip roll there
         drop_type = self.jn.ship_state().get('SupercruiseDestinationDrop_type') or ''
         if 'Construction' not in drop_type:
-            roll_time = 30.0 / self.rollrate
-            self.keys.send('RollRightButton', hold=roll_time)
+            self.ship.send_roll(30.0)
 
         # Pitch up to clear station, then fly clear at full speed
-        pitch_time = 65.0 / self.pitchrate
-        self.keys.send('PitchUpButton', hold=pitch_time)
+        self.ship.send_pitch(65.0)
         self.set_speed_100()
         sleep(self.BOOST_SETTLE)
 
@@ -761,27 +750,24 @@ class EDAutopilot:
         self.set_speed_25()
 
         # Failsafe: don't pitch more than 120deg total
-        fail_safe_timeout = (120 / self.pitchrate) + 3
+        fail_safe_timeout = self.ship.hold_time('pit', 120) + 3
         starttime = time.time()
 
         # Step 1: Initial 45deg pull-up to get away from sun fast
-        initial_time = 45.0 / self.pitchrate
-        logger.info(f"Sun ahead, initial pull-up {initial_time:.1f}s (45deg)")
-        self.keys.send('PitchUpButton', hold=initial_time)
+        logger.info(f"Sun ahead, initial pull-up 45deg")
+        self.ship.send_pitch(45.0)
 
         # Keep pitching in 15deg steps until sun is clear
-        step_time = 15.0 / self.pitchrate
         while self.is_sun_dead_ahead(scr_reg):
-            logger.info(f"Sun still ahead, pitching up {step_time:.1f}s (15deg)")
-            self.keys.send('PitchUpButton', hold=step_time)
+            logger.info(f"Sun still ahead, pitching up 15deg")
+            self.ship.send_pitch(15.0)
             if (time.time() - starttime) > fail_safe_timeout:
                 logger.debug('sun avoid failsafe timeout')
                 break
 
         # Step 2: Extra 15deg safety pitch up
-        reserve_time = 15.0 / self.pitchrate
-        logger.info(f"Sun clear, reserve pitch up {reserve_time:.1f}s (15deg safety)")
-        self.keys.send('PitchUpButton', hold=reserve_time)
+        logger.info(f"Sun clear, reserve pitch up 15deg safety")
+        self.ship.send_pitch(15.0)
 
         # Full speed for fly-by (position() handles the 30s pass)
         self.set_speed_100()
@@ -858,8 +844,7 @@ class EDAutopilot:
     def _evade_pitch(self, scr_reg, pitch_degrees):
         """Pitch up to evade, cruise, then re-align and re-engage SC Assist."""
         self.keys.send('SetSpeed25')
-        pitch_time = pitch_degrees / self.pitchrate
-        self.keys.send('PitchUpButton', hold=pitch_time)
+        self.ship.send_pitch(pitch_degrees)
         self.set_speed_100()
         sleep(self.PASSBODY_TIME)
         self.set_speed_0()
@@ -913,7 +898,6 @@ class EDAutopilot:
             # Sequence: 90°, 90°, 90°, 45° (max 4 attempts)
             if off['z'] < 0:
                 flip_count = getattr(self, '_flip_count', 0)
-                effective_rate = self.pitchrate * self.ZERO_THROTTLE_RATE_FACTOR
                 if flip_count < 3:
                     flip_deg = 90.0
                 elif flip_count == 3:
@@ -922,10 +906,9 @@ class EDAutopilot:
                 else:
                     logger.error("Compass: 4 flips exhausted, giving up")
                     break
-                pitch_time = flip_deg / effective_rate
-                logger.info(f"Compass: target behind, flip {flip_count+1}/4 pitch {flip_deg:.0f}deg ({pitch_time:.1f}s)")
+                logger.info(f"Compass: target behind, flip {flip_count+1}/4 pitch {flip_deg:.0f}deg")
                 self.ap_ckb('log', 'Target behind, flipping up')
-                self.keys.send('PitchUpButton', hold=pitch_time)
+                self.ship.send_pitch(flip_deg, at_zero_throttle=True)
                 sleep(self.ALIGN_SETTLE)
                 self._flip_count = flip_count + 1
                 prev_off = off
@@ -946,10 +929,8 @@ class EDAutopilot:
                 if off is None:
                     continue
                 if off.get('z', 1) < 0:
-                    effective_rate = self.pitchrate * self.ZERO_THROTTLE_RATE_FACTOR
-                    pitch_time = 90.0 / effective_rate
-                    logger.info(f"Compass: target went behind during roll, pitching 90deg ({pitch_time:.1f}s)")
-                    self.keys.send('PitchUpButton', hold=pitch_time)
+                    logger.info(f"Compass: target went behind during roll, pitching 90deg")
+                    self.ship.send_pitch(90.0, at_zero_throttle=True)
                     sleep(0.5)
                     continue
 
@@ -1028,9 +1009,8 @@ class EDAutopilot:
 
         # Pitch down to recover heading while SCO momentum decays
         if sun_was_ahead:
-            recover_time = 15.0 / self.pitchrate
-            logger.info(f"Post fly-by, pitching down {recover_time:.1f}s (15deg recovery)")
-            self.keys.send('PitchDownButton', hold=recover_time)
+            logger.info(f"Post fly-by, pitching down 15deg recovery")
+            self.ship.send_pitch(-15.0)
 
         self.set_speed_0()
 
@@ -1119,7 +1099,7 @@ class EDAutopilot:
             # Check that we are docked
             if self.status.get_flag(FlagsDocked):
                 # Check if we have an advanced docking computer
-                if not self.jn.ship_state()['has_adv_dock_comp']:
+                if not self.ship.has_adv_dock_comp:
                     self.ap_ckb('log', "Unable to undock. Advanced Docking Computer not fitted.")
                     logger.warning('Unable to undock. Advanced Docking Computer not fitted.')
                     raise Exception('Unable to undock. Advanced Docking Computer not fitted.')
@@ -1147,8 +1127,7 @@ class EDAutopilot:
                     sleep(self.UNDOCK_SETTLE)
                     self.ap_ckb('log+vce', 'Maneuvering away from station')
                     self.set_speed_50()
-                    pitch_time = self.config['OCDepartureAngle'] / self.pitchrate
-                    self.keys.send('PitchUpButton', hold=pitch_time)
+                    self.ship.send_pitch(self.config['OCDepartureAngle'])
                     self.keys.send('UseBoostJuice')
                     sleep(self.BOOST_SETTLE)
 
@@ -1160,7 +1139,7 @@ class EDAutopilot:
             if self.status.get_flag(FlagsDocked):
                 # We are on a landing pad (docked)
                 # Check if we have an advanced docking computer
-                if not self.jn.ship_state()['has_adv_dock_comp']:
+                if not self.ship.has_adv_dock_comp:
                     self.ap_ckb('log', "Unable to undock. Advanced Docking Computer not fitted.")
                     logger.warning('Unable to undock. Advanced Docking Computer not fitted.')
                     raise Exception('Unable to undock. Advanced Docking Computer not fitted.')
@@ -1177,8 +1156,7 @@ class EDAutopilot:
             # Leave planet: pitch up, boost, engage SC (no pitch back on planet)
             self.ap_ckb('log+vce', 'Maneuvering away from planet')
             self.set_speed_50()
-            pitch_time = self.config['OCDepartureAngle'] / self.pitchrate
-            self.keys.send('PitchUpButton', hold=pitch_time)
+            self.ship.send_pitch(self.config['OCDepartureAngle'])
             self.keys.send('UseBoostJuice')
             sleep(self.BOOST_SETTLE)
             self.update_ap_status("Undock Complete, accelerating")
@@ -1408,7 +1386,7 @@ class EDAutopilot:
 
             # Check if this is a target we cannot dock at
             skip_docking = False
-            if not self.jn.ship_state()['has_adv_dock_comp'] and not self.jn.ship_state()['has_std_dock_comp']:
+            if not self.ship.has_adv_dock_comp and not self.ship.has_std_dock_comp:
                 self.ap_ckb('log', "Skipping docking. No Docking Computer fitted.")
                 skip_docking = True
 
@@ -1610,33 +1588,31 @@ class EDAutopilot:
 
             # Check once EDAPGUI loaded to prevent errors logging to the listbox before loaded
             if self.gui_loaded:
-                # Check if ship has changed
-                ship = self.jn.ship_state()['type']
-                # Check if a ship and not a suit (on foot)
-                if ship not in ship_size_map:
-                    self.ship.ship_type = ''
-                else:
-                    old_type = self.ship.ship_type
-                    switched = self.ship.update_ship_type(ship)
-                    ship_fullname = EDJournal.get_ship_fullname(ship)
+                # Ship type is auto-updated from journal events via Ship.register_journal_events()
+                # Here we just handle UI notifications when ship changes
+                ship = self.ship.ship_type
+                if ship and ship != getattr(self, '_last_announced_ship', None):
+                    prev = getattr(self, '_last_announced_ship', None)
+                    self._last_announced_ship = ship
 
-                    if old_type is None:
-                        # First detection
-                        self.ap_ckb('log+vce', f"Welcome aboard your {ship_fullname}.")
-                    elif switched:
-                        cur_ship_fullname = EDJournal.get_ship_fullname(old_type)
-                        self.ap_ckb('log+vce', f"Switched ship from your {cur_ship_fullname} to your {ship_fullname}.")
+                    if ship not in ship_size_map:
+                        pass  # on foot / suit, skip announcements
+                    else:
+                        ship_fullname = EDJournal.get_ship_fullname(ship)
+                        if prev is None:
+                            self.ap_ckb('log+vce', f"Welcome aboard your {ship_fullname}.")
+                        elif prev != ship:
+                            cur_ship_fullname = EDJournal.get_ship_fullname(prev)
+                            self.ap_ckb('log+vce', f"Switched ship from your {cur_ship_fullname} to your {ship_fullname}.")
 
-                    if old_type != ship:
-                        # Check for fuel scoop and advanced docking computer
-                        if not self.jn.ship_state()['has_fuel_scoop']:
-                            self.ap_ckb('log+vce', f"Warning, your {ship_fullname} is not fitted with a Fuel Scoop.")
-                        if not self.jn.ship_state()['has_adv_dock_comp']:
-                            self.ap_ckb('log+vce', f"Warning, your {ship_fullname} is not fitted with an Advanced Docking Computer.")
-                        if self.jn.ship_state()['has_std_dock_comp']:
-                            self.ap_ckb('log+vce', f"Warning, your {ship_fullname} is fitted with a Standard Docking Computer.")
+                        if prev != ship:
+                            if not self.ship.has_fuel_scoop:
+                                self.ap_ckb('log+vce', f"Warning, your {ship_fullname} is not fitted with a Fuel Scoop.")
+                            if not self.ship.has_adv_dock_comp:
+                                self.ap_ckb('log+vce', f"Warning, your {ship_fullname} is not fitted with an Advanced Docking Computer.")
+                            if self.ship.has_std_dock_comp:
+                                self.ap_ckb('log+vce', f"Warning, your {ship_fullname} is fitted with a Standard Docking Computer.")
 
-                        # Update GUI with ship config
                         self.ap_ckb('update_ship_cfg')
 
 

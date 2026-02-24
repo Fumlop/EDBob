@@ -303,6 +303,9 @@ class EDJournal:
             event_name = log.get('event')
             if event_name:
                 self._fire_event(event_name, log)
+            # Synthetic fuel event for any log carrying fuel data
+            if 'FuelLevel' in log or 'FuelCapacity' in log or event_name == 'FuelScoop':
+                self._fire_event('_fuel_update', log)
 
     @staticmethod
     def _try_parse(line, partial):

@@ -351,7 +351,7 @@ class EDWayPoint:
                     market_time_new = self.market_parser.current_data['timestamp']
                 sleep(1)  # wait for new menu to finish rendering
 
-            cargo_capacity = ap.jn.ship_state()['cargo_capacity']
+            cargo_capacity = ap.ship.cargo_capacity
             logger.info(f"Execute trade: Ship's max cargo capacity: {cargo_capacity}")
 
             # --------- SELL ----------
