@@ -1520,9 +1520,19 @@ class EDAutopilot:
         except EDAP_Interrupt:
             logger.debug(f"Caught stop exception in {name}")
         except Exception as e:
-            logger.exception(f"{name} trapped generic")
+            logger.exception(f"{name} crashed")
             if self._game_lost():
                 return True
+            # Disable the assist so it doesn't silently restart
+            self.sc_assist_enabled = False
+            self.waypoint_assist_enabled = False
+            self.dss_assist_enabled = False
+            self.calibrate_normal_enabled = False
+            self.calibrate_sc_enabled = False
+            self.ap_ckb('log', f"{name} stopped due to error: {e}")
+            self.ap_ckb('sc_stop')
+            self.ap_ckb('waypoint_stop')
+            self.ap_ckb('dss_stop')
         return False
 
     def calibrate_rates(self, mode):
