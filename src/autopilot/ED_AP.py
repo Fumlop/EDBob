@@ -107,10 +107,6 @@ class EDAutopilot:
         }
         self._prev_star_system = None
         self.speed_demand = None
-        self.ship_tst_roll_enabled = False
-        self.ship_tst_pitch_enabled = False
-        self.ship_tst_yaw_enabled = False
-
         # Load AP.json config
         self.load_config()
 
@@ -1814,17 +1810,6 @@ class EDAutopilot:
     #
     def engine_loop(self):
         while not self.terminate:
-            # Ship calibration functions
-            if self.ship_tst_roll_enabled:
-                self.ship_tst_roll_new(0)
-                self.ship_tst_roll_enabled = False
-            if self.ship_tst_pitch_enabled:
-                self.ship_tst_pitch_new(0)
-                self.ship_tst_pitch_enabled = False
-            if self.ship_tst_yaw_enabled:
-                self.ship_tst_yaw_new(0)
-                self.ship_tst_yaw_enabled = False
-
             # Guard: require loaded screen regions before any autopilot action
             if not self.scrReg.regions_loaded and (
                 self.sc_assist_enabled or self.waypoint_assist_enabled
@@ -1939,101 +1924,6 @@ class EDAutopilot:
 
             cv2.waitKey(10)
             sleep(1)
-
-    _AXIS_CAL_CONFIG = {
-        'pitch': {
-            'rate_key': 'PitchRate', 'offset_key': 'pit', 'offset_fn': 'get_target_offset',
-            'pos_key': 'PitchUpButton', 'neg_key': 'PitchDownButton',
-            'rate_attr': 'pitchrate', 'targ_angles': [5, 10, 20, 40, 80, 160],
-            'init_time': 0.05, 'time_mult': 1.04, 'default_angle': 300,
-            'move_fn': 'pitch_up_down',
-        },
-        'roll': {
-            'rate_key': 'RollRate', 'offset_key': 'roll', 'offset_fn': 'get_nav_offset',
-            'pos_key': 'RollRightButton', 'neg_key': 'RollLeftButton',
-            'rate_attr': 'rollrate', 'targ_angles': [40, 80, 160, 320],
-            'init_time': 0.05, 'time_mult': 1.03, 'default_angle': 450,
-            'move_fn': 'roll_clockwise_anticlockwise',
-        },
-        'yaw': {
-            'rate_key': 'YawRate', 'offset_key': 'yaw', 'offset_fn': 'get_target_offset',
-            'pos_key': 'YawRightButton', 'neg_key': 'YawLeftButton',
-            'rate_attr': 'yawrate', 'targ_angles': [5, 10, 20, 40, 80, 160],
-            'init_time': 0.07, 'time_mult': 1.05, 'default_angle': 300,
-            'move_fn': 'yaw_right_left',
-        },
-    }
-
-    def _ship_tst_axis_calibrate(self, axis: str):
-        """Generic axis calibration. axis must be 'pitch', 'roll', or 'yaw'."""
-        cfg = self._AXIS_CAL_CONFIG[axis]
-        name = axis.capitalize()
-        self.ap_ckb('log', f"Starting {name} Calibration.")
-
-        if self.speed_demand != 'SCSpeed50':
-            self.set_speed_50()
-
-        ship_type = self.ship_configs['Ship_Configs'][self.current_ship_type]
-        if self.speed_demand not in ship_type:
-            ship_type[self.speed_demand] = dict()
-
-        ship_type[self.speed_demand][cfg['rate_key']] = dict()
-
-        test_time = cfg['init_time']
-        delta_int = 0.0
-        offset_fn = getattr(self, cfg['offset_fn'])
-        default_rate = getattr(self, cfg['rate_attr'])
-
-        for targ_ang in cfg['targ_angles']:
-            while 1:
-                set_focus_elite_window()
-                off = offset_fn(self.scrReg)
-                if not off:
-                    logger.debug(f"{name} target lost")
-                    break
-
-                if off[cfg['offset_key']] > 0:
-                    self.keys.send(cfg['pos_key'], hold=test_time)
-                else:
-                    self.keys.send(cfg['neg_key'], hold=test_time)
-
-                sleep(1)
-
-                off2 = offset_fn(self.scrReg)
-                if not off2:
-                    logger.debug(f"{name} target lost")
-                    break
-
-                delta = abs(off2[cfg['offset_key']] - off[cfg['offset_key']])
-                delta_int_lst = delta_int
-                delta_int = int(round(delta * 10, 0))
-
-                test_time = test_time * cfg['time_mult']
-                rate = round(delta / test_time, 2)
-                rate = min(rate, default_rate)
-                if delta_int >= targ_ang and delta_int > delta_int_lst:
-                    ship_type[self.speed_demand][cfg['rate_key']][delta_int] = rate
-                    logger.info(f"{name} Angle: {round(delta, 2)}: Time: {round(test_time, 2)} Rate: {rate}")
-                    self.ap_ckb('log', f"{name} Angle: {round(delta, 2)}: Time: {round(test_time, 2)} Rate: {rate}")
-                    break
-                else:
-                    logger.info(f"Ignored {name} Angle: {round(delta, 2)}: Time: {round(test_time, 2)} Rate: {rate}")
-
-        if len(ship_type[self.speed_demand][cfg['rate_key']]) > 0:
-            ship_type[self.speed_demand][cfg['rate_key']][cfg['default_angle']] = default_rate
-            self.ap_ckb('log', f"Default: {name} Angle: {cfg['default_angle'] // 10}: Rate: {default_rate}")
-
-        self.ap_ckb('log', f"Completed {name} Calibration.")
-        self.ap_ckb('log', "Remember to Save if you wish to keep these values!")
-
-    def ship_tst_pitch_new(self, angle: float):
-        self._ship_tst_axis_calibrate('pitch')
-
-    def ship_tst_roll_new(self, angle: float):
-        self._ship_tst_axis_calibrate('roll')
-
-    def ship_tst_yaw_new(self, angle: float):
-        self._ship_tst_axis_calibrate('yaw')
 
     _SPEED_CONFIG = {
         0:   {'demand': 'Speed0',   'sc_demand': 'SCSpeed0',   'key': 'SetSpeedZero'},

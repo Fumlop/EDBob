@@ -350,13 +350,13 @@ class APGui:
         self.log_msg(f"Status update: {txt}")
 
     def ship_tst_pitch(self):
-        self.ed_ap.ship_tst_pitch_enabled = True
+        self.ed_ap.ap_ckb('log', 'Pitch calibration not implemented yet')
 
     def ship_tst_roll(self):
-        self.ed_ap.ship_tst_roll_enabled = True
+        self.ed_ap.ap_ckb('log', 'Roll calibration not implemented yet')
 
     def ship_tst_yaw(self):
-        self.ed_ap.ship_tst_yaw_enabled = True
+        self.ed_ap.ap_ckb('log', 'Yaw calibration not implemented yet')
 
     def save_settings(self):
         self.entry_update(None)
