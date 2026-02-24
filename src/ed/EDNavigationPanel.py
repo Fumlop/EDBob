@@ -72,7 +72,7 @@ class EDNavigationPanel:
     # -- Target row detection -------------------------------------------------
 
     # Nav panel list search region (1920x1080 coords)
-    NAV_LIST_BOX = (264, 400, 1200, 800)  # x1, y1, x2, y2 (covers all 11 rows)
+    NAV_LIST_BOX = (410, 430, 900, 870)   # x1, y1, x2, y2 (bracket search area)
 
     # Template matching thresholds
     _bracket_template = None

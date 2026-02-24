@@ -292,6 +292,7 @@ class EDAutopilot:
     def load_ship_configuration(self, ship_type):
         """Load config for a specific ship type."""
         self.ship.load_ship_configuration(ship_type)
+        self._load_ring_center()
 
     def update_ap_status(self, txt):
         self.ap_state = txt
@@ -382,49 +383,75 @@ class EDAutopilot:
 
         return compass_bgr, compass_hsv, orange_mask, comp_w, comp_h
 
+    RING_SAVE_THRESHOLD = 10  # save to disk after this many samples
+    RING_HISTORY_CAP = 50     # max samples to keep (oldest dropped)
+
+    def _load_ring_center(self):
+        """Seed ring center history from ship_configs.json (if available)."""
+        self._ring_center_history = []
+        ship = self.ship.ship_type
+        if not ship:
+            return
+        cfg = self.ship.ship_configs.get('Ship_Configs', {}).get(ship, {})
+        saved = cfg.get('RingCenter')
+        if saved and len(saved) >= 2:
+            self._ring_center_history = [(saved[0], saved[1])]
+            logger.info(f"Ring: loaded saved center ({saved[0]:.1f},{saved[1]:.1f}) for {ship}")
+
+    def _save_ring_center(self, cx, cy):
+        """Persist converged ring center to ship_configs.json via Ship."""
+        ship = self.ship.ship_type
+        if not ship or ship not in ship_size_map:
+            return
+        cfgs = self.ship.ship_configs
+        if ship not in cfgs['Ship_Configs']:
+            cfgs['Ship_Configs'][ship] = {}
+        cfgs['Ship_Configs'][ship]['RingCenter'] = [round(cx, 1), round(cy, 1)]
+        self.ship.save_ship_configs()
+        logger.info(f"Ring: saved center ({cx:.1f},{cy:.1f}) for {ship}")
+
     def _detect_ring_center(self, scr_reg, orange_mask, comp_w, comp_h):
-        """Detect compass ring center via 3-of-5 vote with HoughCircles.
+        """Detect compass ring center via HoughCircles + running median.
+        Accumulates detections across the entire session; returns median of all.
+        Saves to ship_configs.json once enough samples converge.
         Returns (ring_cx, ring_cy, ring_r).
         """
         ring_r = 60.0  # Fixed: 30px real * 2x upscale
-        valid_centers = []
-        for _vote in range(5):
-            if _vote > 0:
-                sleep(0.01)
-                cap = scr_reg.capture_region(self.scr, 'compass')
-                cap = cv2.resize(cap, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
-                if cap.shape[2] == 4:
-                    cap_bgr = cv2.cvtColor(cap, cv2.COLOR_BGRA2BGR)
-                else:
-                    cap_bgr = cap
-                cap_hsv = cv2.cvtColor(cap_bgr, cv2.COLOR_BGR2HSV)
-                omask = cv2.inRange(cap_hsv, (5, 100, 100), (25, 255, 255))
-            else:
-                omask = orange_mask  # reuse first capture
-            oblur = cv2.GaussianBlur(omask, (5, 5), 1)
-            circles = cv2.HoughCircles(oblur, cv2.HOUGH_GRADIENT, dp=1.2,
-                                       minDist=comp_w // 2,
-                                       param1=50, param2=20,
-                                       minRadius=comp_w // 5,
-                                       maxRadius=comp_w // 2)
-            if circles is not None:
-                best = min(circles[0], key=lambda c: (c[0] - comp_w/2)**2 + (c[1] - comp_h/2)**2)
-                dx = abs(best[0] - comp_w/2)
-                dy = abs(best[1] - comp_h/2)
-                if best[2] >= 55 and dx < 15 and dy < 15:
-                    valid_centers.append((float(best[0]), float(best[1]), float(best[2])))
+        if not hasattr(self, '_ring_center_history'):
+            self._load_ring_center()
 
+        oblur = cv2.GaussianBlur(orange_mask, (5, 5), 1)
+        circles = cv2.HoughCircles(oblur, cv2.HOUGH_GRADIENT, dp=1.2,
+                                   minDist=comp_w // 2,
+                                   param1=50, param2=20,
+                                   minRadius=comp_w // 5,
+                                   maxRadius=comp_w // 2)
+        if circles is not None:
+            best = min(circles[0], key=lambda c: (c[0] - comp_w/2)**2 + (c[1] - comp_h/2)**2)
+            dx = abs(best[0] - comp_w/2)
+            dy = abs(best[1] - comp_h/2)
+            if best[2] >= 55 and dx < 15 and dy < 15:
+                self._ring_center_history.append((float(best[0]), float(best[1])))
+                if len(self._ring_center_history) > self.RING_HISTORY_CAP:
+                    self._ring_center_history.pop(0)
+
+        # Median of all accumulated samples
+        hist = self._ring_center_history
         ring_cx = comp_w / 2.0
         ring_cy = comp_h / 2.0
-        if len(valid_centers) >= 3:
-            valid_centers.sort(key=lambda c: c[0])
-            ring_cx = valid_centers[len(valid_centers) // 2][0]
-            valid_centers.sort(key=lambda c: c[1])
-            ring_cy = valid_centers[len(valid_centers) // 2][1]
-            avg_r = sum(c[2] for c in valid_centers) / len(valid_centers)
-            logger.debug(f"Ring: center=({ring_cx:.1f},{ring_cy:.1f}) avg_r={avg_r:.1f} votes={len(valid_centers)}/5")
+        if len(hist) >= 2:
+            xs = sorted(h[0] for h in hist)
+            ys = sorted(h[1] for h in hist)
+            ring_cx = xs[len(xs) // 2]
+            ring_cy = ys[len(ys) // 2]
+            logger.debug(f"Ring: median=({ring_cx:.1f},{ring_cy:.1f}) samples={len(hist)}")
+            if len(hist) == self.RING_SAVE_THRESHOLD:
+                self._save_ring_center(ring_cx, ring_cy)
+        elif len(hist) == 1:
+            ring_cx, ring_cy = hist[0][0], hist[0][1]
+            logger.debug(f"Ring: single sample=({ring_cx:.1f},{ring_cy:.1f})")
         else:
-            logger.debug(f"Ring: {len(valid_centers)}/5 valid, using ROI center ({ring_cx:.0f},{ring_cy:.0f})")
+            logger.debug(f"Ring: no detections, using ROI center ({ring_cx:.0f},{ring_cy:.0f})")
 
         return ring_cx, ring_cy, ring_r
 
@@ -697,10 +724,10 @@ class EDAutopilot:
         if 'Construction' not in drop_type:
             self.ship.send_roll(30.0)
 
-        # Pitch up to clear station, then fly clear at full speed
-        self.ship.send_pitch(65.0)
+        # Pitch up toward station, then fly at full speed
+        self.ship.send_pitch(self.DOCK_PRE_PITCH)
         self.set_speed_100()
-        sleep(self.BOOST_SETTLE)
+        sleep(self.DOCK_PRE_WAIT)
 
         self.set_speed_0()
         self.ap_ckb('log+vce', "Initiating Docking Procedure")
@@ -816,15 +843,16 @@ class EDAutopilot:
     # Key input settle time for navigation commands
     KEY_WAIT = 0.125
     # Dock approach
-    DOCK_PRE_PITCH = 1.0        # seconds pitch up before boost toward station
+    DOCK_PRE_PITCH = 45.0       # degrees pitch up before boost toward station
+    DOCK_PRE_WAIT = 8           # seconds flying at 100% toward station after pitch
     BOOST_SETTLE = 4            # seconds wait after boost for speed to stabilize
     UNDOCK_SETTLE = 5           # seconds wait during undock sequences
     # Voting
     VOTE_COUNT = 3              # 3-of-3 consensus checks
     # Debug
     DEBUG_SNAP = False           # save debug snapshots to debug-output/
-    DEBUG_COMPASS = False        # save compass detection images to lab/compass_debug/
-    DEBUG_TARGET_CIRCLE = True   # verbose logging for target circle detection
+    DEBUG_COMPASS = False         # save compass detection images to lab/compass_debug/
+    DEBUG_TARGET_CIRCLE = False   # verbose logging for target circle detection
 
     def _debug_snap(self, scr_reg, label):
         """Save a debug snapshot if DEBUG_SNAP is enabled."""

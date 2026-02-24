@@ -62,8 +62,8 @@ class Ship:
 
     # Alignment constants
     MIN_HOLD_TIME = 0.50
-    MAX_HOLD_TIME = 4.0
-    ALIGN_CLOSE = 4.0           # degrees -- compass jitter is ~3-4 deg
+    MAX_HOLD_TIME = 10.0
+    ALIGN_CLOSE = 3.0           # degrees -- tightened with stable ring median
     ALIGN_SETTLE = 2.0          # seconds to let ship/compass settle after pitch/yaw
     ALIGN_TIMEOUT = 25.0        # seconds per axis
     AVG_DELAY = 0.01            # 10ms between compass reads
@@ -625,7 +625,8 @@ class Ship:
             self.sunpitchuptime = defaults.get('SunPitchUp+Time', 0.0)
             logger.info(f"Loaded community defaults for {ship_type}")
 
-        # Step 3: User's custom config
+        # Step 3: User's custom config (these are already factored runtime rates)
+        has_custom_rates = False
         if ship_type in self.ship_configs['Ship_Configs']:
             cfg = self.ship_configs['Ship_Configs'][ship_type]
             if any(k in cfg for k in ['RollRate', 'PitchRate', 'YawRate', 'SunPitchUp+Time']):
@@ -633,19 +634,24 @@ class Ship:
                 self.pitchrate = cfg.get('PitchRate', self.pitchrate)
                 self.yawrate = cfg.get('YawRate', self.yawrate)
                 self.sunpitchuptime = cfg.get('SunPitchUp+Time', self.sunpitchuptime)
+                has_custom_rates = True
                 logger.info(f"Loaded custom config for {ship_type} from ship_configs.json")
             if any(k in cfg for k in ['RollFactor', 'PitchFactor', 'YawFactor']):
                 self.rollfactor = cfg.get('RollFactor', self.rollfactor)
                 self.pitchfactor = cfg.get('PitchFactor', self.pitchfactor)
                 self.yawfactor = cfg.get('YawFactor', self.yawfactor)
 
-        # Community defaults are SC rates at 50% throttle -- derive actual operating rates
-        # Normal space: 2x SC50, at 0% throttle: * 0.6
-        # SC: community values are already at 50%, at 0% throttle: * 0.6
-        nf = self.NORMAL_RATE_FACTOR * self.ZERO_THROTTLE_RATE_FACTOR   # 2.0 * 0.6 = 1.2
-        sf = self.ZERO_THROTTLE_RATE_FACTOR                             # 0.6
-        self._rates_normal = {'pitch': self.pitchrate * nf, 'roll': self.rollrate * nf, 'yaw': self.yawrate * nf}
-        self._rates_sc = {'pitch': self.pitchrate * sf, 'roll': self.rollrate * sf, 'yaw': self.yawrate * sf}
+        # Derive operating rates from base values
+        # Community defaults are SC rates at 50% throttle, need factor for 0% throttle
+        # Custom config rates are already factored -- use directly
+        if has_custom_rates:
+            self._rates_normal = {'pitch': self.pitchrate, 'roll': self.rollrate, 'yaw': self.yawrate}
+            self._rates_sc = {'pitch': self.pitchrate, 'roll': self.rollrate, 'yaw': self.yawrate}
+        else:
+            nf = self.NORMAL_RATE_FACTOR * self.ZERO_THROTTLE_RATE_FACTOR   # 2.0 * 0.6 = 1.2
+            sf = self.ZERO_THROTTLE_RATE_FACTOR                             # 0.6
+            self._rates_normal = {'pitch': self.pitchrate * nf, 'roll': self.rollrate * nf, 'yaw': self.yawrate * nf}
+            self._rates_sc = {'pitch': self.pitchrate * sf, 'roll': self.rollrate * sf, 'yaw': self.yawrate * sf}
 
         # Load per-mode overrides from calibration sub-dicts
         if ship_type in self.ship_configs['Ship_Configs']:
