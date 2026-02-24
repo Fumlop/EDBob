@@ -213,6 +213,7 @@ class EDWayPoint:
         if updated:
             self.write_waypoints(data=None, filename=self._waypoint_path)
             self.ap.ap_ckb('log', 'Synced commodity counts from construction depot')
+            self.ap.ap_ckb('refresh_commodities')
 
     def _buy_one(self, ap, name, qty, cargo_capacity):
         """Buy one commodity, wait for status update. Returns (bought, full)."""
@@ -460,9 +461,6 @@ class EDWayPoint:
                     self.ap.ap_ckb('log', f"Starting at waypoint #{key} (already docked)")
                     break
 
-        # Sync commodity counts from construction depot journal data
-        self._sync_from_construction_depot()
-
         # Loop until complete, or error
         _abort = False
         while not _abort:
@@ -520,6 +518,12 @@ class EDWayPoint:
                     elif has_list and wanted == 0:
                         self.ap.ap_ckb('log+vce', "All commodities fulfilled (counts at 0) -- stopping.")
                         break
+                # After delivery at construction site, sync buy quantities from depot event
+                if next_waypoint.get('IsConstruction', False):
+                    sleep(1)  # journal catch-up for ColonisationConstructionDepot event
+                    self.ap.jn.ship_state()  # force journal read
+                    self._sync_from_construction_depot()
+
                 self.mark_waypoint_complete(dest_key)
                 self.ap.ap_ckb('log+vce', f"Waypoint complete.")
 

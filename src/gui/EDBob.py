@@ -210,6 +210,8 @@ class APGui:
             logger.debug("Detected 'stop_all_assists' callback msg")
             self.root.after(0, lambda: (self.checkboxvar['Waypoint Assist'].set(0), self.check_cb('Waypoint Assist')))
 
+        elif msg == 'refresh_commodities':
+            self.root.after(0, self.refresh_commodity_tree)
         elif msg == 'jumpcount':
             self.root.after(0, self.update_jumpcount, body)
         elif msg == 'update_ship_cfg':
