@@ -97,15 +97,13 @@ Skipped (different purposes at each site):
 - `sleep(0.5)` x5: throttle settle, null check, dss poll -- too varied
 - `sleep(3)` x2, `sleep(4.5)` x1, `sleep(1)` x2: too few or single-use
 
-## Priority 5: Config Cleanup
+## Priority 5: Config Cleanup -- DONE
 
-### Defaults that could be removed
-- `"EnableRandomness"` -- dead feature, never implemented
-- `"DiscordWebhook"` / `"DiscordWebhookURL"` / `"DiscordUserID"` -- "not implemented yet"
-
-### Defaults that should stay but are questionable
-- `"OverlayTextEnable"` etc -- already removed in uncommitted changes
-- `"Debug_ShowCompassOverlay"` etc -- already removed in uncommitted changes
+### Removed
+- `"EnableRandomness"` -- removed in Priority 1
+- `"DiscordWebhook"` / `"DiscordWebhookURL"` / `"DiscordUserID"` -- never implemented, removed
+- `"OverlayTextEnable"` etc -- already removed in milestone commit
+- `"Debug_ShowCompassOverlay"` etc -- already removed in milestone commit
 
 ## Execution Order
 

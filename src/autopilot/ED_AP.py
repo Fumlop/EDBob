@@ -235,9 +235,6 @@ class EDAutopilot:
             "HotKey_StartSC": "ins",  # to determine other keynames, make sure these keys are not used in ED bindings
             "HotKey_StopAllAssists": "ctrl+x",
             "ActivateEliteEachKey": False,  # Activate Elite window before each key or group of keys
-            "DiscordWebhook": False,  # discord not implemented yet
-            "DiscordWebhookURL": "",
-            "DiscordUserID": "",
             "LogDEBUG": False,  # enable for debug messages
             "LogINFO": True,
             "ShipConfigFile": None,  # Ship config to load on start - deprecated
