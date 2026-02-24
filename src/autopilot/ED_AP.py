@@ -894,21 +894,18 @@ class EDAutopilot:
 
             logger.debug(f"Compass: roll={off['roll']:.1f} pit={off['pit']:.1f} yaw={off['yaw']:.1f} z={off['z']}")
 
-            # Target behind -- pitch UP in 90° steps with compass check between each
-            # Sequence: 90°, 90°, 90°, 45° (max 4 attempts)
+            # Target behind -- pitch UP with decreasing steps: 180°, 90°, 45°
             if off['z'] < 0:
                 flip_count = getattr(self, '_flip_count', 0)
-                if flip_count < 3:
-                    flip_deg = 90.0
-                elif flip_count == 3:
-                    flip_deg = 45.0
-                    logger.warning("Compass: 3x 90deg flips failed, trying 45deg")
+                flip_steps = [180.0, 90.0, 45.0]
+                if flip_count < len(flip_steps):
+                    flip_deg = flip_steps[flip_count]
                 else:
-                    logger.error("Compass: 4 flips exhausted, giving up")
+                    logger.error("Compass: all flip attempts exhausted, giving up")
                     break
-                logger.info(f"Compass: target behind, flip {flip_count+1}/4 pitch {flip_deg:.0f}deg")
-                self.ap_ckb('log', 'Target behind, flipping up')
-                self.ship.send_pitch(flip_deg, at_zero_throttle=True)
+                logger.info(f"Compass: target behind, flip {flip_count+1}/{len(flip_steps)} pitch {flip_deg:.0f}deg")
+                self.ap_ckb('log', f'Target behind, flipping {flip_deg:.0f}deg')
+                self.ship.send_pitch(flip_deg)
                 sleep(self.ALIGN_SETTLE)
                 self._flip_count = flip_count + 1
                 prev_off = off
@@ -930,7 +927,7 @@ class EDAutopilot:
                     continue
                 if off.get('z', 1) < 0:
                     logger.info(f"Compass: target went behind during roll, pitching 90deg")
-                    self.ship.send_pitch(90.0, at_zero_throttle=True)
+                    self.ship.send_pitch(90.0)
                     sleep(0.5)
                     continue
 

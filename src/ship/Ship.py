@@ -46,8 +46,9 @@ SHIP_CONFIGS_PATH = './configs/ship_configs.json'
 class Ship:
     """Represents the player's current ship: identity, turn rates, steering, config."""
 
-    # Rate at 0% throttle vs blue zone (50%) -- assumed ~60%
-    ZERO_THROTTLE_RATE_FACTOR = 0.60
+    # Rate estimation factors (relative to community SC 50% defaults)
+    NORMAL_RATE_FACTOR = 2.0            # normal space ~2x SC 50%
+    ZERO_THROTTLE_RATE_FACTOR = 0.60    # 0% throttle ~60% of 50% throttle
 
     # Axis configuration: maps axis name to rate attr, lookup key, threshold, and key bindings
     _AXIS_CONFIG = {
@@ -71,7 +72,7 @@ class Ship:
 
     # Calibration: target degrees per axis (hold = target_deg / current_rate)
     CAL_SETTLE = 0.5
-    CAL_TARGET_DEG = {'pitch': 60, 'pitch2': 90, 'roll': 120, 'yaw': 60}
+    CAL_TARGET_DEG = {'pitch': 45, 'pitch2': 60, 'roll': 120, 'yaw': 60}
     # Sequence: (key, axis, target_key) -- hold computed dynamically
     CAL_SEQUENCE = [
         # Round 1: yaw right, roll left, pitch down (ball stays up)
@@ -341,7 +342,7 @@ class Ship:
 
         start = time.time()
         remaining = self._get_dist(axis, off)
-        rate = self.axis_max_rate(axis) * self.ZERO_THROTTLE_RATE_FACTOR
+        rate = self.axis_max_rate(axis)
         key = self._axis_pick_key(axis, off[axis])
 
         logger.info(f"Align {axis}: {off[axis]:.1f}deg, dist={remaining:.1f}, rate={rate:.1f}, key={key}")
@@ -468,13 +469,10 @@ class Ship:
     def yaw_right_left(self, deg):
         self._move_axis('yaw', deg)
 
-    def send_pitch(self, deg, at_zero_throttle=False):
+    def send_pitch(self, deg):
         """Pitch by deg degrees (positive=up, negative=down). Uses current mode rate."""
-        rate = self.pitchrate
-        if at_zero_throttle and self._flight_mode == 'normal':
-            rate *= self.ZERO_THROTTLE_RATE_FACTOR
         key = 'PitchUpButton' if deg > 0 else 'PitchDownButton'
-        self.keys.send(key, hold=abs(deg) / rate)
+        self.keys.send(key, hold=abs(deg) / self.pitchrate)
 
     def send_roll(self, deg):
         """Roll by deg degrees (positive=right, negative=left). Uses current mode rate."""
@@ -508,7 +506,7 @@ class Ship:
             self.check_stop()
 
             rate = self.axis_max_rate(axis)
-            hold = self.CAL_TARGET_DEG[target_key] / rate
+            hold = min(self.CAL_TARGET_DEG[target_key] / rate, 3.0)
             axis_key = self._CAL_AXIS_KEY[axis]
 
             before = self.avg_offset(scr_reg, get_offset_fn)
@@ -641,9 +639,13 @@ class Ship:
                 self.pitchfactor = cfg.get('PitchFactor', self.pitchfactor)
                 self.yawfactor = cfg.get('YawFactor', self.yawfactor)
 
-        # Store as normal-space baseline
-        self._rates_normal = {'pitch': self.pitchrate, 'roll': self.rollrate, 'yaw': self.yawrate}
-        self._rates_sc = None  # default: no SC calibration
+        # Community defaults are SC rates at 50% throttle -- derive actual operating rates
+        # Normal space: 2x SC50, at 0% throttle: * 0.6
+        # SC: community values are already at 50%, at 0% throttle: * 0.6
+        nf = self.NORMAL_RATE_FACTOR * self.ZERO_THROTTLE_RATE_FACTOR   # 2.0 * 0.6 = 1.2
+        sf = self.ZERO_THROTTLE_RATE_FACTOR                             # 0.6
+        self._rates_normal = {'pitch': self.pitchrate * nf, 'roll': self.rollrate * nf, 'yaw': self.yawrate * nf}
+        self._rates_sc = {'pitch': self.pitchrate * sf, 'roll': self.rollrate * sf, 'yaw': self.yawrate * sf}
 
         # Load per-mode overrides from calibration sub-dicts
         if ship_type in self.ship_configs['Ship_Configs']:
