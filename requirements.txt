@@ -1,22 +1,22 @@
-colorlog==6.5.0
+colorlog~=6.10.1
 keyboard==0.13.5
-kthread==0.2.2
+kthread~=0.2.3
 logger==1.4
-mss==8.0.3
-numpy==2.0.2
-Pillow==10.4.0
+mss~=10.1.0
+numpy~=2.4.2
+Pillow~=12.1.1
 PyAutoGUI==0.9.54
-pynput==1.7.6
-pywin32==303
-protobuf==6.32.1
+pynput~=1.8.1
+pywin32>=311
+protobuf~=6.33.5
 requests~=2.32.5
-xmltodict~=0.14.2
+xmltodict~=1.0.4
 
 pywinstyles~=1.8
-sv_ttk
-tkinter-tooltip
+sv_ttk~=2.6.1
+tkinter-tooltip~=3.1.2
 
 # For Yolo ML
-opencv-python~=4.13.0.90
+opencv-python~=4.13.0.92
 future~=1.0.0
-ultralytics~=8.4.9
+ultralytics~=8.4.14

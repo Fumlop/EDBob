@@ -4,7 +4,7 @@ if not exist "venv\Scripts\python.exe" (
     echo Erstelle virtuelle Umgebung...
     python -m venv venv
     if not exist "venv\Scripts\python.exe" (
-        echo Fehler: Python nicht gefunden. Bitte Python 3.11+ installieren.
+        echo Fehler: Python nicht gefunden. Bitte Python 3.13+ installieren.
         pause
         exit /b 1
     )

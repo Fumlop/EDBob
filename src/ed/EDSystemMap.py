@@ -71,7 +71,6 @@ class EDSystemMap:
                 return True
 
             elif bookmark_type.lower().startswith("nav"):
-                # TODO - Move to, or call Nav Panel code instead?
                 # This is a nav-panel bookmark
                 # Goto cockpit view
                 self.ap.ship_control.goto_cockpit_view()
@@ -103,11 +102,6 @@ class EDSystemMap:
             self.ap.ship_control.goto_cockpit_view()
             # Goto System Map
             self.ap.keys.send('SystemMapOpen')
-
-            if self.ap.debug_overlay:
-                stn_svcs = Quad.from_rect(self.reg['full_panel']['rect'])
-                self.ap.overlay.overlay_quad_pct('system map', stn_svcs, (0, 255, 0), 2, 5)
-                self.ap.overlay.overlay_paint()
 
             # Wait for System Map to appear (Status.json GuiFocus check)
             if not self.status_parser.wait_for_gui_focus(GuiFocusSystemMap, timeout=15):

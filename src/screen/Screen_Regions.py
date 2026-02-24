@@ -71,11 +71,6 @@ class Screen_Regions:
                 logger.info(f"Loaded screen regions from {path}")
                 break
 
-        if not config_data:
-            logger.warning(f"No screen region config found for resolution {w}x{h}")
-            self.regions_loaded = False
-            return
-
         # Build reg dict from config + filter definitions
         self.reg = {}
         for name, region_info in config_data['regions'].items():
@@ -105,15 +100,13 @@ class Screen_Regions:
         """Reload regions, e.g. when ship changes."""
         self._load_regions(ship_type)
 
-    def capture_region(self, screen, region_name, inv_col=True):
-        """ Just grab the screen based on the region name/rect.
-        Returns an unfiltered image. """
-        return screen.get_screen_region(self.reg[region_name]['rect'], inv_col)
+    def capture_region(self, screen, region_name):
+        """Grab screen region by name. Returns BGRA (raw from mss)."""
+        return screen.get_screen_region(self.reg[region_name]['rect'])
 
-    def capture_region_filtered(self, screen, region_name, inv_col=True):
-        """ Grab screen region and call its filter routine.
-        Returns the filtered image. """
-        scr = screen.get_screen_region(self.reg[region_name]['rect'], inv_col)
+    def capture_region_filtered(self, screen, region_name):
+        """Grab screen region and apply its filter. Returns filtered image."""
+        scr = screen.get_screen_region(self.reg[region_name]['rect'])
         if self.reg[region_name]['filterCB'] is None:
             # return the screen region untouched in BGRA format.
             return scr

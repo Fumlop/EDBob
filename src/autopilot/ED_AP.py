@@ -252,7 +252,7 @@ class EDAutopilot:
             "TargetScale": 1.0,  # Scaling of the target when a system is selected
             "ScreenScale": 1.0,  # Scaling of the target when a system is selected
             "AutomaticLogout": False,  # Logout when we are done with the mission
-            "OCDepartureAngle": 75.0,  # Angle to pitch up when departing non-starport stations
+            "OCDepartureAngle": 55.0,  # Angle to pitch up when departing non-starport stations
             "Language": 'en',  # Language (matching ./locales/xx.json file)
             "HotkeysEnable": False,  # Enable hotkeys
             "WaypointFilepath": "",  # The previous waypoint file path
@@ -468,7 +468,7 @@ class EDAutopilot:
         _t0 = _time.perf_counter()
 
         # Capture compass region directly (fixed bounding box from config)
-        compass_image = scr_reg.capture_region(self.scr, 'compass', inv_col=False)
+        compass_image = scr_reg.capture_region(self.scr, 'compass')
 
         c_left = scr_reg.reg['compass']['rect'][0]
         c_top = scr_reg.reg['compass']['rect'][1]
@@ -499,7 +499,7 @@ class EDAutopilot:
         for _vote in range(5):
             if _vote > 0:
                 sleep(0.01)
-                cap = scr_reg.capture_region(self.scr, 'compass', inv_col=False)
+                cap = scr_reg.capture_region(self.scr, 'compass')
                 cap = cv2.resize(cap, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
                 if cap.shape[2] == 4:
                     cap_bgr = cv2.cvtColor(cap, cv2.COLOR_BGRA2BGR)
@@ -620,7 +620,7 @@ class EDAutopilot:
                   'roll': round(final_roll_deg, 2), 'pit': round(final_pit_deg, 2), 'yaw': round(final_yaw_deg, 2)}
 
         # Debug: save compass detection images with pit/yaw in filename
-        if False:  # set True for navball calibration
+        if self.DEBUG_COMPASS:
             import os
             dbg_dir = 'lab/compass_debug'
             os.makedirs(dbg_dir, exist_ok=True)
@@ -642,101 +642,91 @@ class EDAutopilot:
         return result
 
     def is_target_arc_visible(self, scr_reg) -> bool:
-        """Check if the orange target arc is visible near screen center.
+        """Check if the orange target arc is visible using center_normalcruise region.
         Detects partial arcs by checking that orange pixels lie at a consistent
-        radius from screen center (960,540). Text has scattered distances (high std),
-        arc pixels cluster at one radius (low std).
+        radius from the screen center (~395,260 within the box). Text has scattered
+        distances (high std), arc pixels cluster at one radius (low std).
         @return: True if arc-like orange pattern is found (min 30px, radius std < 12).
         """
-        if 'target_arc' not in scr_reg.reg:
+        if 'center_normalcruise' not in scr_reg.reg:
+            if self.DEBUG_FINEALIGN:
+                logger.warning(f"[FINEALIGN] 'center_normalcruise' not in scr_reg.reg (available: {list(scr_reg.reg.keys())})")
             return False
-        raw = scr_reg.capture_region(self.scr, 'target_arc', inv_col=False)
+        raw = scr_reg.capture_region(self.scr, 'center_normalcruise')
         if raw is None:
+            if self.DEBUG_FINEALIGN:
+                logger.warning("[FINEALIGN] capture_region returned None")
             return False
         hsv = cv2.cvtColor(raw, cv2.COLOR_BGR2HSV)
-        orange_mask = cv2.inRange(hsv, (16, 165, 220), (98, 255, 255))
+        orange_mask = cv2.inRange(hsv, (12, 140, 140), (98, 255, 255))
         count = cv2.countNonZero(orange_mask)
 
         if count < self.MIN_ARC_PIXELS:
-            logger.debug(f"target_arc: orange={count}px -- too few")
+            if self.DEBUG_FINEALIGN:
+                logger.info(f"[FINEALIGN] arc check: orange={count}px (need {self.MIN_ARC_PIXELS}) -- no arc")
             return False
 
-        # Check if orange pixels form an arc (consistent radius from screen center)
-        box_x1 = scr_reg.reg['target_arc']['rect'][0]
-        box_y1 = scr_reg.reg['target_arc']['rect'][1]
+        # Check if orange pixels form an arc (consistent radius from box center)
+        # Screen center (960,540) maps to ~(395,260) in center_normalcruise [565,280,1365,625]
+        box_x1 = scr_reg.reg['center_normalcruise']['rect'][0]
+        box_y1 = scr_reg.reg['center_normalcruise']['rect'][1]
+        cx = 960 - box_x1  # ~395
+        cy = 540 - box_y1  # ~260
         ys, xs = np.where(orange_mask > 0)
-        dists = np.sqrt((xs + box_x1 - 960)**2 + (ys + box_y1 - 540)**2)
+        dists = np.sqrt((xs - cx)**2 + (ys - cy)**2)
         r_std = dists.std()
         r_mean = dists.mean()
 
         is_arc = r_std < self.ARC_STD_THRESHOLD
-        logger.debug(f"target_arc: orange={count}px r_mean={r_mean:.1f} r_std={r_std:.1f} arc={is_arc}")
+        if self.DEBUG_FINEALIGN:
+            logger.info(f"[FINEALIGN] arc check: orange={count}px r_mean={r_mean:.1f} r_std={r_std:.1f} (threshold={self.ARC_STD_THRESHOLD}) -> {'ARC' if is_arc else 'no arc'}")
         return is_arc
 
     def target_fine_align(self, scr_reg) -> bool:
-        """Use the on-screen target circle for precise fine alignment.
-        The target circle center = exact target position. Screen center (960,540) = aligned.
-        @return: True if fine alignment succeeded.
+        """Single-shot fine alignment using target circle.
+        If screen center is inside the circle, accept immediately.
+        If not, one gentle correction per axis to bring it inside.
+        @return: True if target circle found, False otherwise.
         """
-        _dbg = self.DEBUG_TARGET_CIRCLE
-
+        _dbg = self.DEBUG_FINEALIGN
         target_off = self.get_target_offset(scr_reg)
         if target_off is None:
             if _dbg:
-                logger.info("[TGT_ALIGN] no target circle found, aborting")
+                logger.info("[FINEALIGN] no target circle found, skipping fine align")
             return False
 
         pit = target_off['pit']
         yaw = target_off['yaw']
+        dist = (pit**2 + yaw**2)**0.5
         if _dbg:
-            logger.info(f"[TGT_ALIGN] initial offset: pit={pit:.1f} yaw={yaw:.1f}")
+            logger.info(f"[FINEALIGN] circle offset: pit={pit:.1f} yaw={yaw:.1f} dist={dist:.1f}deg (threshold={self.FINE_ALIGN_CLOSE})")
 
-        # Already close enough
+        # Inside circle? Done.
         if abs(pit) < self.FINE_ALIGN_CLOSE and abs(yaw) < self.FINE_ALIGN_CLOSE:
             if _dbg:
-                logger.info(f"[TGT_ALIGN] already aligned (threshold={self.FINE_ALIGN_CLOSE})")
+                logger.info("[FINEALIGN] inside circle -- accepting")
             return True
 
-        # Single correction per axis -- gentle, 50% approach
-        if abs(pit) > 2.0:
+        # One correction per axis -- 50% approach, no re-read, no verify
+        if abs(pit) >= self.FINE_ALIGN_CLOSE:
             key = 'PitchUpButton' if pit > 0 else 'PitchDownButton'
             hold = (abs(pit) * 0.5) / self.pitchrate
             hold = max(0.10, min(1.0, hold))
             if _dbg:
-                logger.info(f"[TGT_ALIGN] pitch correction: {pit:.1f}deg -> hold={hold:.2f}s key={key}")
+                logger.info(f"[FINEALIGN] pitch correction: {pit:.1f}deg -> {key} hold={hold:.2f}s (rate={self.pitchrate})")
             self.keys.send(key, hold=hold)
-            sleep(2.0)
 
-        if abs(yaw) > 2.0:
-            # Re-read after pitch correction
-            target_off = self.get_target_offset(scr_reg)
-            if target_off is None:
-                if _dbg:
-                    logger.info("[TGT_ALIGN] lost target after pitch correction")
-                return False
-            yaw = target_off['yaw']
+        if abs(yaw) >= self.FINE_ALIGN_CLOSE:
+            key = 'YawRightButton' if yaw > 0 else 'YawLeftButton'
+            hold = (abs(yaw) * 0.5) / self.yawrate
+            hold = max(0.10, min(1.0, hold))
             if _dbg:
-                logger.info(f"[TGT_ALIGN] post-pitch yaw={yaw:.1f}")
-            if abs(yaw) > 2.0:
-                key = 'YawRightButton' if yaw > 0 else 'YawLeftButton'
-                hold = (abs(yaw) * 0.5) / self.yawrate
-                hold = max(0.10, min(1.0, hold))
-                if _dbg:
-                    logger.info(f"[TGT_ALIGN] yaw correction: {yaw:.1f}deg -> hold={hold:.2f}s key={key}")
-                self.keys.send(key, hold=hold)
-                sleep(2.0)
+                logger.info(f"[FINEALIGN] yaw correction: {yaw:.1f}deg -> {key} hold={hold:.2f}s (rate={self.yawrate})")
+            self.keys.send(key, hold=hold)
 
-        # Verify with 3-of-3 avg
-        med = self._avg_offset(scr_reg, self.get_target_offset)
         if _dbg:
-            if med:
-                logger.info(f"[TGT_ALIGN] final avg: pit={med['pit']:.1f} yaw={med['yaw']:.1f} (ok_threshold={self.FINE_ALIGN_OK})")
-            else:
-                logger.info("[TGT_ALIGN] final avg: no valid readings")
-        aligned = med is not None and abs(med['pit']) < self.FINE_ALIGN_OK and abs(med['yaw']) < self.FINE_ALIGN_OK
-        if _dbg:
-            logger.info(f"[TGT_ALIGN] result={'ALIGNED' if aligned else 'MISSED'}")
-        return aligned
+            logger.info("[FINEALIGN] single correction applied -- done")
+        return True
 
     def is_sc_assist_gone(self, scr_reg) -> bool:
         """3-of-3 check whether SC Assist has actually disappeared.
@@ -747,8 +737,7 @@ class EDAutopilot:
         for i in range(self.VOTE_COUNT):
             sleep(3)
 
-            # inv_col=False: skip the bogus RGB2BGR conversion in mss capture
-            mask = scr_reg.capture_region_filtered(self.scr, 'sc_assist_ind', inv_col=False)
+            mask = scr_reg.capture_region_filtered(self.scr, 'sc_assist_ind')
 
             ind_ratio = 0.0
             if mask is not None:
@@ -901,7 +890,7 @@ class EDAutopilot:
         # Debug snapshot after boost (closer to station)
         if self.DEBUG_SNAP:
             try:
-                snap = self.scrReg.capture_region(self.scr, 'center_normalcruise', inv_col=False)
+                snap = self.scrReg.capture_region(self.scr, 'center_normalcruise')
                 if snap is not None:
                     snap_dir = os.path.join('debug-output', 'target-snap')
                     os.makedirs(snap_dir, exist_ok=True)
@@ -912,8 +901,9 @@ class EDAutopilot:
                 logger.warning(f"Debug snapshot failed: {e}")
 
         # Roll off the strut plane for rotating stations (Coriolis/Orbis/Ocellus)
-        stype = self.jn.ship_state().get('exp_station_type')
-        if stype != EDJournal.StationType.SpaceConstructionDepot and stype != EDJournal.StationType.ColonisationShip:
+        # Construction sites have no rotating struts, skip roll there
+        drop_type = self.jn.ship_state().get('SupercruiseDestinationDrop_type') or ''
+        if 'Construction' not in drop_type:
             roll_time = 30.0 / self.rollrate
             self.keys.send('RollRightButton', hold=roll_time)
 
@@ -1230,7 +1220,9 @@ class EDAutopilot:
     ZERO_THROTTLE_RATE_FACTOR = 0.60
     # Debug
     DEBUG_SNAP = False           # save debug snapshots to debug-output/
-    DEBUG_TARGET_CIRCLE = True   # verbose logging for target circle detection + fine align
+    DEBUG_COMPASS = False        # save compass detection images to lab/compass_debug/
+    DEBUG_TARGET_CIRCLE = True   # verbose logging for target circle detection
+    DEBUG_FINEALIGN = False      # verbose logging for arc detection + fine align (re-enable for planet approach)
 
     def compass_align(self, scr_reg) -> bool:
         """ Align ship to compass nav target.
@@ -1273,6 +1265,13 @@ class EDAutopilot:
                 continue  # no-compass doesn't count as alignment try
 
             logger.debug(f"Compass: roll={off['roll']:.1f} pit={off['pit']:.1f} yaw={off['yaw']:.1f} z={off['z']}")
+
+            # if self.is_target_arc_visible(scr_reg):
+            #     if self.DEBUG_FINEALIGN:
+            #         logger.info(f"[FINEALIGN] arc detected at compass pit={off['pit']:.1f} yaw={off['yaw']:.1f} -- switching to fine align")
+            #     self.target_fine_align(scr_reg)
+            #     self.ap_ckb('log', 'Compass Align complete (arc fine tune)')
+            #     return True
 
             # Target behind -- pitch UP in 90° steps with compass check between each
             # Sequence: 90°, 90°, 90°, 45° (max 4 attempts)
@@ -1345,15 +1344,11 @@ class EDAutopilot:
             if med is not None:
                 logger.info(f"Compass after align: avg pit={med['pit']:.1f} yaw={med['yaw']:.1f}")
             if med is not None and abs(med['pit']) < close and abs(med['yaw']) < close:
-                # Try target circle fine alignment if visible
-                if self.is_target_arc_visible(scr_reg):
-                    logger.info("Compass close enough, switching to target circle fine align")
-                    self.target_fine_align(scr_reg)
                 self.ap_ckb('log', 'Compass Align complete')
                 return True
 
-            # Single nudge on worst axis, then accept
-            self.nudge_align(scr_reg)
+            # Verify failed -- alignment was applied, accept anyway
+            # (compass jitter ~3-4deg can cause verify to fail even when close)
             self.ap_ckb('log', 'Compass Align complete')
             return True
 
@@ -1406,9 +1401,6 @@ class EDAutopilot:
         logger.debug('position=complete')
         return True
 
-    # jump() happens after we are aligned to Target
-    # TODO: nees to check for Thargoid interdiction and their wave that would shut us down,
-    #       if thargoid, then we wait until reboot and continue on.. go back into FSD and align
     def jump(self, scr_reg):
         logger.debug('jump')
 
@@ -1440,10 +1432,9 @@ class EDAutopilot:
 
             res = self.status.wait_for_flag_on(FlagsFsdJump, 60)
             if not res:
-                # FSD still charged? Alignment drifted -- nudge and let FSD pull us in
+                # FSD still charged? Alignment drifted -- let FSD retry or drop charge
                 if self.status.get_flag(FlagsFsdCharging):
-                    logger.info("jump: FSD charged but no jump -- nudging alignment")
-                    self.nudge_align(scr_reg)
+                    logger.info("jump: FSD charged but no jump -- waiting for pull-in or charge drop")
                     continue
                 # Charge dropped -- full realign needed
                 logger.warning('FSD failure to start jump timeout.')
@@ -1597,7 +1588,6 @@ class EDAutopilot:
 
             # Wait until out of orbit.
             res = self.status.wait_for_flag_off(FlagsHasLatLong, timeout=60)
-            # TODO - do we need to check if we never leave orbit?
 
             # Disable SCO. If SCO not fitted, this will do nothing.
             self.keys.send('UseBoostJuice')
@@ -1622,16 +1612,18 @@ class EDAutopilot:
 
         for attempt in range(3):
             self.check_stop()
+            if self._game_lost():
+                raise Exception('sc_engage: game lost')
             self.set_speed_100()
             self.wait_masslock_clear()
             self.keys.send('Supercruise')
 
             res = self.status.wait_for_flag_on(FlagsSupercruise, timeout=20)
             if res:
-                break
+                return True
             logger.warning(f'sc_engage: not in supercruise after 20s (attempt {attempt+1})')
 
-        return True
+        raise Exception('sc_engage: failed after 3 attempts')
 
     def waypoint_assist(self, keys, scr_reg):
         """ Processes the waypoints, performing jumps and sc assist if going to a station
@@ -1770,7 +1762,7 @@ class EDAutopilot:
                 # Debug snapshot of what's ahead after SC drop
                 if self.DEBUG_SNAP:
                     try:
-                        snap = scr_reg.capture_region(self.scr, 'center_normalcruise', inv_col=False)
+                        snap = scr_reg.capture_region(self.scr, 'center_normalcruise')
                         if snap is not None:
                             snap_dir = os.path.join('debug-output', 'target-snap')
                             os.makedirs(snap_dir, exist_ok=True)
@@ -1841,7 +1833,7 @@ class EDAutopilot:
 
         # We've dropped from supercruise
         if do_docking:
-            sleep(2)  # wait for the journal to catch up
+            sleep(1)  # wait for the journal to catch up
 
             # Check if this is a target we cannot dock at
             skip_docking = False
@@ -1908,6 +1900,20 @@ class EDAutopilot:
     #
     # Setter routines for state variables
     #
+    def _game_lost(self) -> bool:
+        """Check if game window is gone or at main menu. Stops all assists if so."""
+        window_gone = not Screen.Screen.elite_window_exists()
+        at_menu = self.jn.ship_state().get('music_track') == 'MainMenu'
+        if window_gone or at_menu:
+            reason = "window gone" if window_gone else "main menu"
+            logger.error(f"Game lost ({reason}) -- stopping all assists")
+            self.ap_ckb('log', f"ERROR: Game lost ({reason}). Stopping all assists.")
+            self.sc_assist_enabled = False
+            self.waypoint_assist_enabled = False
+            self.dss_assist_enabled = False
+            return True
+        return False
+
     def set_sc_assist(self, enable=True):
         if not enable and self.sc_assist_enabled:
             self._stop_event.set()
@@ -1995,6 +2001,8 @@ class EDAutopilot:
                     logger.debug("Caught stop exception")
                 except Exception as e:
                     logger.exception("SC Assist trapped generic")
+                    if self._game_lost():
+                        continue
 
                 logger.debug("Completed sc_assist")
                 if not self.sc_assist_enabled:
@@ -2016,6 +2024,8 @@ class EDAutopilot:
                     logger.debug("Caught stop exception")
                 except Exception as e:
                     logger.exception("Waypoint Assist trapped generic")
+                    if self._game_lost():
+                        continue
 
                 if not self.waypoint_assist_enabled:
                     self.ap_ckb('waypoint_stop')
@@ -2032,6 +2042,8 @@ class EDAutopilot:
                     logger.debug("Stopping DSS Assist")
                 except Exception as e:
                     logger.exception("DSS Assist trapped generic")
+                    if self._game_lost():
+                        continue
 
                 self.dss_assist_enabled = False
                 self.ap_ckb('dss_stop')

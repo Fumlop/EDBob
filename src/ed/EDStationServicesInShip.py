@@ -51,11 +51,6 @@ class EDStationServicesInShip:
         """ Goto Station Services. Delegates to MenuNav.open_station_services. """
         res = MenuNav.open_station_services(self.keys, self.status_parser)
 
-        if res and self.ap.debug_overlay:
-            stn_svcs = Quad.from_rect(self.reg['station_services']['rect'])
-            self.ap.overlay.overlay_quad_pct('stn_svcs', stn_svcs, (0, 255, 0), 2, 5)
-            self.ap.overlay.overlay_paint()
-
         return res
 
     def goto_construction_services(self) -> bool:
@@ -70,7 +65,6 @@ class EDStationServicesInShip:
         self.keys.send("UI_Down")    # construction services
         self.keys.send("UI_Select")  # open it
 
-        # TODO - replace with OCR from OCR branch?
         sleep(3)  # wait for new menu to finish rendering
 
         return True
@@ -288,11 +282,6 @@ class CommoditiesMarket:
             sleep(0.75)
             keys.send('UI_Select')  # Select that commodity
 
-            if self.ap.debug_overlay:
-                q = Quad.from_rect(self.parent.reg['buy_qty_box']['rect'])
-                self.ap.overlay.overlay_quad_pct('buy_qty_box', q, (0, 255, 0), 2, 5)
-                self.ap.overlay.overlay_paint()
-
             sleep(0.5)  # give time to popup
             keys.send('UI_Up', repeat=2)  # go up to quantity field
             # Log the planned quantity
@@ -386,11 +375,6 @@ class CommoditiesMarket:
             sleep(0.75)
             keys.send('UI_Select')  # Select that commodity
 
-            if self.ap.debug_overlay:
-                q = Quad.from_rect(self.parent.reg['sell_qty_box']['rect'])
-                self.ap.overlay.overlay_quad_pct('sell_qty_box', q, (0, 255, 0), 2, 5)
-                self.ap.overlay.overlay_paint()
-
             sleep(0.5)  # give time for popup
 
             # Sell always sells all -- quantity is prefilled
@@ -434,12 +418,6 @@ if __name__ == "__main__":
     test_ed_ap.keys.activate_window = True
     svcs = EDStationServicesInShip(test_ed_ap, test_ed_ap.scr, test_ed_ap.keys, test_ed_ap.ap_ckb)
 
-    while 1:
-        for key, value in svcs.reg.items():
-            commodities_market = Quad.from_rect(svcs.reg[key]['rect'])
-            test_ed_ap.overlay.overlay_quad_pct(key, commodities_market, (0, 255, 0), 2, 7)
-        test_ed_ap.overlay.overlay_paint()
-
-        sleep(0.5)
+    pass
 
 

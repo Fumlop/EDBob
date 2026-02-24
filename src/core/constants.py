@@ -11,5 +11,5 @@ FORM_TYPE_CHECKBOX = 0
 FORM_TYPE_SPINBOX = 1
 FORM_TYPE_ENTRY = 2
 
-# Elite Dangerous window title (used for focus detection and overlay)
+# Elite Dangerous window title (used for focus detection)
 ED_WINDOW_TITLE = "Elite - Dangerous (CLIENT)"

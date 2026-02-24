@@ -35,8 +35,6 @@ Design:
  
 """
 
-"""                             
-TODO: thinking self.ship()[name]  uses the same names as in the journal, so can lookup same construct     
 """
 
 
@@ -447,8 +445,6 @@ class EDJournal:
             logger.exception("Error processing journal")
 
     def process_construction_depot_details(self):
-        # TODO - save this construction data to a construction.json with multiple markets and update it
-        #  locally and from Inara in case other commanders deliver goods.
         if self._prev_const_depot_details != self.ship['ConstructionDepotDetails']:
             # Load construction dict
             if os.path.exists('./configs/construction.json'):
@@ -560,7 +556,6 @@ class EDJournal:
 
 
 def write_construction(data, filename='./configs/construction.json'):
-    #  TODO - move to separate class/file
     if data is None:
         return False
     try:
@@ -573,7 +568,6 @@ def write_construction(data, filename='./configs/construction.json'):
 
 
 def read_construction(filename='./configs/construction.json'):
-    #  TODO - move to separate class/file
     s = None
     try:
         with open(filename, "r") as fp:

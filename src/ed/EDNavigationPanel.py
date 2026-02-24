@@ -40,7 +40,7 @@ def image_perspective_transform(image, src_quad: Quad):
 
 
 def image_reverse_perspective_transform(image, src_quad: Quad, rev_transform) -> Quad:
-    """Reverse-warp coordinates back to skewed panel space for overlay drawing."""
+    """Reverse-warp coordinates back to skewed panel space."""
     h, w, ch = image.shape
     q = copy(src_quad)
     q.scale_from_origin(w, h)

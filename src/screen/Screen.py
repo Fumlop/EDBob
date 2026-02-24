@@ -20,12 +20,6 @@ Description:
   Class to handle screen grabs
 
 """
-# size() return (ctypes.windll.user32.GetSystemMetrics(0), ctypes.windll.user32.GetSystemMetrics(1))
-# TODO: consider update to handle ED running in a window
-#   find the ED Window
-#   win32gui.SetForegroundWindow(hwnd)
-#    bbox = win32gui.GetWindowRect(hwnd)     will also then give me the resolution of the image
-#     img = ImageGrab.grab(bbox)
 
 from src.core.constants import ED_WINDOW_TITLE
 
@@ -297,13 +291,13 @@ class Screen:
 
         return s
 
-    # reg defines a box as a percentage of screen width and height
-    def get_screen_region(self, reg, rgb=True):
-        image = self.get_screen(int(reg[0]), int(reg[1]), int(reg[2]), int(reg[3]), rgb)
+    def get_screen_region(self, reg):
+        """Grab screen region by pixel rect [x1, y1, x2, y2]. Returns BGRA."""
+        image = self.get_screen(int(reg[0]), int(reg[1]), int(reg[2]), int(reg[3]))
         return image
 
-    def get_screen(self, x_left, y_top, x_right, y_bot, rgb=True):    # if absolute need to scale??
-        """ Get screen from co-ords in pixels."""
+    def get_screen(self, x_left, y_top, x_right, y_bot):
+        """Get screen from co-ords in pixels. Returns BGRA (raw from mss)."""
         monitor = {
             "top": self.screen_top + int(y_top),
             "left": self.screen_left + int(x_left),
@@ -312,29 +306,7 @@ class Screen:
             "mon": self.monitor_number,
         }
         image = array(self._mss.grab(monitor))
-        # TODO - mss.grab returns the image in BGR format, so no need to convert to RGB2BGR
-        if rgb:
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         return image
-        
-    def get_screen_rect_pct(self, rect):
-        """ Grabs a screenshot and returns the selected region as an image.
-        @param rect: A rect array ([L, T, R, B]) in percent (0.0 - 1.0)
-        @return: An image defined by the region.
-        """
-        if self.using_screen:
-            abs_rect = self.screen_rect_to_abs(rect)
-            image = self.get_screen(abs_rect[0], abs_rect[1], abs_rect[2], abs_rect[3])
-            # TODO delete this line when COLOR_RGB2BGR is removed from get_screen()
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            return image
-        else:
-            if self._screen_image is None:
-                return None
-
-            q = Quad.from_rect(rect)
-            image = crop_image_by_pct(self._screen_image, q)
-            return image
 
     def screen_rect_to_abs(self, rect):
         """ Converts and array of real percentage screen values to int absolutes.
@@ -355,17 +327,12 @@ class Screen:
         return q
 
     def get_screen_full(self):
-        """ Grabs a full screenshot and returns the image.
-        """
+        """Grabs a full screenshot. Returns BGRA."""
         if self.using_screen:
-            image = self.get_screen(0, 0, self.screen_width, self.screen_height)
-            # TODO delete this line when COLOR_RGB2BGR is removed from get_screen()
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            return image
+            return self.get_screen(0, 0, self.screen_width, self.screen_height)
         else:
             if self._screen_image is None:
                 return None
-
             return self._screen_image
 
     def set_screen_image(self, image):

@@ -72,7 +72,7 @@ class EDInternalStatusPanel:
 
         # Get the nav panel image based on the region
         image = self.screen.get_screen(self.panel_quad_pix.get_left(), self.panel_quad_pix.get_top(),
-                                       self.panel_quad_pix.get_right(), self.panel_quad_pix.get_bottom(), rgb=False)
+                                       self.panel_quad_pix.get_right(), self.panel_quad_pix.get_bottom())
         cv2.imwrite(f'test/status-panel/out/nav_panel_original.png', image)
 
         # Offset the panel co-ords to match the cropped image (i.e. starting at 0,0)
@@ -86,10 +86,6 @@ class EDInternalStatusPanel:
         self._rev_transform = rev_trans
         # Write the file
         cv2.imwrite(f'test/status-panel/out/nav_panel_straight.png', straightened)
-
-        if self.ap.debug_overlay:
-            self.ap.overlay.overlay_quad_pct('nav_panel_active', self.panel_quad_pct, (0, 255, 0), 2, 5)
-            self.ap.overlay.overlay_paint()
 
         return straightened
 
@@ -108,15 +104,6 @@ class EDInternalStatusPanel:
         tab_bar = crop_image_by_pct(self.panel, tab_bar_quad)
         cv2.imwrite(f'test/status-panel/out/tab_bar.png', tab_bar)
 
-        if self.ap.debug_overlay:
-            # Transform the array of coordinates to the skew of the nav panel
-            q_out = image_reverse_perspective_transform(self.panel, tab_bar_quad, self._rev_transform)
-            # Offset to match the nav panel offset
-            q_out.offset(self.panel_quad_pix.get_left(), self.panel_quad_pix.get_top())
-
-            self.ap.overlay.overlay_quad_pix('status_panel_tab_bar', q_out, (0, 255, 0), 2, 5)
-            self.ap.overlay.overlay_paint()
-
         return tab_bar
 
     def capture_inventory_panel(self):
@@ -133,15 +120,6 @@ class EDInternalStatusPanel:
         # Crop the image to the extents of the quad
         inventory_panel = crop_image_by_pct(panel, inventory_panel_quad)
         cv2.imwrite(f'test/status-panel/out/inventory_panel.png', inventory_panel)
-
-        if self.ap.debug_overlay:
-            # Transform the array of coordinates to the skew of the nav panel
-            q_out = image_reverse_perspective_transform(panel, inventory_panel_quad, self._rev_transform)
-            # Offset to match the nav panel offset
-            q_out.offset(self.panel_quad_pix.get_left(), self.panel_quad_pix.get_top())
-
-            self.ap.overlay.overlay_quad_pix('sts_panel_inventory_panel', q_out, (0, 255, 0), 2, 5)
-            self.ap.overlay.overlay_paint()
 
         return inventory_panel
 

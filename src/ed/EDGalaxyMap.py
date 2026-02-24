@@ -207,11 +207,6 @@ class EDGalaxyMap:
             # Goto Galaxy Map
             self.keys.send('GalaxyMapOpen')
 
-            if self.ap.debug_overlay:
-                stn_svcs = Quad.from_rect(self.reg['full_panel']['rect'])
-                self.ap.overlay.overlay_quad_pct('system map', stn_svcs, (0, 255, 0), 2, 5)
-                self.ap.overlay.overlay_paint()
-
             # Wait for Galaxy Map to appear (Status.json GuiFocus check)
             if not self.status_parser.wait_for_gui_focus(GuiFocusGalaxyMap, timeout=15):
                 logger.warning("Unable to open Galaxy Map")
