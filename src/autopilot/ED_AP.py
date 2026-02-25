@@ -701,8 +701,8 @@ class EDAutopilot:
         self.nav_panel.request_docking()
 
     DOCK_RANGE_TIMEOUT = 60     # seconds to fly toward station before giving up
-    DOCK_DRIFT_TIME = 4         # seconds to drift (zero throttle) between retries
-    DOCK_APPROACH_TIME = 4      # seconds to fly at 50% between retries
+    DOCK_DRIFT_TIME = 2         # seconds to drift (zero throttle) between retries
+    DOCK_APPROACH_TIME = 2      # seconds to fly at 50% between retries
 
     def dock(self):
         """ Docking sequence: fly into no-fire zone at 50%, request docking,
@@ -724,6 +724,7 @@ class EDAutopilot:
         self.set_speed_50()
         self._wait_for_dock_range()
         self.set_speed_0()
+        sleep(1)
 
         self._request_docking_with_retry()
 
