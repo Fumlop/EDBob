@@ -1400,6 +1400,7 @@ class EDAutopilot:
         self.ap_ckb('log', 'Waiting for SC Assist to reach destination...')
         sleep(self.SC_SETTLE_TIME)  # let SC Assist settle and throttle text disappear
         sc_assist_cruising = True
+        first_bluecheck = True
         last_align_check = time.time()
         while True:
             sleep(2.5)
@@ -1426,6 +1427,7 @@ class EDAutopilot:
                 logger.info(f"sc_assist: ApproachBody detected: {approach_body}")
                 self._evade_pitch(scr_reg, self.BODY_EVADE_PITCH)
                 sc_assist_cruising = True
+                first_bluecheck = True
                 continue
 
             # Check if SC Assist is still active (indicator check)
@@ -1441,6 +1443,16 @@ class EDAutopilot:
                     if self.status.get_flag(FlagsBeingInterdicted):
                         logger.info("sc_assist: indicator gone due to interdiction -- skipping evasion")
                         sc_assist_cruising = False
+                        continue
+                    # First check: likely drift, just re-align and resume
+                    if first_bluecheck:
+                        first_bluecheck = False
+                        logger.info("sc_assist: first check failed -- re-aligning")
+                        self.set_speed_0()
+                        self.compass_align(scr_reg)
+                        self.keys.send('SetSpeed75')
+                        sleep(self.SC_SETTLE_TIME)
+                        last_align_check = time.time()
                         continue
                     logger.warning("sc_assist: gone -- target occluded, evading")
                     self.ap_ckb('log', 'Target occluded -- evading')

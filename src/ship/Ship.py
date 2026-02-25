@@ -61,7 +61,7 @@ class Ship:
     }
 
     # Alignment constants
-    MIN_HOLD_TIME = 0.50
+    MIN_HOLD_TIME = 0.40
     MAX_HOLD_TIME = 10.0
     ALIGN_CLOSE = 3.0           # degrees -- tightened with stable ring median
     ALIGN_SETTLE = 2.0          # seconds to let ship/compass settle after pitch/yaw
