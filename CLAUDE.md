@@ -6,6 +6,13 @@
 swapping. OpenCV treats this as BGR with alpha, which is correct for `COLOR_BGR2HSV`
 and all color detection.
 
+## Navball Geometry
+
+The navball is an orthographic sphere projection. `_calc_nav_angles()` uses
+`asin()` to convert dot position to degrees -- this is correct. Do NOT change
+to linear mapping. Minor yaw coupling at large pitch is irrelevant due to
+iterative alignment. See `docs/src/ED_AP.md` for full analysis.
+
 ## Paint Testing
 
 Before changing any screen region config, always:

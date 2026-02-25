@@ -630,7 +630,17 @@ class EDWayPoint:
             if sc_target == "":
                 sc_target = self.ap.status.get_cleaned_data().get('Destination_Name', '')
             if sc_target != "":
-                self.ap.supercruise_to_station(scr_reg, sc_target)
+                if not self.ap.supercruise_to_station(scr_reg, sc_target):
+                    sc_fail_count = getattr(self, '_sc_fail_count', 0) + 1
+                    self._sc_fail_count = sc_fail_count
+                    logger.warning(f"SC to station failed ({sc_fail_count}/3)")
+                    if sc_fail_count >= 3:
+                        self.ap.ap_ckb('log+vce', "SC Assist failed 3 times, aborting waypoint route")
+                        _abort = True
+                        break
+                    sleep(5)
+                else:
+                    self._sc_fail_count = 0
                 sleep(1)
                 continue
 

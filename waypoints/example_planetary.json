@@ -1,0 +1,72 @@
+{
+    "GlobalShoppingList": {
+        "BuyCommodities": {},
+        "UpdateCommodityCount": true,
+        "FleetCarrierTransfer": false,
+        "Skip": false,
+        "Completed": false
+    },
+    "1": {
+        "SystemName": "",
+        "StationName": "",
+        "GalaxyBookmarkType": "Favorites",
+        "GalaxyBookmarkNumber": 2,
+        "SystemBookmarkType": "Station",
+        "SystemBookmarkNumber": 1,
+        "IsConstruction": false,
+        "IsPlanetary": false,
+        "Latitude": null,
+        "Longitude": null,
+        "SellCommodities": {},
+        "BuyCommodities": {
+            "Aluminium": 0,
+            "Titanium": 0,
+            "Steel": 31863
+        },
+        "Comment": "Buy Steel at Vr Magyarorszag (orbital station)",
+        "UpdateCommodityCount": true,
+        "FleetCarrierTransfer": false,
+        "Skip": false,
+        "Completed": false
+    },
+    "2": {
+        "SystemName": "",
+        "StationName": "",
+        "GalaxyBookmarkType": "Favorites",
+        "GalaxyBookmarkNumber": 3,
+        "SystemBookmarkType": "Station",
+        "SystemBookmarkNumber": 2,
+        "IsConstruction": true,
+        "IsPlanetary": true,
+        "Latitude": -23.46,
+        "Longitude": 12.78,
+        "SellCommodities": {
+            "ALL": 0
+        },
+        "BuyCommodities": {},
+        "Comment": "Deliver to Beadohild Point (planetary construction depot on A 2 a)",
+        "UpdateCommodityCount": true,
+        "FleetCarrierTransfer": false,
+        "Skip": false,
+        "Completed": false
+    },
+    "3": {
+        "SystemName": "REPEAT",
+        "StationName": "",
+        "GalaxyBookmarkType": "",
+        "GalaxyBookmarkNumber": 0,
+        "SystemBookmarkType": "",
+        "SystemBookmarkNumber": 0,
+        "IsConstruction": false,
+        "IsPlanetary": false,
+        "Latitude": null,
+        "Longitude": null,
+        "SellCommodities": {},
+        "BuyCommodities": {},
+        "Comment": null,
+        "UpdateCommodityCount": false,
+        "FleetCarrierTransfer": false,
+        "Skip": false,
+        "Completed": false
+    }
+}

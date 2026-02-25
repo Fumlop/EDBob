@@ -59,6 +59,23 @@ Compass detection pipeline:
 3. `_detect_nav_dot()` -- find nav dot position + z-depth
 4. `_calc_nav_angles()` -- convert pixel offsets to degrees
 
+#### Navball spherical geometry (analysed 2026-02-25)
+
+The navball is an orthographic projection of a sphere. A point at angle `theta`
+projects to `sin(theta)` from center. `_calc_nav_angles()` correctly uses
+`asin()` to recover pitch and yaw from the normalized dot position (lines 506-507).
+
+Known coupling: yaw is computed as `asin(x)` but the true projection is
+`x = sin(yaw) * cos(pitch)`. This underestimates yaw when pitch is large
+(e.g. -9.3 deg error at pit=45/yaw=30). Doesn't matter in practice because:
+- Alignment is iterative and re-reads after each correction
+- Axes are aligned sequentially (pitch near zero when yaw is corrected)
+- Calibration rates use the same arcsin units, so hold times are self-consistent
+
+`get_target_offset()` (line 674) uses linear mapping for the main viewport
+target circle. Technically should be `atan()` for rectilinear projection, but
+error is small near center where the target reticle is used.
+
 ### Navigation
 
 | Method | Description |

@@ -1325,16 +1325,15 @@ class EDAutopilot:
         if self.have_destination(scr_reg):
             self.ap_ckb('log', " - Station: " + station_name)
             self.update_ap_status(f"SC to Station: {station_name}")
-            self.sc_assist(scr_reg)
+            return self.sc_assist(scr_reg)
         else:
             self.ap_ckb('log', f" - Could not target station: {station_name}")
             return False
 
-        return True
-
-    def sc_assist(self, scr_reg, do_docking=True):
+    def sc_assist(self, scr_reg, do_docking=True) -> bool:
         """ Supercruise Assist: sun avoid, align to target, activate SC Assist via nav panel,
         then monitor for auto-drop. Checks for body obscuring target every 2.5s.
+        @return: True if completed (docked/dropped), False if activation failed.
         """
         logger.debug("Entered sc_assist")
 
@@ -1345,7 +1344,7 @@ class EDAutopilot:
         if not self.have_destination(scr_reg):
             self.ap_ckb('log', "Quiting SC Assist - Compass not found. Rotate ship and try again.")
             logger.debug("Quiting sc_assist - compass not found")
-            return
+            return False
 
         # if we are starting the waypoint docked at a station or landed, we need to undock/takeoff first
         if self.status.get_flag(FlagsDocked) or self.status.get_flag(FlagsLanded):
@@ -1361,7 +1360,7 @@ class EDAutopilot:
         if not self.status.get_flag(FlagsSupercruise):
             self.ap_ckb('log', 'SC Assist aborted - not in supercruise')
             logger.warning(f"sc_assist: not in supercruise (flag), journal status={self.jn.ship_state()['status']}")
-            return
+            return False
 
         # Activate SC Assist first, then align -- SC Assist guides while we fine-tune
         self.set_speed_0()
@@ -1374,7 +1373,7 @@ class EDAutopilot:
                 self.ap_ckb('log', 'SC Assist activation failed twice, aborting')
                 logger.warning("sc_assist: activate_sc_assist failed after retry")
                 self.set_speed_0()
-                return
+                return False
 
         # Sun avoidance (pitch up if sun ahead after FSD drop)
         sun_was_ahead = self.sun_avoid(scr_reg)
@@ -1501,7 +1500,7 @@ class EDAutopilot:
                     if stype in (EDJournal.StationType.SpaceConstructionDepot,
                                  EDJournal.StationType.ColonisationShip):
                         self.ap_ckb('log+vce', "Docking failed at construction site -- stopping navigation")
-                        return
+                        return False
                     self.ap_ckb('log', "Docking timed out, continuing...")
                 if docked_ok:
                     self.ap_ckb('log+vce', "Docking complete, refueled, repaired and re-armed")
@@ -1514,6 +1513,7 @@ class EDAutopilot:
             self.ap_ckb('log', "Supercruise dropped, terminating SC Assist")
 
         self.ap_ckb('log+vce', "Supercruise Assist complete")
+        return True
 
     def dss_assist(self):
         while True:
