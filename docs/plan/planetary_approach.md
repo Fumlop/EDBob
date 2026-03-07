@@ -1,5 +1,7 @@
 # Planetary Settlement Approach -- Implementation Plan
 
+Updated with lessons from test_oc_nav.py (session 2026-02-26).
+
 ## Problem Statement
 
 SC Assist does NOT land on planets. It only orbits. The current EDAP code
@@ -7,153 +9,196 @@ actually *evades* when `ApproachBody` fires. For planetary settlements and
 construction depots on moons/planets, we need a fully autonomous descent
 sequence.
 
-## Current Hauling Target
-
-Beadohild Point (SpaceConstructionDepot) on Hyades Sector GW-V c2-4 A 2 a
-(a moon). Currently reached via SC Assist which drops us at orbital stations
-only. This settlement requires planetary approach.
-
 ---
 
-## Flight Phases
+## Strategy: "Let SC Assist Orbit, Then Dive" (confirmed v1 approach)
 
 ```
-Deep SC ──> Pre-Orbital Align ──> Orbital Cruise ──> Glide ──> Normal Space ──> Dock
-   |              |                    |               |            |             |
- existing    HARDEST PART          pitch down       maintain     fly to base   existing
- compass     (see below)           ~45 deg          safe zone    via compass   docking
+Deep SC --> SC Assist orbits body --> Confirm orbit stable
+        --> Wait for dive window (glideslope_angle + heading) --> Dive 45 deg
+        --> Glide (passive) --> Post-glide compass approach --> Dock
 ```
+
+The "offset approach" and "manual pre-orbital align" strategies were considered
+and rejected. SC Assist reliably puts us in belly-down orbit. We use that.
+
+---
 
 ## Phase Breakdown
 
 ### Phase 0: Deep SC Approach (EXISTING)
 
-What works today: compass align, SC toward target. The compass points at the
-settlement which is on the planet surface.
+Compass align + SC Assist toward target. No changes needed.
 
-**Problem**: Following the compass straight in points us AT the planet surface.
-We'd arrive at the orbital boundary aimed almost horizontally at the planet,
-or worse, aimed at the planet core. This gives us a bad entry angle for glide.
+**Note**: The compass points at the settlement which is on the planet surface.
+Following it straight in is fine -- SC Assist handles the orbital entry.
+We do NOT need to worry about approach angle during deep SC.
 
-### Phase 1: Pre-Orbital Alignment (HARDEST PART)
+---
 
-**Why this is hard:**
+### Phase 1: OC Detection + Orbit Confirmation
 
-The settlement is on the surface. The compass points at it. But we need to
-arrive at the orbital boundary (~25km altitude) positioned ABOVE the settlement,
-not aimed directly at it. Then we pitch down 45 degrees into glide.
+**Detection**: `FlagsSupercruise AND FlagsHasLatLong AND FlagsAverageAltitude`
 
-If we follow the compass blindly:
-- We approach the planet aimed at the surface
-- We enter orbital cruise at a random angle relative to the settlement
-- We'd need to orbit around to reposition -- slow and complex
+OC flags can fire early (~990km altitude). The `ApproachBody` journal event
+is a more reliable "we are really in OC" signal. Either way, we start reading
+`Lat/Lon/Alt/Heading` from `status.json` as soon as OC flags are set.
 
-**What we actually need:**
+**Orbit confirmation** (must come before anything else):
+- SC Assist puts us in a belly-down orbit (canopy toward planet, top-down)
+- We MUST wait for a stable orbit before taking any control inputs
+- Detection: altitude drift < 10% for 10 continuous seconds
+- If alt drifts > 10%: reset timer
 
-Approach the planet so that when we cross the orbital boundary, the settlement
-is roughly 25km below us and slightly ahead. This means we need to aim NOT at
-the settlement itself, but at a point ~25km above it.
+**Why this matters**: If we act before orbit is stable, the ship orientation
+is undefined and yaw/pitch inputs produce unpredictable results.
 
-**Possible strategies:**
+---
 
-#### Strategy A: "Overshoot and Orbit"
-1. Follow compass toward settlement (existing alignment)
-2. SC Assist takes us to orbital cruise (it orbits the planet)
-3. In orbital cruise: read Lat/Lon/Heading from status.json
-4. Navigate in orbital cruise until we're above the settlement
-5. Pitch down 45 degrees into glide
-
-Pros: Simple, uses existing SC Assist code
-Cons: Orbiting to find the right position is slow, need orbital cruise nav
-
-#### Strategy B: "Offset Approach"
-1. Align to compass (settlement direction)
-2. Before entering orbital zone, pitch up ~20-30 degrees from compass center
-3. This makes us arrive at the orbital boundary above the settlement
-4. Immediately pitch down 45 degrees into glide
-
-Pros: Fast, direct approach
-Cons: Tricky to calculate the right offset angle. Depends on approach distance.
-
-#### Strategy C: "Let SC Assist Orbit, Then Dive" (RECOMMENDED for v1)
-1. Approach planet normally (SC Assist or compass align)
-2. When `ApproachBody` fires + `FlagsHasLatLong` set = orbital cruise
-3. Instead of evading: read status.json for Lat/Lon/Alt/Heading
-4. Compute bearing to settlement from current position
-5. Align heading to settlement bearing
-6. Pitch down 45 degrees
-7. Enter glide
-
-Pros: Most data-driven, uses status.json numbers not screen reading
-Cons: Need to compute great-circle bearing, handle "settlement on far side"
-
-**Decision**: Strategy C is most robust. Status.json gives us real navigation
-data. No guessing about screen positions.
-
-### Phase 2: Orbital Cruise Navigation
-
-**Detection**: `FlagsSupercruise AND FlagsHasLatLong`
+### Phase 2: Wait for Dive Window
 
 **Available data from status.json:**
-- `Latitude` (float, degrees)
-- `Longitude` (float, degrees)
-- `Heading` (int, degrees bearing)
+- `Latitude`, `Longitude` (float, degrees)
+- `Heading` (int, degrees, 0=N)
 - `Altitude` (float, meters)
 - `PlanetRadius` (float, meters)
 
-**From journal `ApproachSettlement` event:**
-- Settlement `Latitude` and `Longitude`
+**Target position from waypoint:**
+- `Latitude`, `Longitude` (IsPlanetary waypoint fields)
 
-**Navigation algorithm:**
-1. Read current Lat/Lon and settlement Lat/Lon
-2. Compute great-circle bearing: `bearing = atan2(sin(dLon)*cos(lat2), cos(lat1)*sin(lat2) - sin(lat1)*cos(lat2)*cos(dLon))`
-3. Compare with current `Heading`
-4. Yaw to match bearing
-5. Pitch down to ~45 degrees
-6. Monitor altitude -- glide engages at ~25km
+**Computed:**
+```python
+bearing  = bearing_to(lat, lon, tgt_lat, tgt_lon)
+hdg_err  = heading_diff(heading, bearing)         # signed, +R/-L
+d_surf   = haversine_distance(lat, lon, tgt_lat, tgt_lon, planet_r)  # surface arc
+d3       = dist_3d(lat, lon, alt, tgt_lat, tgt_lon, planet_r)        # straight-line
+angle    = glideslope_angle(alt, d3)                # atan2(alt, d3), degrees
+```
 
-**Orbital cruise controls:**
-- Pitch 0 = maintain altitude (circle planet)
-- Pitch down = descend
-- Pitch up = ascend
-- Speed: throttle in blue zone for max orbital speed
+**IMPORTANT -- glideslope_angle is NOT the ship's pitch angle.**
+It is the geometric elevation angle at the target looking up to the ship.
+- 0 deg = ship is on the horizon (very far away)
+- 90 deg = ship is directly overhead
+- 35-38 deg = good dive window (confirmed from test runs)
 
-### Phase 3: Glide
+The angle tells you WHEN you are in position to dive.
+It does NOT tell you how much to pitch.
 
-**Detection**: `Flags2GlideMode` (already have this)
+**Dive window conditions** (all must be true):
+```
+35.0 <= glideslope_angle <= 38.0
+dist_3d / alt <= 2.0
+|heading_diff| < 3.0 deg
+```
 
-**What we need:**
-- Currently we just `wait_for_flag2_off(Flags2GlideMode, 30)` -- passive wait
-- Should actively manage pitch to stay in safe zone
-- Monitor altitude via status.json (decreasing from ~25km to ~3km)
-- Keep heading toward settlement (minimal yaw -- aggressive yaw causes blackout)
+**Heading alignment strategy** (open question):
+- Active yaw in OC (post SC Assist off) was unreliable in tests
+- Orbit naturally carries the ship -- target comes into bearing over time
+- For v1: wait passively for orbit to bring heading into alignment window
+  rather than actively yawing
 
-**Glide rules:**
-- Entry angle: -5 to -60 degrees (optimal: -40 to -50)
-- Speed: fixed 2,500 m/s
-- Too steep pitch = emergency drop (hull damage)
+---
+
+### Phase 4: Dive
+
+**Initiation**:
+1. Lock `lock_angle = glideslope_angle` at trigger (freeze reference)
+2. Throttle to zero
+3. Pitch +45 deg toward planet
+4. Poll altitude: when alt drops to 60% of entry alt, pitch -45 deg (pullback)
+5. Transition to dive correction loop
+
+**Dive correction** (each status cycle):
+```python
+current_angle = glideslope_angle(alt, dist_3d(...))
+error = current_angle - lock_angle    # + = too shallow, - = too steep
+
+band = [lock_angle - 0.4, lock_angle + 0.4]
+if current_angle < band.lo:  pitch toward planet (steepen)
+if current_angle > band.hi:  pitch away (flatten)
+if |hdg_err| > 2:            yaw to bearing
+```
+
+**Stop condition**: `Flags2GlideMode` set.
+
+**Known problem from test runs -- dive correction does NOT work yet:**
+
+Observed behavior:
+- Ship pitched ~80 deg nose-toward-planet visually
+- glideslope stayed at ~40 deg, never reached lock_angle=35 deg
+- Only after overpitching enough nose-AWAY from target did glideslope rise
+
+Root cause: **unclear, but glideslope feedback via pitch pulses does not work.**
+
+ED does not simulate real orbital mechanics -- gravity does not continuously
+pull the ship at 30 km/s. The ship moves in the direction it is pointed (with
+lag). Throttle zero still means ~30 km/s, but that velocity follows the nose,
+not an independent orbital arc.
+
+Likely causes (need PlanetaryTracker data to confirm):
+- Pitch pulses too short: game needs sustained hold before altitude changes
+- status.json altitude ticks (1s) too coarse to track fast OC position changes
+- Heading was off-target during dive: ship was flying past/away from settlement
+  at 30 km/s, so dist_3d grew even as alt dropped -> glideslope stayed high
+- Combination: heading not aligned + insufficient sustained pitch
+
+The overpitch-away "fix" that finally moved glideslope may have worked by
+accidentally re-aligning the heading toward the target, shrinking dist_3d.
+
+**What is confirmed**: reactive pitch correction loop produced wrong results.
+**What is unknown**: whether the cause is heading drift, pitch lag, or both.
+
+**Critical constraint: throttle zero in OC = still ~30 km/s.**
+Orbital velocity cannot be bled in any useful timeframe. "Wait for velocity
+to align with nose" is not viable -- the ship is always at orbital speed in OC.
+
+**Consequence: glideslope correction via pitch is unworkable in OC entirely.**
+There is no throttle state that removes orbital velocity before glide engages.
+
+**v1 dive strategy: commit and hold, no correction loop.**
+1. Align heading to target bearing BEFORE committing to dive
+2. At trigger (glideslope 35-38 deg): pitch toward planet at a fixed angle
+   and hold it -- do NOT try to reactively correct glideslope mid-dive
+3. Let SC physics and gravity do the work; glide will engage when conditions
+   are met regardless of what the nose is doing
+4. The heading alignment (step 1) is the only meaningful pre-dive correction
+   we can make; everything after trigger is committed
+
+The glideslope_angle is still useful as a TRIGGER (when to start the dive),
+not as a feedback variable for a control loop.
+
+---
+
+### Phase 5: Glide (passive)
+
+**Detection**: `Flags2GlideMode`
+
+- Hold current attitude -- do not fight the glide
+- Speed is fixed at 2500 m/s
+- Aggressive yaw causes pilot blackout -- avoid
+- Alt drops from ~20km to ~4km in ~10-15s
+- Exits ~3-5km from settlement (from test data)
+- After glide: `NOT FlagsSupercruise AND FlagsHasLatLong AND NOT Flags2GlideMode`
+
+Glide rules (for future active management):
+- Entry angle: -5 to -60 deg (optimal: -40 to -50 deg)
+- Too steep = emergency drop (hull damage)
 - Too shallow = early exit (far from target)
-- Aggressive yaw = pilot blackout
 
-**For v1**: Keep passive wait. The glide is short (~10-15 seconds) and if our
-entry angle was ~45 degrees, the default glide should deposit us close enough.
+v1: passive wait. If dive angle was ~35-38 deg at trigger, glide deposits
+us close enough for compass approach.
 
-### Phase 4: Normal Space to Settlement
+---
 
-**Detection**: NOT `FlagsSupercruise` AND NOT `Flags2GlideMode` AND `FlagsHasLatLong`
+### Phase 6: Post-Glide Approach
 
-**Navigation:**
-- Use compass (points at settlement) -- existing alignment code
-- Fly toward settlement at moderate speed
+**Detection**: NOT `FlagsSupercruise`, `FlagsHasLatLong`, NOT `Flags2GlideMode`
+
+- Compass points at settlement -- use existing alignment code
+- Maintain minimum altitude (don't crash into terrain)
 - `ApproachSettlement` journal event fires when close
 - Request docking when in range
-- Deploy landing gear
-- Existing docking code may partially work (station services)
-
-**Concerns:**
-- Post-glide distance could be 0-50km depending on glide accuracy
-- Gravity varies per planet -- high-G worlds need careful throttle
-- Need to manage altitude (don't crash into terrain)
+- Existing docking code handles final landing
 
 ---
 
@@ -161,134 +206,63 @@ entry angle was ~45 degrees, the default glide should deposit us close enough.
 
 | Data | Source | Reliability |
 |------|--------|-------------|
-| In orbital cruise? | status.json: Supercruise + HasLatLong | High |
+| In OC? | status.json: Supercruise+HasLatLong+AverageAltitude | High |
 | In glide? | status.json: Flags2GlideMode | High |
+| Orbit stable? | status.json: Altitude drift < 10% for 10s | High |
 | Current position | status.json: Lat/Lon/Alt/Heading | High |
-| Settlement position | Journal: ApproachSettlement Lat/Lon | High |
-| Compass direction | Screen: existing navball detection | Medium |
-| Pitch angle | Computed from altitude rate or compass | Medium |
-| Distance to settlement | Computed from Lat/Lon + great-circle | High |
-
-Key insight: **status.json gives us real navigation data** (lat, lon, heading,
-altitude). This is more reliable than screen reading for planetary navigation.
-The compass is a backup/verification, not the primary nav source.
+| Settlement position | Waypoint: IsPlanetary Latitude/Longitude | High |
+| glideslope_angle | Computed: atan2(alt, dist_3d) | High |
+| Compass direction | Screen: existing navball detection | Medium (backup) |
 
 ---
 
 ## Implementation Order
 
-### Step 1: Parse ApproachSettlement journal event
-- Add handler in EDJournal.py
-- Store settlement name, lat, lon in ship state
-- Small change, no risk
+### Step 1 (DONE): EDNavUtils
+- `detect_phase()`, `is_orbiting()`, `is_above_planet()`
+- `haversine_distance()`, `bearing_to()`, `dist_3d()`, `heading_diff()`
+- `glideslope_angle()` with NOT-ship-pitch note
 
-### Step 2: Detect orbital cruise state
-- Add check: `FlagsSupercruise AND FlagsHasLatLong`
-- In `supercruise_to_station()`: branch to planetary descent when target
-  is a settlement (not an orbital station)
-- Need to know if target is planetary -- journal `FSDTarget` or
-  `ApproachBody` + `ApproachSettlement` combo
+### Step 2 (DONE): Waypoint format
+- `IsPlanetary: true`, `Latitude`, `Longitude`
+- `PlanetRadius` comes from `status.json` live -- not stored in waypoint
+- See `waypoints/example_planetary.json` (Voelundr Hub as test reference)
 
-### Step 3: Orbital cruise navigation
-- Read status.json Lat/Lon/Heading/Altitude
-- Compute bearing to settlement
-- Yaw to correct heading
-- Pitch down 45 degrees
-- Monitor altitude for glide entry
+### Step 3 (NEXT): PlanetaryTracker (debug logging)
+- Background thread, polls StatusParser, logs CSV until docked
+- Target lat/lon from waypoint fields
+- Columns: timestamp, phase, lat, lon, alt, heading, planet_r,
+           bearing, dist_surface, dist_3d, glideslope_angle, hdg_err
+- Needed to validate dive window timing before implementing autopilot
 
-### Step 4: Glide management (v1: passive)
-- Keep existing `wait_for_flag2_off(Flags2GlideMode, 30)`
-- Later: active pitch management for accuracy
+### Step 4: Journal integration
+- `ApproachBody` event: confirm OC entry
+- `ApproachSettlement` event: could also provide lat/lon as fallback
 
-### Step 5: Post-glide approach
-- Detect normal space near planet
-- Compass align to settlement
-- Fly toward it
-- Request docking + land
+### Step 5: ED_AP.py -- planetary branch in sc_assist / waypoint_assist
+- Detect IsPlanetary waypoint
+- Don't evade on ApproachBody -- branch to planetary descent sequence
+- State machine: WAIT_OC -> ORBIT_CHECK -> DEACTIVATE_SCA -> DIVE_WINDOW -> DIVE -> GLIDE -> POSTGLIDE
+
+### Step 6: Post-glide compass approach + docking
+- Re-use existing compass alignment
+- Terrain altitude management
 
 ---
-
-## TODO
-
-- [ ] User needs to fill in real Lat/Lon coords for Beadohild Point
-      (manual visit or lookup from EDSM/Inara, check journal ApproachSettlement)
-- [ ] Example waypoint file created at `waypoints/example_planetary.json`
-      with IsPlanetary/Latitude/Longitude fields -- not wired into code yet
-- [ ] Come back to planetary descent implementation after hauling loop stabilises
 
 ## Open Questions
 
-1. **How do we know the target is a planetary settlement vs orbital station?**
-   - Journal `Docked`/`Location` events have `StationType` field
-   - `SpaceConstructionDepot` on a planet = planetary
-   - Could also check if `ApproachBody` fires before SC drop
-   - Or: if we enter orbital cruise while targeting a station, it's planetary
+1. **Heading alignment in OC** -- active yaw unreliable. Wait for orbit to
+   bring target into view naturally? Needs data from PlanetaryTracker runs.
 
-2. **Settlement on far side of planet?**
-   - Need to orbit in orbital cruise until above it
-   - Great-circle distance tells us how far to go
+2. **Polar settlements** -- equatorial orbit = very long traverse. May need
+   to orbit into a higher inclination. Future problem.
 
-3. **Terrain avoidance in normal space?**
-   - Status.json `Altitude` is our friend
-   - Maintain minimum altitude while approaching
+3. **PlanetRadius** -- always from status.json live. Not stored in waypoint.
 
-4. **Variable gravity handling?**
-   - Can read gravity from system data or infer from descent rate
-   - For v1: conservative throttle management
+4. **Terrain avoidance post-glide** -- status.json Altitude is MSL above
+   mean radius, not above terrain. On rough worlds this matters.
+   v1: maintain 500m minimum alt, ignore terrain.
 
-5. **Pre-orbital alignment -- can we skip orbiting?**
-   - If we approach from the right direction, we can dive straight in
-   - Requires knowing settlement lat/lon BEFORE entering orbit
-   - `ApproachSettlement` may fire too late (only in normal space?)
-   - May need to get lat/lon from nav panel or system map
-
----
-
-## Pre-Orbital Alignment Deep Dive (THE HARD PART)
-
-The fundamental geometry problem:
-
-```
-        Ship approaching from deep space
-             \
-              \  (SC direction)
-               \
-                v
-    ========== Orbital Boundary (~25km) ==========
-                |
-                | (need ~45 deg dive here)
-                |
-           Settlement on surface
-```
-
-If we approach with compass centered (aimed at settlement), we hit the
-orbital boundary aimed almost horizontally at the planet face. We need to
-be ABOVE the settlement when we cross the boundary.
-
-**The geometry:**
-- Planet radius R (from status.json `PlanetRadius`)
-- Orbital boundary at R + 25km
-- Settlement at lat/lon on surface
-- We need to cross the boundary at a point ~25km horizontal distance
-  from the settlement (at 45 deg, vertical 25km = horizontal 25km)
-
-**Option 1: Don't solve it pre-orbit**
-Just enter orbital cruise however we arrive. Then navigate in orbital cruise
-to position above settlement. This is Strategy C above -- simplest to implement,
-slightly slower in practice.
-
-**Option 2: Compass offset**
-When approaching in SC, the compass points at the settlement. The planet's
-center is "behind" the settlement from our perspective. If we aim slightly
-above the compass dot (toward planet edge), we arrive at the orbital boundary
-above the settlement. The offset angle depends on distance and planet size.
-
-At long range: compass dot = settlement direction = planet direction (they
-overlap). As we get closer, they diverge. The planet fills more of the view.
-The settlement dot stays on the planet face but the "above settlement" point
-moves toward the planet's limb.
-
-This is hard to compute from screen data alone. Status.json approach is better.
-
-**Recommendation: Strategy C (orbit then dive) for v1.**
-Optimize pre-orbital approach angle in v2 once we have orbital cruise working.
+5. **ApproachSettlement timing** -- does it fire in OC or only in normal space?
+   If OC: can use as lat/lon source. If only normal space: too late for nav.

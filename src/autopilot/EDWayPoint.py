@@ -625,6 +625,28 @@ class EDWayPoint:
                 self.ap.do_route_jump(scr_reg)
                 continue
 
+            # Same system -- planetary settlement or station
+            if next_waypoint.get('IsPlanetary', False) and self.ap.PLANETARY_ENABLED:
+                wp_lat = next_waypoint.get('Latitude')
+                wp_lon = next_waypoint.get('Longitude')
+                if wp_lat is None or wp_lon is None:
+                    self.ap.ap_ckb('log+vce', f"Waypoint {dest_key} IsPlanetary but missing Latitude/Longitude. Aborting.")
+                    _abort = True
+                    break
+                ok = self.ap.planetary_assist(scr_reg, float(wp_lat), float(wp_lon))
+                if ok:
+                    self._sc_fail_count = 0
+                else:
+                    sc_fail_count = getattr(self, '_sc_fail_count', 0) + 1
+                    self._sc_fail_count = sc_fail_count
+                    logger.warning(f"planetary_assist failed ({sc_fail_count}/3)")
+                    if sc_fail_count >= 3:
+                        self.ap.ap_ckb('log+vce', "Planetary assist failed 3 times, aborting waypoint route")
+                        _abort = True
+                        break
+                    sleep(5)
+                continue
+
             # Same system -- SC to station (blocks until docked or failed)
             sc_target = next_wp_station
             if sc_target == "":

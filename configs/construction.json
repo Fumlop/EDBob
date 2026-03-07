@@ -1,0 +1,1017 @@
+{
+    "3951194370": {
+        "SystemName": "Hyades Sector ON-R b5-4",
+        "StationName": "Orbital Construction Site: Xenonite Bastion",
+        "MarketID": 3951194370,
+        "Include": true,
+        "ConstructionProgress": 1.0,
+        "ConstructionComplete": true,
+        "ConstructionFailed": false,
+        "ResourcesRequired": [
+            {
+                "Name": "$ceramiccomposites_name;",
+                "Name_Localised": "Ceramic Composites",
+                "RequiredAmount": 497,
+                "ProvidedAmount": 497,
+                "Payment": 724
+            },
+            {
+                "Name": "$cmmcomposite_name;",
+                "Name_Localised": "CMM Composite",
+                "RequiredAmount": 3912,
+                "ProvidedAmount": 3912,
+                "Payment": 6788
+            },
+            {
+                "Name": "$computercomponents_name;",
+                "Name_Localised": "Computer Components",
+                "RequiredAmount": 50,
+                "ProvidedAmount": 50,
+                "Payment": 1112
+            },
+            {
+                "Name": "$copper_name;",
+                "Name_Localised": "Copper",
+                "RequiredAmount": 218,
+                "ProvidedAmount": 218,
+                "Payment": 1050
+            },
+            {
+                "Name": "$foodcartridges_name;",
+                "Name_Localised": "Food Cartridges",
+                "RequiredAmount": 94,
+                "ProvidedAmount": 94,
+                "Payment": 673
+            },
+            {
+                "Name": "$fruitandvegetables_name;",
+                "Name_Localised": "Fruit and Vegetables",
+                "RequiredAmount": 50,
+                "ProvidedAmount": 50,
+                "Payment": 865
+            },
+            {
+                "Name": "$insulatingmembrane_name;",
+                "Name_Localised": "Insulating Membrane",
+                "RequiredAmount": 311,
+                "ProvidedAmount": 311,
+                "Payment": 11788
+            },
+            {
+                "Name": "$liquidoxygen_name;",
+                "Name_Localised": "Liquid oxygen",
+                "RequiredAmount": 1553,
+                "ProvidedAmount": 1553,
+                "Payment": 2260
+            },
+            {
+                "Name": "$medicaldiagnosticequipment_name;",
+                "Name_Localised": "Medical Diagnostic Equipment",
+                "RequiredAmount": 13,
+                "ProvidedAmount": 13,
+                "Payment": 3609
+            },
+            {
+                "Name": "$nonlethalweapons_name;",
+                "Name_Localised": "Non-Lethal Weapons",
+                "RequiredAmount": 13,
+                "ProvidedAmount": 13,
+                "Payment": 2503
+            },
+            {
+                "Name": "$polymers_name;",
+                "Name_Localised": "Polymers",
+                "RequiredAmount": 497,
+                "ProvidedAmount": 497,
+                "Payment": 682
+            },
+            {
+                "Name": "$powergenerators_name;",
+                "Name_Localised": "Power Generators",
+                "RequiredAmount": 19,
+                "ProvidedAmount": 19,
+                "Payment": 3072
+            },
+            {
+                "Name": "$semiconductors_name;",
+                "Name_Localised": "Semiconductors",
+                "RequiredAmount": 56,
+                "ProvidedAmount": 56,
+                "Payment": 1526
+            },
+            {
+                "Name": "$steel_name;",
+                "Name_Localised": "Steel",
+                "RequiredAmount": 5588,
+                "ProvidedAmount": 5588,
+                "Payment": 5057
+            },
+            {
+                "Name": "$superconductors_name;",
+                "Name_Localised": "Superconductors",
+                "RequiredAmount": 100,
+                "ProvidedAmount": 100,
+                "Payment": 7657
+            },
+            {
+                "Name": "$titanium_name;",
+                "Name_Localised": "Titanium",
+                "RequiredAmount": 4843,
+                "ProvidedAmount": 4843,
+                "Payment": 5360
+            },
+            {
+                "Name": "$water_name;",
+                "Name_Localised": "Water",
+                "RequiredAmount": 621,
+                "ProvidedAmount": 621,
+                "Payment": 662
+            },
+            {
+                "Name": "$waterpurifiers_name;",
+                "Name_Localised": "Water Purifiers",
+                "RequiredAmount": 38,
+                "ProvidedAmount": 38,
+                "Payment": 849
+            }
+        ]
+    },
+    "3956601858": {
+        "SystemName": "Hyades Sector ON-R b5-4",
+        "StationName": "Orbital Construction Site: Taumoeba Gardens",
+        "MarketID": 3956601858,
+        "Include": true,
+        "ConstructionProgress": 1.0,
+        "ConstructionComplete": true,
+        "ConstructionFailed": false,
+        "ResourcesRequired": [
+            {
+                "Name": "$aluminium_name;",
+                "Name_Localised": "Aluminium",
+                "RequiredAmount": 1269,
+                "ProvidedAmount": 1269,
+                "Payment": 3239
+            },
+            {
+                "Name": "$animalmeat_name;",
+                "Name_Localised": "Animal Meat",
+                "RequiredAmount": 78,
+                "ProvidedAmount": 78,
+                "Payment": 1971
+            },
+            {
+                "Name": "$beer_name;",
+                "Name_Localised": "Beer",
+                "RequiredAmount": 389,
+                "ProvidedAmount": 389,
+                "Payment": 705
+            },
+            {
+                "Name": "$ceramiccomposites_name;",
+                "Name_Localised": "Ceramic Composites",
+                "RequiredAmount": 130,
+                "ProvidedAmount": 130,
+                "Payment": 724
+            },
+            {
+                "Name": "$coffee_name;",
+                "Name_Localised": "Coffee",
+                "RequiredAmount": 130,
+                "ProvidedAmount": 130,
+                "Payment": 1971
+            },
+            {
+                "Name": "$computercomponents_name;",
+                "Name_Localised": "Computer Components",
+                "RequiredAmount": 13,
+                "ProvidedAmount": 13,
+                "Payment": 1112
+            },
+            {
+                "Name": "$copper_name;",
+                "Name_Localised": "Copper",
+                "RequiredAmount": 78,
+                "ProvidedAmount": 78,
+                "Payment": 1050
+            },
+            {
+                "Name": "$fish_name;",
+                "Name_Localised": "Fish",
+                "RequiredAmount": 39,
+                "ProvidedAmount": 39,
+                "Payment": 969
+            },
+            {
+                "Name": "$fruitandvegetables_name;",
+                "Name_Localised": "Fruit and Vegetables",
+                "RequiredAmount": 65,
+                "ProvidedAmount": 65,
+                "Payment": 865
+            },
+            {
+                "Name": "$insulatingmembrane_name;",
+                "Name_Localised": "Insulating Membrane",
+                "RequiredAmount": 259,
+                "ProvidedAmount": 259,
+                "Payment": 11788
+            },
+            {
+                "Name": "$liquidoxygen_name;",
+                "Name_Localised": "Liquid oxygen",
+                "RequiredAmount": 1813,
+                "ProvidedAmount": 1813,
+                "Payment": 2260
+            },
+            {
+                "Name": "$liquor_name;",
+                "Name_Localised": "Liquor",
+                "RequiredAmount": 195,
+                "ProvidedAmount": 195,
+                "Payment": 1224
+            },
+            {
+                "Name": "$polymers_name;",
+                "Name_Localised": "Polymers",
+                "RequiredAmount": 324,
+                "ProvidedAmount": 324,
+                "Payment": 682
+            },
+            {
+                "Name": "$powergenerators_name;",
+                "Name_Localised": "Power Generators",
+                "RequiredAmount": 13,
+                "ProvidedAmount": 13,
+                "Payment": 3072
+            },
+            {
+                "Name": "$steel_name;",
+                "Name_Localised": "Steel",
+                "RequiredAmount": 2589,
+                "ProvidedAmount": 2589,
+                "Payment": 5057
+            },
+            {
+                "Name": "$tea_name;",
+                "Name_Localised": "Tea",
+                "RequiredAmount": 259,
+                "ProvidedAmount": 259,
+                "Payment": 2164
+            },
+            {
+                "Name": "$titanium_name;",
+                "Name_Localised": "Titanium",
+                "RequiredAmount": 1813,
+                "ProvidedAmount": 1813,
+                "Payment": 5360
+            },
+            {
+                "Name": "$water_name;",
+                "Name_Localised": "Water",
+                "RequiredAmount": 324,
+                "ProvidedAmount": 324,
+                "Payment": 662
+            },
+            {
+                "Name": "$waterpurifiers_name;",
+                "Name_Localised": "Water Purifiers",
+                "RequiredAmount": 39,
+                "ProvidedAmount": 39,
+                "Payment": 849
+            },
+            {
+                "Name": "$wine_name;",
+                "Name_Localised": "Wine",
+                "RequiredAmount": 259,
+                "ProvidedAmount": 259,
+                "Payment": 792
+            }
+        ]
+    },
+    "3956754178": {
+        "SystemName": "Hyades Sector ON-R b5-4",
+        "StationName": "Orbital Construction Site: Fort Leclerc",
+        "MarketID": 3956754178,
+        "Include": true,
+        "ConstructionProgress": 1.0,
+        "ConstructionComplete": true,
+        "ConstructionFailed": false,
+        "ResourcesRequired": [
+            {
+                "Name": "$aluminium_name;",
+                "Name_Localised": "Aluminium",
+                "RequiredAmount": 1317,
+                "ProvidedAmount": 1317,
+                "Payment": 3239
+            },
+            {
+                "Name": "$basicmedicines_name;",
+                "Name_Localised": "Basic Medicines",
+                "RequiredAmount": 24,
+                "ProvidedAmount": 24,
+                "Payment": 865
+            },
+            {
+                "Name": "$battleweapons_name;",
+                "Name_Localised": "Battle Weapons",
+                "RequiredAmount": 30,
+                "ProvidedAmount": 30,
+                "Payment": 7850
+            },
+            {
+                "Name": "$ceramiccomposites_name;",
+                "Name_Localised": "Ceramic Composites",
+                "RequiredAmount": 238,
+                "ProvidedAmount": 238,
+                "Payment": 724
+            },
+            {
+                "Name": "$cmmcomposite_name;",
+                "Name_Localised": "CMM Composite",
+                "RequiredAmount": 356,
+                "ProvidedAmount": 356,
+                "Payment": 6788
+            },
+            {
+                "Name": "$combatstabilisers_name;",
+                "Name_Localised": "Combat Stabilisers",
+                "RequiredAmount": 48,
+                "ProvidedAmount": 48,
+                "Payment": 3731
+            },
+            {
+                "Name": "$computercomponents_name;",
+                "Name_Localised": "Computer Components",
+                "RequiredAmount": 42,
+                "ProvidedAmount": 42,
+                "Payment": 1112
+            },
+            {
+                "Name": "$copper_name;",
+                "Name_Localised": "Copper",
+                "RequiredAmount": 131,
+                "ProvidedAmount": 131,
+                "Payment": 1050
+            },
+            {
+                "Name": "$foodcartridges_name;",
+                "Name_Localised": "Food Cartridges",
+                "RequiredAmount": 107,
+                "ProvidedAmount": 107,
+                "Payment": 673
+            },
+            {
+                "Name": "$fruitandvegetables_name;",
+                "Name_Localised": "Fruit and Vegetables",
+                "RequiredAmount": 48,
+                "ProvidedAmount": 48,
+                "Payment": 865
+            },
+            {
+                "Name": "$insulatingmembrane_name;",
+                "Name_Localised": "Insulating Membrane",
+                "RequiredAmount": 178,
+                "ProvidedAmount": 178,
+                "Payment": 11788
+            },
+            {
+                "Name": "$liquidoxygen_name;",
+                "Name_Localised": "Liquid oxygen",
+                "RequiredAmount": 1424,
+                "ProvidedAmount": 1424,
+                "Payment": 2260
+            },
+            {
+                "Name": "$microcontrollers_name;",
+                "Name_Localised": "Micro Controllers",
+                "RequiredAmount": 18,
+                "ProvidedAmount": 18,
+                "Payment": 6395
+            },
+            {
+                "Name": "$militarygradefabrics_name;",
+                "Name_Localised": "Military Grade Fabrics",
+                "RequiredAmount": 36,
+                "ProvidedAmount": 36,
+                "Payment": 1412
+            },
+            {
+                "Name": "$polymers_name;",
+                "Name_Localised": "Polymers",
+                "RequiredAmount": 416,
+                "ProvidedAmount": 416,
+                "Payment": 682
+            },
+            {
+                "Name": "$powergenerators_name;",
+                "Name_Localised": "Power Generators",
+                "RequiredAmount": 18,
+                "ProvidedAmount": 18,
+                "Payment": 3072
+            },
+            {
+                "Name": "$reactivearmour_name;",
+                "Name_Localised": "Reactive Armour",
+                "RequiredAmount": 30,
+                "ProvidedAmount": 30,
+                "Payment": 2769
+            },
+            {
+                "Name": "$steel_name;",
+                "Name_Localised": "Steel",
+                "RequiredAmount": 2966,
+                "ProvidedAmount": 2966,
+                "Payment": 5057
+            },
+            {
+                "Name": "$titanium_name;",
+                "Name_Localised": "Titanium",
+                "RequiredAmount": 2373,
+                "ProvidedAmount": 2373,
+                "Payment": 5360
+            },
+            {
+                "Name": "$water_name;",
+                "Name_Localised": "Water",
+                "RequiredAmount": 238,
+                "ProvidedAmount": 238,
+                "Payment": 662
+            },
+            {
+                "Name": "$waterpurifiers_name;",
+                "Name_Localised": "Water Purifiers",
+                "RequiredAmount": 42,
+                "ProvidedAmount": 42,
+                "Payment": 849
+            }
+        ]
+    },
+    "3962606338": {
+        "SystemName": "Hyades Sector GW-V c2-4",
+        "StationName": "Orbital Construction Site: Beadohild Point",
+        "MarketID": 3962606338,
+        "Include": true,
+        "ConstructionProgress": 0.862463,
+        "ConstructionComplete": false,
+        "ConstructionFailed": false,
+        "ResourcesRequired": [
+            {
+                "Name": "$aluminium_name;",
+                "Name_Localised": "Aluminium",
+                "RequiredAmount": 40220,
+                "ProvidedAmount": 40220,
+                "Payment": 3239
+            },
+            {
+                "Name": "$ceramiccomposites_name;",
+                "Name_Localised": "Ceramic Composites",
+                "RequiredAmount": 4828,
+                "ProvidedAmount": 4828,
+                "Payment": 724
+            },
+            {
+                "Name": "$cmmcomposite_name;",
+                "Name_Localised": "CMM Composite",
+                "RequiredAmount": 45044,
+                "ProvidedAmount": 22505,
+                "Payment": 6788
+            },
+            {
+                "Name": "$computercomponents_name;",
+                "Name_Localised": "Computer Components",
+                "RequiredAmount": 290,
+                "ProvidedAmount": 290,
+                "Payment": 1112
+            },
+            {
+                "Name": "$copper_name;",
+                "Name_Localised": "Copper",
+                "RequiredAmount": 2576,
+                "ProvidedAmount": 2576,
+                "Payment": 1050
+            },
+            {
+                "Name": "$foodcartridges_name;",
+                "Name_Localised": "Food Cartridges",
+                "RequiredAmount": 484,
+                "ProvidedAmount": 484,
+                "Payment": 673
+            },
+            {
+                "Name": "$fruitandvegetables_name;",
+                "Name_Localised": "Fruit and Vegetables",
+                "RequiredAmount": 290,
+                "ProvidedAmount": 290,
+                "Payment": 865
+            },
+            {
+                "Name": "$insulatingmembrane_name;",
+                "Name_Localised": "Insulating Membrane",
+                "RequiredAmount": 1288,
+                "ProvidedAmount": 1288,
+                "Payment": 11788
+            },
+            {
+                "Name": "$liquidoxygen_name;",
+                "Name_Localised": "Liquid oxygen",
+                "RequiredAmount": 15124,
+                "ProvidedAmount": 15124,
+                "Payment": 2260
+            },
+            {
+                "Name": "$medicaldiagnosticequipment_name;",
+                "Name_Localised": "Medical Diagnostic Equipment",
+                "RequiredAmount": 50,
+                "ProvidedAmount": 50,
+                "Payment": 3609
+            },
+            {
+                "Name": "$nonlethalweapons_name;",
+                "Name_Localised": "Non-Lethal Weapons",
+                "RequiredAmount": 50,
+                "ProvidedAmount": 50,
+                "Payment": 2503
+            },
+            {
+                "Name": "$polymers_name;",
+                "Name_Localised": "Polymers",
+                "RequiredAmount": 2092,
+                "ProvidedAmount": 2092,
+                "Payment": 682
+            },
+            {
+                "Name": "$powergenerators_name;",
+                "Name_Localised": "Power Generators",
+                "RequiredAmount": 130,
+                "ProvidedAmount": 130,
+                "Payment": 3072
+            },
+            {
+                "Name": "$semiconductors_name;",
+                "Name_Localised": "Semiconductors",
+                "RequiredAmount": 322,
+                "ProvidedAmount": 322,
+                "Payment": 1526
+            },
+            {
+                "Name": "$steel_name;",
+                "Name_Localised": "Steel",
+                "RequiredAmount": 56304,
+                "ProvidedAmount": 50081,
+                "Payment": 5057
+            },
+            {
+                "Name": "$superconductors_name;",
+                "Name_Localised": "Superconductors",
+                "RequiredAmount": 564,
+                "ProvidedAmount": 564,
+                "Payment": 7657
+            },
+            {
+                "Name": "$titanium_name;",
+                "Name_Localised": "Titanium",
+                "RequiredAmount": 32820,
+                "ProvidedAmount": 32820,
+                "Payment": 5360
+            },
+            {
+                "Name": "$water_name;",
+                "Name_Localised": "Water",
+                "RequiredAmount": 6436,
+                "ProvidedAmount": 6436,
+                "Payment": 662
+            },
+            {
+                "Name": "$waterpurifiers_name;",
+                "Name_Localised": "Water Purifiers",
+                "RequiredAmount": 210,
+                "ProvidedAmount": 210,
+                "Payment": 849
+            }
+        ]
+    },
+    "3955898114": {
+        "SystemName": "Hyades Sector ON-R b5-4",
+        "StationName": "Orbital Construction Site: Eridani Frontier",
+        "MarketID": 3955898114,
+        "Include": true,
+        "ConstructionProgress": 1.0,
+        "ConstructionComplete": true,
+        "ConstructionFailed": false,
+        "ResourcesRequired": [
+            {
+                "Name": "$ceramiccomposites_name;",
+                "Name_Localised": "Ceramic Composites",
+                "RequiredAmount": 497,
+                "ProvidedAmount": 497,
+                "Payment": 724
+            },
+            {
+                "Name": "$cmmcomposite_name;",
+                "Name_Localised": "CMM Composite",
+                "RequiredAmount": 3912,
+                "ProvidedAmount": 3912,
+                "Payment": 6788
+            },
+            {
+                "Name": "$computercomponents_name;",
+                "Name_Localised": "Computer Components",
+                "RequiredAmount": 50,
+                "ProvidedAmount": 50,
+                "Payment": 1112
+            },
+            {
+                "Name": "$copper_name;",
+                "Name_Localised": "Copper",
+                "RequiredAmount": 218,
+                "ProvidedAmount": 218,
+                "Payment": 1050
+            },
+            {
+                "Name": "$foodcartridges_name;",
+                "Name_Localised": "Food Cartridges",
+                "RequiredAmount": 94,
+                "ProvidedAmount": 94,
+                "Payment": 673
+            },
+            {
+                "Name": "$fruitandvegetables_name;",
+                "Name_Localised": "Fruit and Vegetables",
+                "RequiredAmount": 50,
+                "ProvidedAmount": 50,
+                "Payment": 865
+            },
+            {
+                "Name": "$insulatingmembrane_name;",
+                "Name_Localised": "Insulating Membrane",
+                "RequiredAmount": 311,
+                "ProvidedAmount": 311,
+                "Payment": 11788
+            },
+            {
+                "Name": "$liquidoxygen_name;",
+                "Name_Localised": "Liquid oxygen",
+                "RequiredAmount": 1553,
+                "ProvidedAmount": 1553,
+                "Payment": 2260
+            },
+            {
+                "Name": "$medicaldiagnosticequipment_name;",
+                "Name_Localised": "Medical Diagnostic Equipment",
+                "RequiredAmount": 13,
+                "ProvidedAmount": 13,
+                "Payment": 3609
+            },
+            {
+                "Name": "$nonlethalweapons_name;",
+                "Name_Localised": "Non-Lethal Weapons",
+                "RequiredAmount": 13,
+                "ProvidedAmount": 13,
+                "Payment": 2503
+            },
+            {
+                "Name": "$polymers_name;",
+                "Name_Localised": "Polymers",
+                "RequiredAmount": 497,
+                "ProvidedAmount": 497,
+                "Payment": 682
+            },
+            {
+                "Name": "$powergenerators_name;",
+                "Name_Localised": "Power Generators",
+                "RequiredAmount": 19,
+                "ProvidedAmount": 19,
+                "Payment": 3072
+            },
+            {
+                "Name": "$semiconductors_name;",
+                "Name_Localised": "Semiconductors",
+                "RequiredAmount": 56,
+                "ProvidedAmount": 56,
+                "Payment": 1526
+            },
+            {
+                "Name": "$steel_name;",
+                "Name_Localised": "Steel",
+                "RequiredAmount": 5588,
+                "ProvidedAmount": 5588,
+                "Payment": 5057
+            },
+            {
+                "Name": "$superconductors_name;",
+                "Name_Localised": "Superconductors",
+                "RequiredAmount": 100,
+                "ProvidedAmount": 100,
+                "Payment": 7657
+            },
+            {
+                "Name": "$titanium_name;",
+                "Name_Localised": "Titanium",
+                "RequiredAmount": 4843,
+                "ProvidedAmount": 4843,
+                "Payment": 5360
+            },
+            {
+                "Name": "$water_name;",
+                "Name_Localised": "Water",
+                "RequiredAmount": 621,
+                "ProvidedAmount": 621,
+                "Payment": 662
+            },
+            {
+                "Name": "$waterpurifiers_name;",
+                "Name_Localised": "Water Purifiers",
+                "RequiredAmount": 38,
+                "ProvidedAmount": 38,
+                "Payment": 849
+            }
+        ]
+    },
+    "3961428482": {
+        "SystemName": "Hyades Sector ON-R b5-4",
+        "StationName": "Orbital Construction Site: Grace Memorial",
+        "MarketID": 3961428482,
+        "Include": true,
+        "ConstructionProgress": 0.995635,
+        "ConstructionComplete": false,
+        "ConstructionFailed": false,
+        "ResourcesRequired": [
+            {
+                "Name": "$aluminium_name;",
+                "Name_Localised": "Aluminium",
+                "RequiredAmount": 1357,
+                "ProvidedAmount": 1357,
+                "Payment": 3239
+            },
+            {
+                "Name": "$basicmedicines_name;",
+                "Name_Localised": "Basic Medicines",
+                "RequiredAmount": 50,
+                "ProvidedAmount": 50,
+                "Payment": 865
+            },
+            {
+                "Name": "$ceramiccomposites_name;",
+                "Name_Localised": "Ceramic Composites",
+                "RequiredAmount": 155,
+                "ProvidedAmount": 155,
+                "Payment": 724
+            },
+            {
+                "Name": "$combatstabilisers_name;",
+                "Name_Localised": "Combat Stabilisers",
+                "RequiredAmount": 19,
+                "ProvidedAmount": 0,
+                "Payment": 3731
+            },
+            {
+                "Name": "$computercomponents_name;",
+                "Name_Localised": "Computer Components",
+                "RequiredAmount": 31,
+                "ProvidedAmount": 31,
+                "Payment": 1112
+            },
+            {
+                "Name": "$copper_name;",
+                "Name_Localised": "Copper",
+                "RequiredAmount": 112,
+                "ProvidedAmount": 112,
+                "Payment": 1050
+            },
+            {
+                "Name": "$foodcartridges_name;",
+                "Name_Localised": "Food Cartridges",
+                "RequiredAmount": 75,
+                "ProvidedAmount": 75,
+                "Payment": 673
+            },
+            {
+                "Name": "$fruitandvegetables_name;",
+                "Name_Localised": "Fruit and Vegetables",
+                "RequiredAmount": 50,
+                "ProvidedAmount": 50,
+                "Payment": 865
+            },
+            {
+                "Name": "$hazardousenvironmentsuits_name;",
+                "Name_Localised": "H.E. Suits",
+                "RequiredAmount": 25,
+                "ProvidedAmount": 0,
+                "Payment": 818
+            },
+            {
+                "Name": "$insulatingmembrane_name;",
+                "Name_Localised": "Insulating Membrane",
+                "RequiredAmount": 309,
+                "ProvidedAmount": 309,
+                "Payment": 11788
+            },
+            {
+                "Name": "$liquidoxygen_name;",
+                "Name_Localised": "Liquid oxygen",
+                "RequiredAmount": 1727,
+                "ProvidedAmount": 1727,
+                "Payment": 2260
+            },
+            {
+                "Name": "$medicaldiagnosticequipment_name;",
+                "Name_Localised": "Medical Diagnostic Equipment",
+                "RequiredAmount": 99,
+                "ProvidedAmount": 99,
+                "Payment": 3609
+            },
+            {
+                "Name": "$polymers_name;",
+                "Name_Localised": "Polymers",
+                "RequiredAmount": 371,
+                "ProvidedAmount": 371,
+                "Payment": 682
+            },
+            {
+                "Name": "$powergenerators_name;",
+                "Name_Localised": "Power Generators",
+                "RequiredAmount": 19,
+                "ProvidedAmount": 19,
+                "Payment": 3072
+            },
+            {
+                "Name": "$steel_name;",
+                "Name_Localised": "Steel",
+                "RequiredAmount": 3084,
+                "ProvidedAmount": 3084,
+                "Payment": 5057
+            },
+            {
+                "Name": "$titanium_name;",
+                "Name_Localised": "Titanium",
+                "RequiredAmount": 2282,
+                "ProvidedAmount": 2282,
+                "Payment": 5360
+            },
+            {
+                "Name": "$water_name;",
+                "Name_Localised": "Water",
+                "RequiredAmount": 278,
+                "ProvidedAmount": 278,
+                "Payment": 662
+            },
+            {
+                "Name": "$waterpurifiers_name;",
+                "Name_Localised": "Water Purifiers",
+                "RequiredAmount": 38,
+                "ProvidedAmount": 38,
+                "Payment": 849
+            }
+        ]
+    },
+    "3952555266": {
+        "SystemName": "Hyades Sector ON-R b5-4",
+        "StationName": "Orbital Construction Site: Hail Mary Dock",
+        "MarketID": 3952555266,
+        "Include": true,
+        "ConstructionProgress": 0.209467,
+        "ConstructionComplete": false,
+        "ConstructionFailed": false,
+        "ResourcesRequired": [
+            {
+                "Name": "$aluminium_name;",
+                "Name_Localised": "Aluminium",
+                "RequiredAmount": 45248,
+                "ProvidedAmount": 0,
+                "Payment": 3239
+            },
+            {
+                "Name": "$autofabricators_name;",
+                "Name_Localised": "Auto-Fabricators",
+                "RequiredAmount": 314,
+                "ProvidedAmount": 0,
+                "Payment": 4510
+            },
+            {
+                "Name": "$ceramiccomposites_name;",
+                "Name_Localised": "Ceramic Composites",
+                "RequiredAmount": 5432,
+                "ProvidedAmount": 0,
+                "Payment": 724
+            },
+            {
+                "Name": "$cmmcomposite_name;",
+                "Name_Localised": "CMM Composite",
+                "RequiredAmount": 50675,
+                "ProvidedAmount": 0,
+                "Payment": 6788
+            },
+            {
+                "Name": "$computercomponents_name;",
+                "Name_Localised": "Computer Components",
+                "RequiredAmount": 363,
+                "ProvidedAmount": 363,
+                "Payment": 1112
+            },
+            {
+                "Name": "$copper_name;",
+                "Name_Localised": "Copper",
+                "RequiredAmount": 2898,
+                "ProvidedAmount": 2898,
+                "Payment": 1050
+            },
+            {
+                "Name": "$foodcartridges_name;",
+                "Name_Localised": "Food Cartridges",
+                "RequiredAmount": 605,
+                "ProvidedAmount": 605,
+                "Payment": 673
+            },
+            {
+                "Name": "$fruitandvegetables_name;",
+                "Name_Localised": "Fruit and Vegetables",
+                "RequiredAmount": 363,
+                "ProvidedAmount": 0,
+                "Payment": 865
+            },
+            {
+                "Name": "$insulatingmembrane_name;",
+                "Name_Localised": "Insulating Membrane",
+                "RequiredAmount": 1610,
+                "ProvidedAmount": 1610,
+                "Payment": 11788
+            },
+            {
+                "Name": "$liquidoxygen_name;",
+                "Name_Localised": "Liquid oxygen",
+                "RequiredAmount": 17015,
+                "ProvidedAmount": 17015,
+                "Payment": 2260
+            },
+            {
+                "Name": "$medicaldiagnosticequipment_name;",
+                "Name_Localised": "Medical Diagnostic Equipment",
+                "RequiredAmount": 63,
+                "ProvidedAmount": 0,
+                "Payment": 3609
+            },
+            {
+                "Name": "$nonlethalweapons_name;",
+                "Name_Localised": "Non-Lethal Weapons",
+                "RequiredAmount": 63,
+                "ProvidedAmount": 63,
+                "Payment": 2503
+            },
+            {
+                "Name": "$polymers_name;",
+                "Name_Localised": "Polymers",
+                "RequiredAmount": 2615,
+                "ProvidedAmount": 2615,
+                "Payment": 682
+            },
+            {
+                "Name": "$powergenerators_name;",
+                "Name_Localised": "Power Generators",
+                "RequiredAmount": 163,
+                "ProvidedAmount": 0,
+                "Payment": 3072
+            },
+            {
+                "Name": "$semiconductors_name;",
+                "Name_Localised": "Semiconductors",
+                "RequiredAmount": 403,
+                "ProvidedAmount": 403,
+                "Payment": 1526
+            },
+            {
+                "Name": "$steel_name;",
+                "Name_Localised": "Steel",
+                "RequiredAmount": 63342,
+                "ProvidedAmount": 0,
+                "Payment": 5057
+            },
+            {
+                "Name": "$superconductors_name;",
+                "Name_Localised": "Superconductors",
+                "RequiredAmount": 705,
+                "ProvidedAmount": 705,
+                "Payment": 7657
+            },
+            {
+                "Name": "$titanium_name;",
+                "Name_Localised": "Titanium",
+                "RequiredAmount": 36923,
+                "ProvidedAmount": 22176,
+                "Payment": 5360
+            },
+            {
+                "Name": "$water_name;",
+                "Name_Localised": "Water",
+                "RequiredAmount": 7241,
+                "ProvidedAmount": 782,
+                "Payment": 662
+            },
+            {
+                "Name": "$waterpurifiers_name;",
+                "Name_Localised": "Water Purifiers",
+                "RequiredAmount": 263,
+                "ProvidedAmount": 263,
+                "Payment": 849
+            }
+        ]
+    }
+}

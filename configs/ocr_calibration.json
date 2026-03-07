@@ -1,0 +1,172 @@
+{
+    "EDCodex.full_panel": {
+        "rect": [
+            0.0589,
+            0.0983,
+            0.9406,
+            0.8617
+        ],
+        "text": "1. Open the Codex from right hand cockpit panel.\n2. Draw a rectangle from the top left corner of the codex 'book' to the end \nof the line above the exit button at the bottom right.",
+        "readonly": false
+    },
+    "EDInternalStatusPanel.panel_bounds1": {
+        "rect": [
+            0.1197,
+            0.2733,
+            0.6937,
+            0.7125
+        ],
+        "text": "1. Open Internal Status Panel (right hand panel).\n2. Draw a rectangle from the top left corner of the nav panel to the bottom right corner.",
+        "readonly": false
+    },
+    "EDInternalStatusPanel.panel_bounds2": {
+        "rect": [
+            0.1541,
+            0.2408,
+            0.6781,
+            0.8
+        ],
+        "text": "1. Open Internal Status Panel (right hand panel).\n2. Draw a rectangle from the bottom left corner of the nav panel to the top right corner.",
+        "readonly": false
+    },
+    "EDNavigationPanel.panel_bounds1": {
+        "rect": [
+            0.1197,
+            0.2733,
+            0.6937,
+            0.7125
+        ],
+        "text": "1. Open Navigation Panel.\n2. Draw a rectangle from the top left corner of the nav panel to the bottom right corner.",
+        "readonly": false
+    },
+    "EDNavigationPanel.panel_bounds2": {
+        "rect": [
+            0.1541,
+            0.2408,
+            0.6781,
+            0.8
+        ],
+        "text": "1. Open Navigation Panel.\n2. Draw a rectangle from the bottom left corner of the nav panel to the top right corner.",
+        "readonly": false
+    },
+    "EDGalaxyMap.full_panel": {
+        "rect": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+        ],
+        "text": "This is calculated automatically from the Codex screen values. Do not change.",
+        "readonly": true
+    },
+    "EDGalaxyMap.full_panel.subregion.cartographics": {
+        "rect": [
+            0.0,
+            0.0,
+            0.15,
+            0.075
+        ],
+        "text": "Contains the CARTOGRAPHICS text.",
+        "readonly": false
+    },
+    "EDSystemMap.full_panel": {
+        "rect": [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+        ],
+        "text": "This is calculated automatically from the Codex screen values. Do not change.",
+        "readonly": true
+    },
+    "EDSystemMap.full_panel.subregion.cartographics": {
+        "rect": [
+            0.0,
+            0.0,
+            0.15,
+            0.075
+        ],
+        "text": "Contains the CARTOGRAPHICS text.",
+        "readonly": false
+    },
+    "EDStationServicesInShip.station_services": {
+        "rect": [
+            0.0809,
+            0.1136,
+            0.9186,
+            0.8464
+        ],
+        "text": "1. Open Station Service.\n2. Draw a rectangle from the top left of the left panel box to the bottom right of the right panel box.",
+        "readonly": false
+    },
+    "EDStationServicesInShip.commodities_market": {
+        "rect": [
+            0.0479,
+            0.0983,
+            0.9516,
+            0.8617
+        ],
+        "text": "This is calculated automatically from the Codex screen values. Do not change.",
+        "readonly": true
+    },
+    "EDStationServicesInShip.commodities_market.subregion.connected_to": {
+        "rect": [
+            0.0,
+            0.0,
+            0.25,
+            0.1
+        ],
+        "text": "The connected to text.",
+        "readonly": false
+    },
+    "EDStationServicesInShip.commodities_market.subregion.title": {
+        "rect": [
+            0.0,
+            0.0,
+            0.25,
+            0.1
+        ],
+        "text": "The title (station name).",
+        "readonly": false
+    },
+    "EDStationServicesInShip.commodities_market.subregion.commodity_column": {
+        "rect": [
+            0.1575,
+            0.205,
+            0.4075,
+            1.0
+        ],
+        "text": "The commodity column.",
+        "readonly": false
+    },
+    "EDStationServicesInShip.commodities_market.subregion.buy_qty_box": {
+        "rect": [
+            0.275,
+            0.332,
+            0.49,
+            0.402
+        ],
+        "text": "The buy quantity box.",
+        "readonly": false
+    },
+    "EDStationServicesInShip.commodities_market.subregion.sell_qty_box": {
+        "rect": [
+            0.275,
+            0.322,
+            0.49,
+            0.39
+        ],
+        "text": "The sell quantity box.",
+        "readonly": false
+    },
+    "EDStationServicesInShip.commodities_market.subregion.commodity_name": {
+        "rect": [
+            0.1575,
+            0.252,
+            0.4075,
+            0.29
+        ],
+        "text": "The first commodity name cell.",
+        "readonly": false
+    }
+}

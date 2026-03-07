@@ -19,9 +19,12 @@ from simple_localization import LocalizationManager
 from src.core.EDAP_data import (
     FlagsDocked, FlagsLanded, FlagsLandingGearDown, FlagsSupercruise, FlagsFsdMassLocked,
     FlagsFsdCharging, FlagsFsdCooldown, FlagsFsdJump,
-    FlagsHasLatLong, FlagsBeingInterdicted,
+    FlagsHasLatLong, FlagsAverageAltitude, FlagsBeingInterdicted,
     FlagsAnalysisMode, Flags2FsdHyperdriveCharging,
     Flags2GlideMode, GuiFocusNoFocus, ship_size_map,
+)
+from src.ed.EDNavUtils import (
+    bearing_to, dist_3d, glideslope_angle, heading_diff,
 )
 from src.core.directinput import SCANCODE
 from src.core.EDlogger import logger, logging
@@ -237,7 +240,7 @@ class EDAutopilot:
             "NavAlignTries": 3,  #
             "RefuelThreshold": 65,  # if fuel level get below this level, it will attempt refuel
             "FuelThresholdAbortAP": 10, # level at which AP will terminate, because we are not scooping well
-            "WaitForAutoDockTimer": 240, # After docking granted, wait this amount of time for us to get docked with autodocking
+            "WaitForAutoDockTimer": 120, # After docking granted, wait this amount of time for us to get docked with autodocking
             "SunBrightThreshold": 125, # The low level for brightness detection, range 0-255, want to mask out darker items
             "FuelScoopTimeOut": 35, # number of second to wait for full tank, might mean we are not scooping well or got a small scooper
             "DockingRetries": 30,  # number of time to attempt docking
@@ -703,6 +706,8 @@ class EDAutopilot:
     DOCK_RANGE_TIMEOUT = 60     # seconds to fly toward station before giving up
     DOCK_DRIFT_TIME = 2         # seconds to drift (zero throttle) between retries
     DOCK_APPROACH_TIME = 2      # seconds to fly at 50% between retries
+    NFZ_STARPORT_THRESHOLD = 5  # NFZ within this many seconds of drop = Starport
+    NFZ_STARPORT_FLY_TIME = 20  # extra seconds at 50% to reach 7.5km dock range
 
     def dock(self):
         """ Docking sequence: fly into no-fire zone at 50%, request docking,
@@ -719,13 +724,10 @@ class EDAutopilot:
 
         self._debug_snap(self.scrReg, 'approach')
 
-        # Fly at 50% until no-fire zone or masslock
-        self.ap_ckb('log', 'Approaching station at 50%')
-        self.set_speed_50()
+        # Boost toward station, wait for no-fire zone or masslock
+        self.ap_ckb('log', 'Boosting toward station')
+        self.keys.send('UseBoostJuice')
         self._wait_for_dock_range()
-        self.set_speed_0()
-        sleep(1)
-
         self._request_docking_with_retry()
 
         # Wait for autodock to complete
@@ -737,25 +739,61 @@ class EDAutopilot:
                 return True
             sleep(2)
 
-        self.ap_ckb('log+vce', 'Auto dock timer timed out. Cancelling docking.')
-        logger.warning('Auto dock timer timed out. Cancelling docking via nav panel.')
-        self.request_docking()
+        self.ap_ckb('log+vce', 'Auto dock timer timed out, trying unstuck recovery.')
+        logger.warning('Auto dock timer timed out. Attempting unstuck recovery.')
+        if self.try_unstuck_cSite():
+            return True
+        return False
+
+    def try_unstuck_cSite(self):
+        """One-shot recovery for autodock stuck on construction site frame.
+        Cancel docking, reverse away, re-request, wait once more. Returns True if docked."""
+        self.ap_ckb('log', 'Unstuck: cancelling docking, reversing 10s')
+        logger.info('Unstuck: cancel docking, reverse, re-request')
+        self.request_docking()  # toggle off
+        self.keys.send('BackwardKey', hold=10)
+        self.set_speed_0()
+
+        self._request_docking_with_retry()
+
+        for i in range(self.config['WaitForAutoDockTimer']):
+            self.check_stop()
+            if self.jn.ship_state()['status'] == "in_station":
+                sleep(2)
+                MenuNav.refuel_repair_rearm(self.keys, self.status)
+                return True
+            sleep(2)
+
+        self.ap_ckb('log+vce', 'Unstuck recovery failed, giving up.')
+        logger.warning('Unstuck recovery: autodock still timed out, giving up.')
         return False
 
     def _wait_for_dock_range(self):
-        """Fly until no-fire zone entered (journal) or masslocked (status), or timeout."""
+        """Fly at 50% until in dock range, using NoFireZone journal event as primary trigger.
+
+        Starport: NFZ fires within NFZ_STARPORT_THRESHOLD seconds of drop (we dropped right
+        into it) -- need to fly NFZ_STARPORT_FLY_TIME more seconds to reach 7.5km dock range.
+        All other stations: NFZ fires when already close enough, stop immediately.
+        MassLock is the emergency fallback if NFZ never arrives.
+        """
         start = time.time()
         while (time.time() - start) < self.DOCK_RANGE_TIMEOUT:
             self.check_stop()
-            if self.jn.ship_state().get('no_fire_zone'):
-                logger.info('Approach: no-fire zone entered')
-                self.ap_ckb('log', 'No-fire zone')
-                return
             if self.status.get_flag(FlagsFsdMassLocked):
-                logger.info('Approach: masslocked')
+                logger.info('Approach: masslocked (fallback)')
                 self.ap_ckb('log', 'Masslocked')
                 return
-            sleep(1)
+            if self.jn.ship_state()['no_fire_zone']:
+                elapsed = time.time() - start
+                if elapsed < self.NFZ_STARPORT_THRESHOLD:
+                    self.ap_ckb('log', f'Starport NFZ at {elapsed:.1f}s, waiting 10s to reach dock range')
+                    logger.info(f'Approach: Starport NFZ early ({elapsed:.1f}s), 10s settle')
+                    sleep(10)
+                else:
+                    self.ap_ckb('log', f'NFZ entered at {elapsed:.1f}s, in dock range')
+                    logger.info(f'Approach: NFZ at {elapsed:.1f}s, stopping')
+                return
+            sleep(0.5)
         logger.warning('Approach: dock range timeout')
         self.ap_ckb('log', 'Dock range timeout')
 
@@ -775,11 +813,10 @@ class EDAutopilot:
                 reason = self.jn.ship_state().get('no_dock_reason', 'unknown')
                 logger.info(f'Docking denied ({reason}), drift and retry {attempt+1}/{self.config["DockingRetries"]}')
                 self.ap_ckb('log', f'Docking denied ({reason}), repositioning...')
-                # Fly 50% for a few seconds then drift to change position
+                # Creep in 5s more at 50% then retry
                 self.set_speed_50()
-                sleep(self.DOCK_APPROACH_TIME)
+                sleep(5)
                 self.set_speed_0()
-                sleep(self.DOCK_DRIFT_TIME)
                 continue
 
             # Unknown status (maybe already docking?)
@@ -870,6 +907,25 @@ class EDAutopilot:
     OCCLUSION_PITCH = 65
     BODY_EVADE_PITCH = 90
     PASSBODY_TIME = 25
+    # Planetary descent
+    PLANETARY_PITCH_INITIAL_DEG = 60    # degrees to pitch toward planet at dive trigger
+    PLANETARY_PITCH_HOLD = 5.5          # initial dive pitch hold (s) -- empirical, ship-agnostic
+    PLANETARY_ENABLED = False             # set True to enable planetary descent autopilot
+    PLANETARY_PITCH_CORR_HOLD_MAX = 0.75  # pitch correction hold (s) at dive altitude (scale=1.0)
+    PLANETARY_PITCH_CORR_HOLD_MIN = 0.3   # pitch correction hold (s) floor
+    PLANETARY_SCALE_FLOOR = 0.3           # minimum scale (30% at surface) -- 50% at half dive alt
+    PLANETARY_GS_TARGET_MIN = 32.0        # lock_gs gradually lowers to this by 30% of dive alt
+    PLANETARY_PITCH_SETTLE = 8.0          # settle time at dive altitude -- scales with alt_scale
+    PLANETARY_PITCH_SETTLE_MIN = 2.0      # settle floor (s)
+    PLANETARY_PITCH_CORR_HOLD_STEEP = 1.5 # hold (s) when gs drops below GS_TARGET_MIN (too steep)
+    PLANETARY_GS_BAND = 4.0               # glideslope band at dive altitude (full scale)
+    PLANETARY_GS_BAND_MIN = 2.0           # minimum band floor (deg)
+    PLANETARY_HDG_BAND = 2.0            # heading error tolerance (deg) before yaw correction
+    PLANETARY_PITCH_COOLDOWN = 3.0      # seconds after initial pitch before gs corrections enabled
+    PLANETARY_DIVE_WINDOW_LO = 35.0    # glideslope trigger range low (deg)
+    PLANETARY_DIVE_WINDOW_HI = 38.0    # glideslope trigger range high (deg)
+    PLANETARY_ORBIT_TIMEOUT = 120      # seconds to wait for stable orbit
+    PLANETARY_DESCENT_TIMEOUT = 180    # seconds to wait for glide after dive
     # Common angles
     QUARTER_TURN = 90           # 90-degree pitch maneuvers
     # Key input settle time for navigation commands
@@ -1331,10 +1387,11 @@ class EDAutopilot:
             self.ap_ckb('log', f" - Could not target station: {station_name}")
             return False
 
-    def sc_assist(self, scr_reg, do_docking=True) -> bool:
+    def sc_assist(self, scr_reg, do_docking=True, is_planetary=False) -> bool:
         """ Supercruise Assist: sun avoid, align to target, activate SC Assist via nav panel,
         then monitor for auto-drop. Checks for body obscuring target every 2.5s.
-        @return: True if completed (docked/dropped), False if activation failed.
+        @param is_planetary: If True, skip body evasion and break when OC is detected.
+        @return: True if completed (docked/dropped/OC), False if activation failed.
         """
         logger.debug("Entered sc_assist")
 
@@ -1422,6 +1479,9 @@ class EDAutopilot:
             approach_body = self.jn.ship_state().get('approach_body')
             if approach_body:
                 self.jn.set_field('approach_body', None)  # clear so we don't re-trigger
+                if is_planetary:
+                    logger.info(f"sc_assist: planetary approach -- no evasion for {approach_body}, holding for OC")
+                    continue
                 sc_assist_cruising = False
                 self.ap_ckb('log+vce', f'Approaching body: {approach_body} -- evading')
                 logger.info(f"sc_assist: ApproachBody detected: {approach_body}")
@@ -1430,9 +1490,15 @@ class EDAutopilot:
                 first_bluecheck = True
                 continue
 
+            # Planetary: break when OC confirmed (FlagsAverageAltitude set)
+            if is_planetary and self.status.get_flag(FlagsAverageAltitude):
+                logger.info("sc_assist: OC detected -- handing off to planetary descent")
+                break
+
             # Check if SC Assist is still active (indicator check)
             # If gone: target is occluded, evade by pitching up and re-aligning
-            if sc_assist_cruising and (time.time() - last_align_check) > self.SC_ASSIST_CHECK_INTERVAL:
+            # Skip this check for planetary: in OC the SC Assist indicator is gone by design
+            if not is_planetary and sc_assist_cruising and (time.time() - last_align_check) > self.SC_ASSIST_CHECK_INTERVAL:
                 last_align_check = time.time()
                 if self.is_sc_assist_gone(scr_reg):
                     # SC may have dropped during the ~4.5s check -- normal arrival, not occlusion
@@ -1466,9 +1532,13 @@ class EDAutopilot:
             interdicted = self.interdiction_check()
             if interdicted:
                 # After interdiction, re-align and re-activate SC Assist
-                self.set_speed_50()
+                self.set_speed_0()
                 self.compass_align(scr_reg)
                 self.nav_panel.activate_sc_assist()
+                self.keys.send('SetSpeed75')
+                sc_assist_cruising = True
+                first_bluecheck = True
+                last_align_check = time.time()
 
         # We've dropped from supercruise
         if do_docking:
@@ -1515,6 +1585,255 @@ class EDAutopilot:
 
         self.ap_ckb('log+vce', "Supercruise Assist complete")
         return True
+
+    def planetary_assist(self, scr_reg, target_lat: float, target_lon: float) -> bool:
+        """Full planetary settlement approach: SC -> OC -> descent -> glide -> dock.
+        Called from waypoint_assist when IsPlanetary=True waypoint is reached.
+        """
+        self.ap_ckb('log+vce', 'Planetary approach starting')
+        logger.info(f"planetary_assist: target lat={target_lat} lon={target_lon}")
+
+        # Ensure in SC
+        if self.status.get_flag(FlagsDocked) or self.status.get_flag(FlagsLanded):
+            self.waypoint_undock_seq()
+        self.sc_engage()
+
+        # Lock target
+        sleep(3)
+        self.keys.send('TargetNextRouteSystem')
+        sleep(2)
+
+        if not self.have_destination(scr_reg):
+            self.ap_ckb('log', 'Planetary assist: no destination found, aborting')
+            return False
+
+        # SC + OC phase -- no body evasion, breaks on OC detection
+        self.sc_assist(scr_reg, do_docking=False, is_planetary=True)
+
+        # Now in OC -- run descent sequence
+        ok = self._planetary_descent(scr_reg, target_lat, target_lon)
+        if ok:
+            sleep(1)
+            return self.dock()
+        return False
+
+    def _planetary_descent(self, scr_reg, target_lat: float, target_lon: float) -> bool:
+        """OC descent: confirm orbit, wait for dive window, dive, correct, wait for glide.
+        Returns True when glide exits (NORMAL_PLANET), False on timeout.
+
+        Orientation note: in OC the ship is canopy-DOWN (canopy faces planet).
+        - PitchUpButton = nose toward planet (correct for dive)
+        - PitchDownButton = nose away from planet (too steep correction)
+        - YawRight/Left are INVERTED in world space: hdg_err>0 needs YawLeft
+        # TODO: if roll drift after yaw pulses becomes a problem, add short roll
+        #       correction using self.ship.rollrate after each yaw pulse.
+        """
+        self.ap_ckb('log', 'Planetary descent: confirming orbit...')
+        self.ship.update_flight_mode()  # ensure SC-zero rates are active
+
+        # --- Orbit confirmation: alt drift < 10% for 10 continuous seconds ---
+        orbit_check_alt = None
+        orbit_check_start = None
+        orbit_deadline = time.time() + self.PLANETARY_ORBIT_TIMEOUT
+        while time.time() < orbit_deadline:
+            self.check_stop()
+            d = self.status.get_cleaned_data()
+            alt = d.get('Altitude')
+            if alt is None:
+                time.sleep(0.5)
+                continue
+            if orbit_check_alt is None:
+                orbit_check_alt = alt
+                orbit_check_start = time.time()
+            else:
+                drift = abs(alt - orbit_check_alt) / max(orbit_check_alt, 1)
+                if drift > 0.10:
+                    orbit_check_alt = alt
+                    orbit_check_start = time.time()
+                elif time.time() - orbit_check_start >= 10.0:
+                    break
+            time.sleep(0.5)
+        else:
+            self.ap_ckb('log', 'Planetary descent: orbit confirmation timed out')
+            logger.warning("_planetary_descent: orbit confirmation timed out")
+            return False
+
+        self.ap_ckb('log', 'Planetary descent: orbit confirmed, waiting for dive window...')
+
+        # --- Dive window: gs 35-38 AND target getting closer (dist decreasing) ---
+        # While closing, yaw to pre-align heading so hdg_err is near 0 at dive trigger.
+        prev_d3 = None
+        hdg = None
+        while True:
+            self.check_stop()
+            d = self.status.get_cleaned_data()
+            lat = d.get('Latitude')
+            lon = d.get('Longitude')
+            alt = d.get('Altitude')
+            hdg = d.get('Heading')
+            planet_r = d.get('PlanetRadius')
+            if None in (lat, lon, alt, planet_r) or planet_r == 0:
+                time.sleep(0.5)
+                continue
+            d3 = dist_3d(lat, lon, alt, target_lat, target_lon, planet_r)
+            gs = glideslope_angle(alt, d3)
+            closing = prev_d3 is not None and d3 < prev_d3
+            logger.debug(f"_planetary_descent: dive window gs={gs:.2f} d3={d3/1000:.0f}km closing={closing}")
+            if self.PLANETARY_DIVE_WINDOW_LO <= gs <= self.PLANETARY_DIVE_WINDOW_HI and closing:
+                brg = bearing_to(lat, lon, target_lat, target_lon)
+                hdg_err = heading_diff(hdg, brg) if hdg is not None else 999.0
+                if abs(hdg_err) <= 3.0:
+                    logger.info(f"_planetary_descent: DIVE TRIGGER gs={gs:.1f} hdg_err={hdg_err:+.1f}")
+                    break
+                else:
+                    logger.info(f"_planetary_descent: DIVE HOLD gs={gs:.1f} hdg_err={hdg_err:+.1f} > 3.0 -- correcting")
+            if gs > self.PLANETARY_DIVE_WINDOW_HI and closing:
+                logger.info(f"_planetary_descent: gs={gs:.1f} past window, still closing -- wait for next pass")
+            # Pre-dive heading alignment: yaw toward target while closing.
+            # Settle 1.5s after each pulse so SC Assist can re-stabilize the orbit.
+            if closing and hdg is not None:
+                brg = bearing_to(lat, lon, target_lat, target_lon)
+                hdg_err = heading_diff(hdg, brg)
+                if abs(hdg_err) > self.PLANETARY_HDG_BAND:
+                    yaw_key = 'YawLeftButton' if hdg_err > 0 else 'YawRightButton'
+                    hold = min(abs(hdg_err) / self.ship.yawrate, 1.0)
+                    logger.debug(f"_planetary_descent: pre-align yaw hdg_err={hdg_err:.1f} hold={hold:.2f}s")
+                    self.keys.send(yaw_key, hold=hold)
+                    time.sleep(1.5)  # let SC Assist re-stabilize orbit after yaw
+            prev_d3 = d3
+            self.status.wait_for_file_change(d.get('timestamp', ''), timeout=2)
+
+        self.ap_ckb('log+vce', f'Planetary descent: dive! gs={gs:.1f}')
+        logger.info(f"_planetary_descent: dive triggered at gs={gs:.2f}")
+
+        # --- Dive initiation ---
+        self.set_speed_0()
+        time.sleep(0.5)
+        # Initial dive pitch: use empirical hold constant, not rate-derived.
+        # OC pitch response varies by ship; 5s is from validated manual runs.
+        logger.info(f"_planetary_descent: dive pitch hold={self.PLANETARY_PITCH_HOLD:.1f}s")
+        self.keys.send('PitchUpButton', hold=self.PLANETARY_PITCH_HOLD)  # PitchUp = toward planet (canopy-down)
+        pitch_cooldown_until = time.time() + self.PLANETARY_PITCH_COOLDOWN  # no gs corrections until settled
+        initial_gs = gs  # locked at dive trigger -- gradually lowers to GS_TARGET_MIN by 30% of dive alt
+        lock_alt = alt  # actual dive altitude for scale reference (scale = alt/lock_alt)
+
+        # --- Descent correction loop: yaw for heading, pitch for glideslope ---
+        descent_deadline = time.time() + self.PLANETARY_DESCENT_TIMEOUT
+        while time.time() < descent_deadline:
+            self.check_stop()
+
+            # Glide engaged?
+            if self.status.get_flag2(Flags2GlideMode):
+                self.ap_ckb('log', 'Planetary descent: glide engaged -- passive wait')
+                self.status.wait_for_flag2_off(Flags2GlideMode, timeout=60)
+                self.ap_ckb('log', 'Planetary descent: glide complete')
+                # Post-glide: if landed far from target, align and close on 50% throttle
+                self._planetary_post_glide_approach(target_lat, target_lon)
+                return True
+
+            d = self.status.get_cleaned_data()
+            lat = d.get('Latitude')
+            lon = d.get('Longitude')
+            alt = d.get('Altitude')
+            hdg = d.get('Heading')
+            planet_r = d.get('PlanetRadius')
+            if None in (lat, lon, alt, hdg, planet_r) or planet_r == 0:
+                time.sleep(0.5)
+                continue
+
+            brg = bearing_to(lat, lon, target_lat, target_lon)
+            hdg_err = heading_diff(hdg, brg)
+            d3 = dist_3d(lat, lon, alt, target_lat, target_lon, planet_r)
+            gs = glideslope_angle(alt, d3)
+
+            # Unified scale: linear from dive altitude, 50% at half alt, floor at SCALE_FLOOR
+            alt_scale = max(self.PLANETARY_SCALE_FLOOR, alt / lock_alt)
+            # lock_gs_eff: interpolate from initial_gs -> GS_TARGET_MIN as alt_scale drops 1.0->SCALE_FLOOR
+            gs_t = (alt_scale - self.PLANETARY_SCALE_FLOOR) / (1.0 - self.PLANETARY_SCALE_FLOOR)
+            lock_gs_eff = self.PLANETARY_GS_TARGET_MIN + gs_t * (initial_gs - self.PLANETARY_GS_TARGET_MIN)
+            eff_band = max(self.PLANETARY_GS_BAND_MIN, self.PLANETARY_GS_BAND * alt_scale)
+            logger.info(f"_planetary_descent: DIVE  alt={alt/1000:.0f}km  gs={gs:.1f}  lock={lock_gs_eff:.1f}(init={initial_gs:.1f})  band={eff_band:.2f}({alt_scale:.2f})  hdg_err={hdg_err:+.1f}")
+
+            # Heading correction via yaw (INVERTED: canopy-down reverses yaw world direction)
+            if abs(hdg_err) > self.PLANETARY_HDG_BAND:
+                yaw_key = 'YawLeftButton' if hdg_err > 0 else 'YawRightButton'
+                yaw_max_deg = max(1.0, 10.0 * alt_scale)  # narrows 10->1 deg as alt drops
+                yaw_deg = min(abs(hdg_err), yaw_max_deg)
+                hold = yaw_deg / self.ship.yawrate
+                logger.debug(f"_planetary_descent: yaw correction hdg_err={hdg_err:.1f} yaw_deg={yaw_deg:.1f} hold={hold:.2f}s")
+                self.keys.send(yaw_key, hold=hold)
+
+            # Glideslope correction via pitch -- skip during cooldown after initial pitch
+            if time.time() >= pitch_cooldown_until:
+                gs_err = gs - lock_gs_eff  # + = too shallow (gs rising, alt/dist up), - = too steep
+                effective_band = max(self.PLANETARY_GS_BAND_MIN, self.PLANETARY_GS_BAND * alt_scale)
+                if abs(gs_err) > effective_band:
+                    # gs > lock: too shallow -> PitchUp (toward planet in canopy-down, steepen)
+                    # gs < lock: too steep -> PitchDown (away from planet, shallow)
+                    pitch_key = 'PitchUpButton' if gs_err > 0 else 'PitchDownButton'
+                    corr_hold = self.PLANETARY_PITCH_CORR_HOLD_MIN + alt_scale * (self.PLANETARY_PITCH_CORR_HOLD_MAX - self.PLANETARY_PITCH_CORR_HOLD_MIN)
+                    # gs below target minimum: too steep -- boost correction
+                    if gs < self.PLANETARY_GS_TARGET_MIN:
+                        corr_hold = self.PLANETARY_PITCH_CORR_HOLD_STEEP
+                    settle = max(self.PLANETARY_PITCH_SETTLE_MIN, self.PLANETARY_PITCH_SETTLE * alt_scale)
+                    logger.debug(f"_planetary_descent: pitch correction gs={gs:.2f} lock={lock_gs_eff:.2f} err={gs_err:.2f} band={effective_band:.2f}({alt_scale:.2f}) alt={alt/1000:.0f}km hold={corr_hold:.2f}s settle={settle:.1f}s")
+                    self.keys.send(pitch_key, hold=corr_hold)
+                    time.sleep(settle)
+
+            self.status.wait_for_file_change(d.get('timestamp', ''), timeout=2)
+
+        self.ap_ckb('log', 'Planetary descent: timed out waiting for glide')
+        logger.warning("_planetary_descent: descent timed out, no glide detected")
+        return False
+
+    def _planetary_post_glide_approach(self, target_lat: float, target_lon: float):
+        """After glide: if dist > 7.5km align heading and throttle 50% until < 7km, then zero."""
+        d = self.status.get_cleaned_data()
+        lat = d.get('Latitude')
+        lon = d.get('Longitude')
+        alt = d.get('Altitude')
+        planet_r = d.get('PlanetRadius')
+        hdg = d.get('Heading')
+        if None in (lat, lon, alt, planet_r, hdg) or planet_r == 0:
+            return
+        d3 = dist_3d(lat, lon, alt, target_lat, target_lon, planet_r)
+        if d3 <= 7500:
+            return
+
+        logger.info(f"_planetary_post_glide_approach: dist={d3/1000:.1f}km > 7.5km -- aligning and closing")
+        self.ap_ckb('log', f'Post-glide approach: {d3/1000:.1f}km -- 50% throttle to 7km')
+
+        # Align heading to target
+        brg = bearing_to(lat, lon, target_lat, target_lon)
+        hdg_err = heading_diff(hdg, brg)
+        if abs(hdg_err) > 2.0:
+            yaw_key = 'YawLeftButton' if hdg_err > 0 else 'YawRightButton'
+            hold = min(abs(hdg_err) / self.ship.yawrate, 2.0)
+            logger.debug(f"_planetary_post_glide_approach: yaw hdg_err={hdg_err:+.1f} hold={hold:.2f}s")
+            self.keys.send(yaw_key, hold=hold)
+            time.sleep(0.5)
+
+        # Close on 50% throttle until < 7km
+        self.set_speed_50()
+        deadline = time.time() + 120
+        while time.time() < deadline:
+            self.check_stop()
+            d = self.status.get_cleaned_data()
+            lat = d.get('Latitude')
+            lon = d.get('Longitude')
+            alt = d.get('Altitude')
+            planet_r = d.get('PlanetRadius')
+            if None in (lat, lon, alt, planet_r) or planet_r == 0:
+                time.sleep(0.5)
+                continue
+            d3 = dist_3d(lat, lon, alt, target_lat, target_lon, planet_r)
+            logger.info(f"_planetary_post_glide_approach: dist={d3/1000:.1f}km")
+            if d3 < 7000:
+                break
+            self.status.wait_for_file_change(d.get('timestamp', ''), timeout=2)
+
+        self.set_speed_0()
+        logger.info("_planetary_post_glide_approach: < 7km -- throttle zeroed, handing off to dock")
 
     def dss_assist(self):
         while True:

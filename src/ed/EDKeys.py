@@ -48,6 +48,7 @@ class EDKeys:
             'SetSpeed75',
             'SetSpeed100',
             'UpThrustButton',
+            'BackwardKey',
             'UseBoostJuice',
             'LandingGearToggle',
             # Navigation
@@ -98,9 +99,10 @@ class EDKeys:
             'PitchUpButton':        {'key': directinput.SCANCODE['Key_Numpad_8'], 'mods': []},
             'PitchDownButton':      {'key': directinput.SCANCODE['Key_Numpad_2'], 'mods': []},
             'SetSpeedZero':         {'key': directinput.SCANCODE['Key_LeftShift'], 'mods': []},
-            'SetSpeed50':           {'key': directinput.SCANCODE['Key_Y'], 'mods': []},
+            'SetSpeed50':           {'key': directinput.SCANCODE['Key_X'], 'mods': []},
             'SetSpeed100':          {'key': directinput.SCANCODE['Key_C'], 'mods': []},
             'UpThrustButton':       {'key': directinput.SCANCODE['Key_R'], 'mods': []},
+            'BackwardKey':          {'key': directinput.SCANCODE['Key_S'], 'mods': []},
             'UseBoostJuice':        {'key': directinput.SCANCODE['Key_Tab'], 'mods': []},
             'LandingGearToggle':    {'key': directinput.SCANCODE['Key_L'], 'mods': []},
             'HyperSuperCombination': {'key': directinput.SCANCODE['Key_J'], 'mods': []},
@@ -129,6 +131,9 @@ class EDKeys:
         self.keys = self.get_bindings()
         self.bindings = self.get_bindings_dict()
 
+        # Build reverse dict before fallback loop so we can log key names
+        self.reversed_dict = {value: key for key, value in directinput.SCANCODE.items()}
+
         # Apply fallbacks for any missing keys
         for key_name, fallback in self._fallback_keys.items():
             if key_name not in self.keys:
@@ -136,9 +141,6 @@ class EDKeys:
                 logger.info(f"Using fallback key for '{key_name}': {self.reversed_dict.get(fallback['key'], '?')}")
 
         self.missing_keys = []
-        # We want to log the keyboard name instead of just the key number so we build a reverse dictionary
-        # so we can look up the name also
-        self.reversed_dict = {value: key for key, value in directinput.SCANCODE.items()}
 
         # dump config to log
         for key in self.keys_to_obtain:

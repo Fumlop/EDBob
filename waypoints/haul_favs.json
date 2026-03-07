@@ -1,6 +1,27 @@
 {
     "GlobalShoppingList": {
-        "BuyCommodities": {},
+        "BuyCommodities": {
+            "Liquid oxygen": 0,
+            "Water": 6459,
+            "Food Cartridges": 0,
+            "Fruit and Vegetables": 363,
+            "Ceramic Composites": 5432,
+            "CMM Composite": 50675,
+            "Insulating Membrane": 0,
+            "Polymers": 0,
+            "Semiconductors": 0,
+            "Superconductors": 0,
+            "Power Generators": 163,
+            "Water Purifiers": 0,
+            "Aluminium": 45248,
+            "Copper": 0,
+            "Steel": 63342,
+            "Titanium": 13465,
+            "Auto-Fabricators": 314,
+            "Computer Components": 0,
+            "Medical Diagnostic Equipment": 63,
+            "Non-Lethal Weapons": 0
+        },
         "UpdateCommodityCount": true,
         "FleetCarrierTransfer": false,
         "Skip": false,
@@ -15,16 +36,12 @@
         "IsConstruction": false,
         "SystemBookmarkNumber": 1,
         "SellCommodities": {},
-        "BuyCommodities": {
-            "Aluminium": 27060,
-            "Titanium": 0,
-            "Steel": 47109
-        },
+        "BuyCommodities": {},
         "Comment": "Buy commodities here",
         "UpdateCommodityCount": true,
         "FleetCarrierTransfer": false,
         "Skip": false,
-        "Completed": false
+        "Completed": true
     },
     "2": {
         "SystemName": "",

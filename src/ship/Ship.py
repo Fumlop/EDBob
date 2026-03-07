@@ -61,7 +61,7 @@ class Ship:
     }
 
     # Alignment constants
-    MIN_HOLD_TIME = 0.40
+    MIN_HOLD_TIME = 0.50
     MAX_HOLD_TIME = 10.0
     ALIGN_CLOSE = 3.0           # degrees -- tightened with stable ring median
     ALIGN_SETTLE = 2.0          # seconds to let ship/compass settle after pitch/yaw
@@ -349,7 +349,8 @@ class Ship:
 
         while remaining > close and (time.time() - start) < timeout:
             self.check_stop()
-            hold_time = (remaining * 0.95) / rate
+            factor = 1.0 if remaining > 10.0 else 0.95
+            hold_time = (remaining * factor) / rate
             hold_time = max(self.MIN_HOLD_TIME, min(self.MAX_HOLD_TIME, hold_time))
 
             logger.debug(f"Align {axis}: remaining={remaining:.1f}deg, hold={hold_time:.2f}s, rate={rate:.1f}, key={key}")
